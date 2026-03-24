@@ -119,7 +119,7 @@ Open [http://localhost:3000](http://localhost:3000).
 - Collections using Astra's server-side **vectorize** skip client-side embedding entirely — the `$vectorize` field is passed and Astra handles embedding automatically.
 - Internal collections (prefixed `dap_`) store conversation history and are hidden from the UI by default.
 
-> **Stack:** Next.js 14 App Router · `astra-db-ts` v2 · IBM WatsonX Granite · HuggingFace Embeddings
+> **Stack:** Next.js 16 App Router · `astra-db-ts` v2 · IBM WatsonX Granite · HuggingFace Embeddings
 
 ---
 
@@ -191,8 +191,8 @@ Each request to `POST /api/chat` streams a sequence of NDJSON events, one per st
 | `/api/delete-collection` | `POST` | Drop a collection |
 | `/api/delete-documents` | `POST` | Delete documents by filter |
 | `/api/count` | `POST` | `estimatedDocumentCount()` |
-| `/api/keyspaces` | `GET` | List available keyspaces |
-| `/api/embedding-providers` | `GET` | List `$vectorize` providers from Astra |
+| `/api/keyspaces` | `POST` | List available keyspaces |
+| `/api/embedding-providers` | `POST` | List `$vectorize` providers from Astra |
 | `/api/conversations` | `GET/POST` | Conversation list + create |
 | `/api/conversations/[id]` | `GET/DELETE` | Get or delete a conversation |
 | `/api/conversations/[id]/messages` | `POST` | Append message to conversation |
@@ -230,6 +230,8 @@ Each request to `POST /api/chat` streams a sequence of NDJSON events, one per st
 | `ASTRA_DB_API_ENDPOINT` | Astra DB | Yes (or set in UI) |
 | `WATSONX_API_KEY` | IBM WatsonX | For AI features |
 | `WATSONX_PROJECT_ID` | IBM WatsonX | For AI features |
+| `WATSONX_SERVICE_URL` | IBM WatsonX | For AI features |
+| `WATSONX_IAM_URL` | IBM WatsonX | For AI features |
 | `HUGGINGFACE_API_KEY` | HuggingFace | Optional embed fallback |
 
 > All env vars can be overridden at runtime via the Connect Dialog — values are stored in `sessionStorage` and passed with each API request.
