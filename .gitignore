@@ -1,4 +1,11 @@
 /.next
 .DS_Store
 /node_modules
-.DS_Store
+
+# TypeScript build cache
+tsconfig.tsbuildinfo
+
+# Environment variables (protect secrets)
+.env
+.env.local
+.env*.local
