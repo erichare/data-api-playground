@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Data API Playground — Architecture</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0b0f1a;
+    color: #f8fafc;
+    padding: 40px 32px 60px;
+    min-height: 100vh;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #f8fafc;
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 40px;
+  }
+
+  .diagram {
+    display: grid;
+    gap: 16px;
+    max-width: 1060px;
+  }
+
+  /* ── Section label (non-layer) ── */
+  .section-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #334155;
+    padding: 0 2px;
+    margin-bottom: -8px;
+  }
+
+  /* ── Layer boxes ── */
+  .layer {
+    border-radius: 14px;
+    border: 1px solid #1e2d4a;
+    overflow: hidden;
+  }
+
+  .layer-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    border-bottom: 1px solid #1e2d4a;
+  }
+
+  .layer-body {
+    padding: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  /* ── Cards ── */
+  .card {
+    border-radius: 10px;
+    border: 1px solid #1e2d4a;
+    padding: 12px 14px;
+    flex: 1 1 160px;
+    min-width: 140px;
+  }
+
+  .card-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #f8fafc;
+    margin-bottom: 4px;
+  }
+
+  .card-sub {
+    font-size: 11px;
+    color: #475569;
+    line-height: 1.5;
+  }
+
+  .card-tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-top: 6px;
+  }
+
+  .card-tag + .card-tag { margin-left: 4px; }
+
+  /* ── NEW badge ── */
+  .badge-new {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    border-radius: 4px;
+    padding: 1px 5px;
+    margin-left: 6px;
+    background: rgba(251,191,36,0.18);
+    color: #fcd34d;
+    vertical-align: middle;
+    position: relative;
+    top: -1px;
+  }
+
+  /* ── Colour schemes ── */
+
+  /* Browser layer */
+  .layer-browser { background: rgba(108,99,255,0.04); }
+  .layer-browser .layer-header { background: rgba(108,99,255,0.10); color: #a5b4fc; }
+  .layer-browser .card { background: rgba(108,99,255,0.06); border-color: rgba(108,99,255,0.18); }
+  .layer-browser .card-tag { background: rgba(108,99,255,0.15); color: #a5b4fc; }
+
+  /* State hook */
+  .layer-state { background: rgba(0,194,203,0.03); }
+  .layer-state .layer-header { background: rgba(0,194,203,0.08); color: #67e8f9; }
+  .layer-state .card { background: rgba(0,194,203,0.05); border-color: rgba(0,194,203,0.18); }
+  .layer-state .card-tag { background: rgba(0,194,203,0.12); color: #67e8f9; }
+
+  /* API layer */
+  .layer-api { background: rgba(251,191,36,0.03); }
+  .layer-api .layer-header { background: rgba(251,191,36,0.08); color: #fcd34d; }
+  .layer-api .card { background: rgba(251,191,36,0.04); border-color: rgba(251,191,36,0.15); }
+  .layer-api .card-tag { background: rgba(251,191,36,0.12); color: #fcd34d; }
+
+  /* External / Astra */
+  .layer-ext { background: rgba(52,211,153,0.03); }
+  .layer-ext .layer-header { background: rgba(52,211,153,0.08); color: #6ee7b7; }
+  .layer-ext .card { background: rgba(52,211,153,0.04); border-color: rgba(52,211,153,0.15); }
+  .layer-ext .card-tag { background: rgba(52,211,153,0.12); color: #6ee7b7; }
+
+  /* Conversation history layer */
+  .layer-conv { background: rgba(251,191,36,0.03); }
+  .layer-conv .layer-header { background: rgba(251,146,60,0.10); color: #fdba74; }
+  .layer-conv .card { background: rgba(251,146,60,0.05); border-color: rgba(251,146,60,0.18); }
+  .layer-conv .card-tag { background: rgba(251,146,60,0.15); color: #fdba74; }
+
+  /* ── RAG pipeline ── */
+  .pipeline-wrap {
+    border-radius: 14px;
+    border: 1px solid #1e2d4a;
+    overflow: hidden;
+    background: rgba(239,68,68,0.03);
+  }
+
+  .pipeline-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    border-bottom: 1px solid #1e2d4a;
+    background: rgba(239,68,68,0.07);
+    color: #fca5a5;
+  }
+
+  .pipeline {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    padding: 20px;
+    overflow-x: auto;
+  }
+
+  .p-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    min-width: 130px;
+  }
+
+  .p-box {
+    width: 100%;
+    border-radius: 10px;
+    padding: 12px 10px;
+    text-align: center;
+    border: 1px solid;
+  }
+
+  .p-num {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+    opacity: 0.7;
+  }
+
+  .p-name { font-size: 13px; font-weight: 700; }
+
+  .p-desc {
+    font-size: 10px;
+    margin-top: 5px;
+    opacity: 0.65;
+    line-height: 1.4;
+  }
+
+  .p-service {
+    font-size: 9px;
+    font-weight: 600;
+    border-radius: 4px;
+    padding: 2px 7px;
+    margin-top: 8px;
+    display: inline-block;
+    letter-spacing: 0.04em;
+  }
+
+  .p-arrow {
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    flex-shrink: 0;
+    color: #334155;
+  }
+
+  .step-analyze .p-box { background: rgba(168,85,247,0.08); border-color: rgba(168,85,247,0.25); color: #d8b4fe; }
+  .step-analyze .p-service { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+
+  .step-embed .p-box { background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.25); color: #93c5fd; }
+  .step-embed .p-service { background: rgba(59,130,246,0.15); color: #93c5fd; }
+
+  .step-search .p-box { background: rgba(0,194,203,0.08); border-color: rgba(0,194,203,0.25); color: #67e8f9; }
+  .step-search .p-service { background: rgba(0,194,203,0.15); color: #67e8f9; }
+
+  .step-respond .p-box { background: rgba(52,211,153,0.08); border-color: rgba(52,211,153,0.25); color: #6ee7b7; }
+  .step-respond .p-service { background: rgba(52,211,153,0.15); color: #6ee7b7; }
+
+  /* ── Connector arrows ── */
+  .connector {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    padding: 2px 0;
+    color: #334155;
+    font-size: 11px;
+  }
+
+  .connector span { color: #475569; font-style: italic; font-size: 10px; }
+
+  /* ── Env vars ── */
+  .env-section {
+    border-radius: 14px;
+    border: 1px solid #1e2d4a;
+    overflow: hidden;
+    background: rgba(100,116,139,0.03);
+  }
+
+  .env-header {
+    padding: 10px 16px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    border-bottom: 1px solid #1e2d4a;
+    background: rgba(100,116,139,0.08);
+    color: #94a3b8;
+  }
+
+  .env-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1px;
+    background: #1e2d4a;
+  }
+
+  .env-item { background: #0d1220; padding: 10px 16px; }
+
+  .env-key {
+    font-size: 11px;
+    font-weight: 600;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    color: #fcd34d;
+    margin-bottom: 2px;
+  }
+
+  .env-val { font-size: 11px; color: #64748b; }
+
+  .badge-opt {
+    font-size: 9px;
+    background: rgba(100,116,139,0.15);
+    color: #64748b;
+    border-radius: 3px;
+    padding: 1px 5px;
+    margin-left: 5px;
+    font-weight: 600;
+  }
+
+  /* ── Sub-groups ── */
+  .group {
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.05);
+    padding: 10px;
+    flex: 1 1 200px;
+  }
+
+  .group-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #334155;
+    margin-bottom: 8px;
+  }
+
+  .group-cards { display: flex; flex-direction: column; gap: 7px; }
+  .group .card { flex: none; min-width: 0; }
+
+  /* ── Data model table ── */
+  .model-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .model-card {
+    border-radius: 10px;
+    border: 1px solid rgba(251,146,60,0.2);
+    background: rgba(251,146,60,0.04);
+    padding: 14px;
+  }
+
+  .model-name {
+    font-size: 12px;
+    font-weight: 700;
+    color: #fdba74;
+    margin-bottom: 10px;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+  }
+
+  .model-field {
+    display: flex;
+    gap: 8px;
+    font-size: 11px;
+    margin-bottom: 5px;
+    align-items: baseline;
+  }
+
+  .field-key {
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    color: #f8fafc;
+    flex-shrink: 0;
+    min-width: 130px;
+  }
+
+  .field-type {
+    color: #93c5fd;
+    flex-shrink: 0;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 10px;
+  }
+
+  .field-note { color: #475569; font-size: 10px; }
+
+  .field-opt { color: #64748b; font-size: 10px; font-style: italic; }
+
+  /* ── Side-by-side row ── */
+  .row-pair {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 16px;
+    align-items: start;
+  }
+
+  @media (max-width: 800px) {
+    .row-pair { grid-template-columns: 1fr; }
+    .model-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Data API Playground</h1>
+<p class="subtitle">Architecture overview — Next.js 16 · Astra DB · watsonx.ai</p>
+
+<div class="diagram">
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- RAG PIPELINE — top, as the overarching flow                -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="pipeline-wrap">
+    <div class="pipeline-header">
+      <span>🔍</span>
+      /api/chat — RAG Pipeline &nbsp;·&nbsp; each step streams two events:
+      <code style="font-size:10px; opacity:0.8;">running</code> →
+      <code style="font-size:10px; opacity:0.8;">complete</code>
+    </div>
+    <div class="pipeline">
+
+      <div class="p-step step-analyze">
+        <div class="p-box">
+          <div class="p-num">STEP 1</div>
+          <div class="p-name">Analyze</div>
+          <div class="p-desc">Reads query + collection schema. Outputs structured plan: target collection, search mode, intent, limit, sort field.</div>
+          <div class="p-service">ibm/granite-3-8b-instruct</div>
+        </div>
+      </div>
+
+      <div class="p-arrow">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 10h10M11 5l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+
+      <div class="p-step step-embed">
+        <div class="p-box">
+          <div class="p-num">STEP 2</div>
+          <div class="p-name">Embed</div>
+          <div class="p-desc">Generates a 768-dim query vector. Skipped for server-side vectorize collections.</div>
+          <div class="p-service">watsonx AI SDK · IBM Granite Embedding 125M</div>
+        </div>
+      </div>
+
+      <div class="p-arrow">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 10h10M11 5l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+
+      <div class="p-step step-search">
+        <div class="p-box">
+          <div class="p-num">STEP 3</div>
+          <div class="p-name">Search</div>
+          <div class="p-desc">Queries Astra DB using the chosen mode: $vector, $vectorize, $hybrid, or lexical sort.</div>
+          <div class="p-service">Astra DB — Data API</div>
+        </div>
+      </div>
+
+      <div class="p-arrow">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 10h10M11 5l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+
+      <div class="p-step step-respond">
+        <div class="p-box">
+          <div class="p-num">STEP 4</div>
+          <div class="p-name">Respond</div>
+          <div class="p-desc">Synthesizes a natural language answer grounded in the retrieved documents.</div>
+          <div class="p-service">ibm/granite-3-8b-instruct</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- BROWSER LAYER                                              -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="layer layer-browser">
+    <div class="layer-header">
+      <span>🌐</span>
+      Browser — React Client (Next.js App Router, TypeScript)
+    </div>
+    <div class="layer-body">
+
+      <div class="group">
+        <div class="group-label">Shell</div>
+        <div class="group-cards">
+          <div class="card">
+            <div class="card-title">Header</div>
+            <div class="card-sub">Connection status indicator, settings button</div>
+          </div>
+          <div class="card">
+            <div class="card-title">
+              Sidebar
+              <span class="badge-new">updated</span>
+            </div>
+            <div class="card-sub">Keyspace selector, collection list, <strong style="color:#fdba74;">conversation history list</strong> with create / rename / delete, view-mode toggle</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-label">Primary Views</div>
+        <div class="group-cards">
+          <div class="card">
+            <div class="card-title">ChatArea</div>
+            <div class="card-sub">Conversation UI, search mode toggle (vector / hybrid / lexical), streaming pipeline trace. Persists messages to Astra on each turn.</div>
+            <span class="card-tag">+ PipelineTrace</span>
+          </div>
+          <div class="card">
+            <div class="card-title">CollectionViewer</div>
+            <div class="card-sub">Paginated document browser, sort, delete, CSV export</div>
+          </div>
+          <div class="card">
+            <div class="card-title">IngestPanel</div>
+            <div class="card-sub">CSV drag-and-drop, streaming insert progress</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-label">Dialogs</div>
+        <div class="group-cards">
+          <div class="card">
+            <div class="card-title">AstraConnectDialog</div>
+            <div class="card-sub">Token, endpoint, watsonx.ai credentials — with env fallback detection</div>
+          </div>
+          <div class="card">
+            <div class="card-title">NewCollectionDialog</div>
+            <div class="card-sub">Create vector or server-side vectorize collection with TS / Python / Java code preview</div>
+          </div>
+          <div class="card">
+            <div class="card-title">QuickStartGuide</div>
+            <div class="card-sub">SDK code examples across TS, Python, Java, cURL</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- STATE HOOK                                                  -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="layer layer-state">
+    <div class="layer-header">
+      <span>🔁</span>
+      Central State — <code style="font-size:11px;">usePlaygroundState</code> hook
+    </div>
+    <div class="layer-body">
+      <div class="card">
+        <div class="card-title">Connection State</div>
+        <div class="card-sub">astraToken, astraEndpoint, astraFromEnv, ibmApiKey, watsonxProjectId</div>
+        <span class="card-tag">sessionStorage persistence</span>
+      </div>
+      <div class="card">
+        <div class="card-title">Collection State</div>
+        <div class="card-sub">collections[], collectionFields, activeCollection, keyspaces, selectedKeyspace</div>
+        <span class="card-tag">re-fetched on connect</span>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          Conversation State
+          <span class="badge-new">updated</span>
+        </div>
+        <div class="card-sub">conversations[], activeConversationId, messages[] — fetched from <strong style="color:#fdba74;">dap_conversations</strong> on connect; synced after each turn</div>
+        <span class="card-tag">Astra DB persistence</span>
+      </div>
+      <div class="card">
+        <div class="card-title">UI State</div>
+        <div class="card-sub">viewMode, ingestCollapsed, dialogs open/close, initializing flag</div>
+        <span class="card-tag">React state only</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONNECTOR -->
+  <div class="connector">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 3v14M5 13l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>HTTP (fetch) — JSON + NDJSON streaming</span>
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 17V3M5 7l5-5 5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- API LAYER                                                   -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="layer layer-api">
+    <div class="layer-header">
+      <span>⚡</span>
+      Next.js API Routes — Node.js Runtime
+    </div>
+    <div class="layer-body">
+      <div class="card">
+        <div class="card-title">/api/connect</div>
+        <div class="card-sub">List collections, infer vector metadata, estimated counts</div>
+        <span class="card-tag">POST</span>
+      </div>
+      <div class="card">
+        <div class="card-title">/api/keyspaces</div>
+        <div class="card-sub">List available keyspaces in the database</div>
+        <span class="card-tag">POST</span>
+      </div>
+      <div class="card">
+        <div class="card-title">/api/browse</div>
+        <div class="card-sub">Paginated document fetch with optional sort</div>
+        <span class="card-tag">POST</span>
+      </div>
+      <div class="card">
+        <div class="card-title">/api/count</div>
+        <div class="card-sub">Estimated document count for a collection</div>
+        <span class="card-tag">POST</span>
+      </div>
+      <div class="card">
+        <div class="card-title">/api/ingest</div>
+        <div class="card-sub">Batch insert rows; streams NDJSON progress events back</div>
+        <span class="card-tag">POST · stream</span>
+      </div>
+      <div class="card">
+        <div class="card-title">/api/create-collection</div>
+        <div class="card-sub">Create vector or vectorize-enabled collection</div>
+        <span class="card-tag">POST</span>
+      </div>
+      <div class="card">
+        <div class="card-title">/api/embedding-providers</div>
+        <div class="card-sub">Fetch available vectorize provider + model options from DB</div>
+        <span class="card-tag">POST</span>
+      </div>
+      <div class="card">
+        <div class="card-title">/api/delete-documents</div>
+        <div class="card-sub">Delete documents by ID array</div>
+        <span class="card-tag">POST</span>
+      </div>
+      <div class="card">
+        <div class="card-title">/api/chat</div>
+        <div class="card-sub">4-step RAG pipeline — streams NDJSON step events</div>
+        <span class="card-tag">POST · stream</span>
+      </div>
+      <div class="card">
+        <div class="card-title">/api/astra-status &amp; /api/watsonx-status</div>
+        <div class="card-sub">Check whether credentials are set in server environment</div>
+        <span class="card-tag">GET</span>
+      </div>
+
+      <!-- NEW conversation routes highlighted -->
+      <div class="card" style="border-color: rgba(251,146,60,0.35); background: rgba(251,146,60,0.06);">
+        <div class="card-title">/api/conversations <span class="badge-new">new</span></div>
+        <div class="card-sub">List all conversations (sorted by updatedAt desc) or create a new one</div>
+        <span class="card-tag" style="background:rgba(251,146,60,0.15);color:#fdba74;">GET</span>
+        <span class="card-tag" style="background:rgba(251,146,60,0.15);color:#fdba74;">POST</span>
+      </div>
+      <div class="card" style="border-color: rgba(251,146,60,0.35); background: rgba(251,146,60,0.06);">
+        <div class="card-title">/api/conversations/[id] <span class="badge-new">new</span></div>
+        <div class="card-sub">Rename a conversation or delete it (cascades to all messages)</div>
+        <span class="card-tag" style="background:rgba(251,146,60,0.15);color:#fdba74;">PATCH</span>
+        <span class="card-tag" style="background:rgba(251,146,60,0.15);color:#fdba74;">DELETE</span>
+      </div>
+      <div class="card" style="border-color: rgba(251,146,60,0.35); background: rgba(251,146,60,0.06);">
+        <div class="card-title">/api/conversations/[id]/messages <span class="badge-new">new</span></div>
+        <div class="card-sub">Load paginated message history or append a single message. Called twice per chat turn: user message before streaming, assistant message after.</div>
+        <span class="card-tag" style="background:rgba(251,146,60,0.15);color:#fdba74;">GET</span>
+        <span class="card-tag" style="background:rgba(251,146,60,0.15);color:#fdba74;">POST</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONNECTOR -->
+  <div class="connector">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 3v14M5 13l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>SDK calls + REST APIs</span>
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 17V3M5 7l5-5 5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+
+  <div class="row-pair">
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- EXTERNAL SERVICES                                           -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="layer layer-ext">
+    <div class="layer-header">
+      <span>☁️</span>
+      External Services
+    </div>
+    <div class="layer-body">
+      <div class="card" style="flex: 2 1 260px;">
+        <div class="card-title">Astra DB — DataStax Data API</div>
+        <div class="card-sub">
+          Schemaless document store with first-class vector support. Supports client-side vectors
+          (<code style="font-size:10px;">$vector</code>), server-side vectorization
+          (<code style="font-size:10px;">$vectorize</code>), hybrid, and lexical search.
+          Also stores conversation history in dedicated collections.
+        </div>
+        <span class="card-tag">astra-db-ts SDK</span>
+      </div>
+      <div class="card" style="flex: 2 1 240px;">
+        <div class="card-title">watsonx.ai — IBM</div>
+        <div class="card-sub">
+          Hosts <strong>ibm/granite-3-8b-instruct</strong> (LLM) and <strong>ibm/slate-125m-english-rtrvr-v2</strong> (embeddings). Used for all four pipeline steps: analyze, embed, search (via Astra), and respond.
+        </div>
+        <span class="card-tag">watsonx-ai SDK</span>
+      </div>
+      <div class="card" style="flex: 1 1 200px;">
+        <div class="card-title">HuggingFace Inference API</div>
+        <div class="card-sub">
+          Fallback embedding provider when watsonx is not configured. Uses IBM Granite Embedding 125M via <code style="font-size:10px;">router.huggingface.co</code>.
+          Skipped when the target collection uses server-side <code style="font-size:10px;">$vectorize</code>.
+        </div>
+        <span class="card-tag">REST · fallback</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- ENV VARS — sits beside External Services                   -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="env-section" style="min-width: 260px; max-width: 320px;">
+    <div class="env-header">🔑 Environment Variables</div>
+    <div class="env-grid" style="grid-template-columns: 1fr;">
+      <div class="env-item">
+        <div class="env-key">ASTRA_DB_APPLICATION_TOKEN</div>
+        <div class="env-val">Astra DB app token — overridable in UI</div>
+      </div>
+      <div class="env-item">
+        <div class="env-key">ASTRA_DB_API_ENDPOINT</div>
+        <div class="env-val">Astra DB endpoint URL — overridable in UI</div>
+      </div>
+      <div class="env-item">
+        <div class="env-key">WATSONX_API_KEY</div>
+        <div class="env-val">IBM Cloud API key for watsonx.ai — overridable in UI</div>
+      </div>
+      <div class="env-item">
+        <div class="env-key">WATSONX_PROJECT_ID</div>
+        <div class="env-val">watsonx.ai project ID — overridable in UI</div>
+      </div>
+      <div class="env-item">
+        <div class="env-key">HUGGINGFACE_API_KEY <span class="badge-opt">optional</span></div>
+        <div class="env-val">Enables real 768-dim Granite embeddings; falls back to mock zeros</div>
+      </div>
+    </div>
+  </div>
+
+  </div><!-- end .row-pair -->
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- CONVERSATION HISTORY — DATA MODEL                          -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="layer layer-conv">
+    <div class="layer-header">
+      <span>💬</span>
+      Conversation History — Astra DB Collections
+      <span class="badge-new">new</span>
+    </div>
+    <div class="model-grid">
+
+      <div class="model-card">
+        <div class="model-name">dap_conversations</div>
+        <div class="model-field">
+          <span class="field-key">_id</span>
+          <span class="field-type">string</span>
+          <span class="field-note">UUID</span>
+        </div>
+        <div class="model-field">
+          <span class="field-key">name</span>
+          <span class="field-type">string</span>
+          <span class="field-note">user-editable display name</span>
+        </div>
+        <div class="model-field">
+          <span class="field-key">createdAt</span>
+          <span class="field-type">string</span>
+          <span class="field-note">ISO timestamp</span>
+        </div>
+        <div class="model-field">
+          <span class="field-key">updatedAt</span>
+          <span class="field-type">string</span>
+          <span class="field-note">updated on every new message</span>
+        </div>
+        <div class="model-field">
+          <span class="field-key">messageCount</span>
+          <span class="field-type">number</span>
+          <span class="field-note">denormalized for sidebar display</span>
+        </div>
+        <div class="model-field">
+          <span class="field-key">activeCollection</span>
+          <span class="field-type">string</span>
+          <span class="field-note">last queried DB collection</span>
+        </div>
+      </div>
+
+      <div class="model-card">
+        <div class="model-name">dap_messages</div>
+        <div class="model-field">
+          <span class="field-key">_id</span>
+          <span class="field-type">string</span>
+          <span class="field-note">UUID</span>
+        </div>
+        <div class="model-field">
+          <span class="field-key">conversationId</span>
+          <span class="field-type">string</span>
+          <span class="field-note">→ dap_conversations._id</span>
+        </div>
+        <div class="model-field">
+          <span class="field-key">role</span>
+          <span class="field-type">string</span>
+          <span class="field-note">"user" | "assistant"</span>
+        </div>
+        <div class="model-field">
+          <span class="field-key">content</span>
+          <span class="field-type">string</span>
+          <span class="field-note">message text</span>
+        </div>
+        <div class="model-field">
+          <span class="field-key">timestamp</span>
+          <span class="field-type">string</span>
+          <span class="field-note">ISO — sort key for ordering</span>
+        </div>
+        <div class="model-field">
+          <span class="field-key">searchMode</span>
+          <span class="field-type">string</span>
+          <span class="field-opt">optional · assistant only</span>
+        </div>
+        <div class="model-field">
+          <span class="field-key">pipelineSteps</span>
+          <span class="field-type">object[]</span>
+          <span class="field-opt">optional · full trace</span>
+        </div>
+        <div class="model-field">
+          <span class="field-key">sources</span>
+          <span class="field-type">object[]</span>
+          <span class="field-opt">optional · retrieved docs</span>
+        </div>
+      </div>
+
+    </div>
+    <div style="padding: 0 16px 14px; font-size: 11px; color: #64748b;">
+      No vector fields needed — accessed by exact ID lookup and sorted by timestamp. Created automatically on first use. No schema migration required.
+      No auth system — the Astra token scopes all access.
+    </div>
+  </div>
+
+
+</div>
+</body>
+</html>

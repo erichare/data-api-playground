@@ -1,10 +1,129 @@
 # Data API Playground
 
+An interactive web app for exploring [DataStax Astra DB](https://www.datastax.com/products/datastax-astra) via the Data API. Connect to your database, chat with your data using AI, browse collections, and ingest CSV files — all from a browser.
+
+## Features
+
+- **AI-powered chat** — Ask natural language questions about your data. IBM Granite analyzes the query, generates embeddings, searches Astra DB, and synthesizes a concise response.
+- **Persistent conversations** — Conversations and messages are stored in Astra DB and survive page refresh. Create, rename, and delete threads from the sidebar.
+- **Pipeline trace** — Watch each step in real time (Analyze → Embed → Search → Respond) with per-step latency.
+- **Collection browser** — Browse documents in any collection with pagination and delete support.
+- **CSV ingestion** — Upload CSV files and ingest them as vector documents, with progress streaming.
+- **Collection management** — Create new collections with configurable vector dimensions, similarity metrics, and server-side vectorize providers.
+- **Multiple search modes** — Hybrid (vector + keyword reranking), vector-only, or lexical.
+- **Internal collections toggle** — `dap_*` collections used by the app are hidden by default and never queried by AI.
+- **Quick Start Guide** — Inline code examples for Python, TypeScript, Java, and cURL.
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Next.js (App Router) |
+| Language | TypeScript |
+| Styling | Tailwind CSS + shadcn/ui |
+| Animation | Framer Motion |
+| Database | DataStax Astra DB (`@datastax/astra-db-ts`) |
+| AI / LLM | IBM watsonx Granite (`@ibm-cloud/watsonx-ai`) |
+| Embeddings | IBM Granite 125M (`ibm/slate-125m-english-rtrvr-v2`) via watsonx or HuggingFace |
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+
+- A [DataStax Astra DB](https://astra.datastax.com) account with an Application Token and API Endpoint
+- Optional: An [IBM watsonx](https://www.ibm.com/products/watsonx-ai) API key and Project ID
+
+### Installation
+
+```bash
+npm install
+```
+
+### Environment Variables
+
+Create a `.env.local` file in the root directory:
+
+```env
+# Required — or enter credentials directly in the UI
+ASTRA_DB_APPLICATION_TOKEN=AstraCS:...
+ASTRA_DB_API_ENDPOINT=https://<db-id>.apps.astra.datastax.com
+
+# Optional — enables real LLM responses and embeddings
+WATSONX_API_KEY=...
+WATSONX_PROJECT_ID=...
+WATSONX_SERVICE_URL=https://us-south.ml.cloud.ibm.com
+WATSONX_IAM_URL=https://iam.cloud.ibm.com/identity/token
+
+# Optional — fallback embedding provider if watsonx is not configured
+HUGGINGFACE_API_KEY=hf_...
+```
+
+All credentials can also be entered at runtime via the Connect dialog in the app. They are stored in `sessionStorage` and never sent to any third party.
+
+### Run
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+## Usage
+
+1. **Connect** — Click "Connect Now" and enter your Astra DB token and API endpoint. Optionally add IBM watsonx credentials to enable AI-generated responses.
+2. **Chat** — Type a question in the chat panel. The pipeline will analyze your intent, embed the query, search your collections, and return a natural language answer with source documents.
+3. **Browse** — Click any collection in the sidebar to browse its documents, view vector dimensions, and delete records.
+4. **Ingest** — Open the Ingest panel (right side) to upload a CSV file and stream it into a collection with automatic embedding.
+5. **New Collection** — Click "+" in the sidebar to create a vector or vectorize-enabled collection.
+
+## Project Structure
+
+```
+/
+├── src/
+│   ├── app/
+│   │   ├── api/                    # Next.js route handlers
+│   │   │   ├── chat/               # Streaming RAG pipeline
+│   │   │   ├── ingest/             # CSV ingestion with embedding
+│   │   │   ├── connect/            # Astra DB connection + collection list
+│   │   │   ├── browse/             # Document pagination
+│   │   │   ├── conversations/      # Conversation CRUD
+│   │   │   │   └── [id]/
+│   │   │   │       └── messages/   # Per-conversation message persistence
+│   │   │   └── ...
+│   │   └── page.tsx                # Main app shell (thin — delegates to usePlaygroundState)
+│   ├── components/
+│   │   ├── chat/                   # ChatArea, MessageBubble, PipelineTrace, SourceCard
+│   │   ├── collection/             # CollectionViewer, NewCollectionDialog, IngestPanel
+│   │   ├── connection/             # AstraConnectDialog
+│   │   ├── onboarding/             # QuickStartGuide
+│   │   ├── shell/                  # Header, Sidebar (true layout primitives)
+│   │   └── ui/                     # shadcn/ui base components
+│   └── lib/
+│       ├── astra.ts                # Shared Astra DB client factory
+│       ├── types.ts                # Shared TypeScript types
+│       ├── hooks/
+│       │   └── usePlaygroundState.ts  # All app-level state and handlers
+│       └── mock/
+│           ├── data.ts             # Mock collections, documents, and conversations
+│           └── hints.ts            # Suggestion hints derived from mock data
+└── docs/
+    └── data_api_playground_proposal.pptx
+```
+
+## Notes
+
+- If no IBM watsonx credentials are provided, the app falls back to a simple template response.
+- If watsonx embedding is unavailable, the app tries HuggingFace as a fallback; if that also fails, random vectors are used (the rest of the pipeline still runs).
+- Collections using Astra's server-side **vectorize** skip client-side embedding entirely — the `$vectorize` field is passed and Astra handles embedding automatically.
+- Internal collections (prefixed `dap_`) store conversation history and are hidden from the UI by default.
+
 > **Stack:** Next.js 14 App Router · `astra-db-ts` v2 · IBM WatsonX Granite · HuggingFace Embeddings
 
 ---
 
-## Overview
+## App Architecture
 
 ```
 ┌─────────────────────┐     streaming NDJSON      ┌──────────────────────────────────────┐
