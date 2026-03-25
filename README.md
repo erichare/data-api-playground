@@ -4,27 +4,27 @@ An interactive web app for exploring [DataStax Astra DB](https://www.datastax.co
 
 ## Features
 
-- **Demo mode or connect** — Choose to explore with built-in sample data (no credentials) or connect your own Astra DB instance. The landing screen presents both options clearly.
+- **Demo mode or connect** — Choose to explore with built-in sample data (no credentials) or connect your own Astra DB instance.
 - **AI-powered chat** — Ask natural language questions about your data. IBM Granite analyzes the query, generates embeddings, searches Astra DB, and synthesizes a concise response.
-- **Output / Code tabs** — Every AI response has an **Output** tab (the natural language answer + source documents) and a **Code** tab showing the exact Data API call that was executed, with one-click switching between TypeScript, Python, Java, and cURL.
+- **Output / Code / Trace tabs** — Every AI response has three tabs: **Output** (the natural language answer), **Code** (the exact Data API call in TypeScript, Python, Java, or cURL), and **Trace** (the full pipeline execution with per-step latency).
+- **Pipeline trace** — The Trace tab shows each step in real time (Analyze → Embed → Search → Respond). The Search Astra DB step has its own Output/Code sub-tabs — Output shows retrieved documents, Code shows the API command.
 - **Persistent conversations** — Conversations and messages are stored in Astra DB and survive page refresh. Create, rename, and delete threads from the sidebar.
-- **Pipeline trace** — Watch each step in real time (Analyze → Embed → Search → Respond) with per-step latency.
-- **Dark / light mode** — Toggle between dark (IBM Carbon Gray 100) and light (IBM Carbon White) themes. Preference is persisted across sessions.
-- **Collection browser** — Browse documents in any collection with pagination and delete support.
-- **CSV ingestion** — Upload CSV files and ingest them as vector documents, with progress streaming.
-- **Collection management** — Create new collections with configurable vector dimensions, similarity metrics, and server-side vectorize providers.
+- **Dark / light mode** — Toggle between dark (IBM Carbon Gray 100) and light (IBM Carbon White) themes. Preference is persisted.
+- **Collection browser** — Browse documents in any collection with pagination, sortable columns, Output/Code tabs, and delete support.
+- **CSV ingestion** — Upload CSV files and ingest them as vector documents with streaming progress.
+- **Collection management** — Create new collections with configurable vector dimensions, similarity metrics, and server-side vectorize providers. Delete with confirmation.
 - **Multiple search modes** — Hybrid (vector + keyword reranking), vector-only, or lexical.
-- **Internal collections toggle** — `dap_*` collections used by the app are hidden by default and never queried by AI.
+- **Internal collections hidden** — `dap_*` collections used by the app are filtered from all user-facing dropdowns and never queried by AI.
 - **Quick Start Guide** — Inline code examples for Python, TypeScript, Java, and cURL.
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 16 (App Router) |
+| Framework | Next.js (App Router) |
 | Language | TypeScript |
 | Font | IBM Plex Sans + IBM Plex Mono |
-| Styling | Tailwind CSS + shadcn/ui (IBM Carbon-inspired palette) |
+| Styling | Tailwind CSS + IBM Carbon-inspired CSS variables |
 | Animation | Framer Motion |
 | Database | DataStax Astra DB (`@datastax/astra-db-ts`) |
 | AI / LLM | IBM watsonx Granite (`@ibm-cloud/watsonx-ai`) |
@@ -63,7 +63,7 @@ WATSONX_IAM_URL=https://iam.cloud.ibm.com/identity/token
 HUGGINGFACE_API_KEY=hf_...
 ```
 
-All credentials can also be entered at runtime via the Connect dialog in the app. They are stored in `sessionStorage` and never sent to any third party.
+All credentials can also be entered at runtime via the Connect dialog. They are stored in `sessionStorage` and never sent to any third party.
 
 ### Run
 
@@ -75,11 +75,11 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Usage
 
-1. **Connect** — Click "Connect Now" and enter your Astra DB token and API endpoint. Optionally add IBM watsonx credentials to enable AI-generated responses.
-2. **Chat** — Type a question in the chat panel. The pipeline will analyze your intent, embed the query, search your collections, and return a natural language answer with source documents.
-3. **Browse** — Click any collection in the sidebar to browse its documents, view vector dimensions, and delete records.
-4. **Ingest** — Open the Ingest panel (right side) to upload a CSV file and stream it into a collection with automatic embedding.
-5. **New Collection** — Click "+" in the sidebar to create a vector or vectorize-enabled collection.
+1. **Connect** — Click the connection button and enter your Astra DB token and endpoint. Optionally add IBM watsonx credentials to enable AI-generated responses.
+2. **Chat** — Type a question in the chat panel. Use the **Output**, **Code**, and **Trace** tabs on each response to see the answer, the exact API call, and the full pipeline execution.
+3. **Browse** — Click any collection in the sidebar to browse its documents. Use **Output** for the table view and **Code** for the equivalent API call.
+4. **Ingest** — Expand the Ingest panel (right side) to upload a CSV file and stream it into a collection with automatic embedding.
+5. **New Collection** — Click "New Collection" in the sidebar to create a vector or vectorize-enabled collection.
 
 ## Project Structure
 
@@ -88,7 +88,7 @@ Open [http://localhost:3000](http://localhost:3000).
 ├── src/
 │   ├── app/
 │   │   ├── api/                    # Next.js route handlers
-│   │   │   ├── chat/               # Streaming RAG pipeline
+│   │   │   ├── chat/               # Streaming RAG pipeline (4 steps)
 │   │   │   ├── ingest/             # CSV ingestion with embedding
 │   │   │   ├── connect/            # Astra DB connection + collection list
 │   │   │   ├── browse/             # Document pagination
@@ -96,38 +96,37 @@ Open [http://localhost:3000](http://localhost:3000).
 │   │   │   │   └── [id]/
 │   │   │   │       └── messages/   # Per-conversation message persistence
 │   │   │   └── ...
-│   │   └── page.tsx                # Main app shell (thin — delegates to usePlaygroundState)
+│   │   ├── globals.css             # IBM Carbon-inspired CSS variable theme system
+│   │   └── page.tsx                # Main app shell
 │   ├── components/
-│   │   ├── chat/                   # ChatArea, MessageBubble, PipelineTrace, SourceCard
+│   │   ├── chat/                   # ChatArea, MessageBubble, PipelineTrace, SearchModeToggle
 │   │   ├── collection/             # CollectionViewer, NewCollectionDialog, IngestPanel
 │   │   ├── connection/             # AstraConnectDialog
 │   │   ├── onboarding/             # QuickStartGuide
-│   │   ├── shell/                  # Header, Sidebar (true layout primitives)
+│   │   ├── shell/                  # Header, Sidebar
 │   │   └── ui/                     # shadcn/ui base components
 │   └── lib/
 │       ├── astra.ts                # Shared Astra DB client factory
 │       ├── types.ts                # Shared TypeScript types
 │       ├── hooks/
 │       │   └── usePlaygroundState.ts  # All app-level state and handlers
-│       └── mock/
-│           ├── data.ts             # Mock collections, documents, and conversations
-│           └── hints.ts            # Suggestion hints derived from mock data
+│       └── mock/                   # Demo data and query hints
 └── docs/
-    └── data_api_playground_proposal.pptx
+    ├── architecture-simple.md
+    ├── architecture-detailed.md
+    └── screenshots/
 ```
 
 ## Notes
 
 - If no IBM watsonx credentials are provided, the app falls back to a simple template response.
 - If watsonx embedding is unavailable, the app tries HuggingFace as a fallback; if that also fails, random vectors are used (the rest of the pipeline still runs).
-- Collections using Astra's server-side **vectorize** skip client-side embedding entirely — the `$vectorize` field is passed and Astra handles embedding automatically.
-- Internal collections (prefixed `dap_`) store conversation history and are hidden from the UI by default.
-
-> **Stack:** Next.js 16 App Router · `astra-db-ts` v2 · IBM WatsonX Granite · HuggingFace Embeddings
+- Collections using Astra's server-side **vectorize** skip client-side embedding entirely — `$vectorize` is passed and Astra handles embedding automatically.
+- Internal collections (prefixed `dap_`) store conversation history and are hidden from the UI.
 
 ---
 
-## App Architecture
+## Architecture Overview
 
 ```
 ┌─────────────────────┐     streaming NDJSON      ┌──────────────────────────────────────┐
@@ -140,6 +139,8 @@ Open [http://localhost:3000](http://localhost:3000).
 │  AstraConnectDialog │                             Astra DB     IBM WatsonX   HuggingFace
 └─────────────────────┘                             (search)     (LLM+embed)   (embed fallback)
 ```
+
+See [`docs/architecture-simple.md`](docs/architecture-simple.md) for a high-level overview and [`docs/architecture-detailed.md`](docs/architecture-detailed.md) for full technical detail.
 
 ---
 
@@ -166,7 +167,7 @@ Each request to `POST /api/chat` streams a sequence of NDJSON events, one per st
 ### ③ Search
 | | |
 |---|---|
-| **Client** | `@datastax/astra-db-ts` v2 |
+| **Client** | `@datastax/astra-db-ts` |
 | **Field sort** | `collection.find({}, { sort: { [field]: 1\|-1 }, limit })` |
 | **Vector** | `collection.find({}, { sort: { $vector: embedding }, includeSimilarity: true })` |
 | **Vectorize** | `collection.find({}, { sort: { $vectorize: query } })` |
@@ -183,14 +184,30 @@ Each request to `POST /api/chat` streams a sequence of NDJSON events, one per st
 
 ---
 
+## Streaming Protocol
+
+`POST /api/chat` returns `Content-Type: text/plain` with newline-delimited JSON events:
+
+```jsonc
+{ "step": "analyze",  "status": "running" }
+{ "step": "analyze",  "status": "complete", "latencyMs": 42,  "data": { "collection": "my_col", "limit": 5, "sortField": "score", "sortDir": "desc" } }
+{ "step": "embed",    "status": "skipped" }
+{ "step": "search",   "status": "running" }
+{ "step": "search",   "status": "complete", "latencyMs": 67,  "data": { "command": "...", "count": 5, "results": [...] } }
+{ "step": "respond",  "status": "running" }
+{ "step": "respond",  "status": "complete", "latencyMs": 810, "data": { "content": "Here are the results…" } }
+```
+
+---
+
 ## API Routes
 
 | Route | Method | Purpose |
 |---|---|---|
-| `/api/chat` | `POST` | Main AI pipeline (streaming) |
-| `/api/connect` | `POST` | Validate token + endpoint, returns resolved creds |
+| `/api/chat` | `POST` | Main AI pipeline (streaming NDJSON) |
+| `/api/connect` | `POST` | Validate token + endpoint, return resolved credentials |
 | `/api/browse` | `POST` | Paginated document fetch for Browse view |
-| `/api/ingest` | `POST` | Bulk insert CSV/JSON/JSONL into a collection |
+| `/api/ingest` | `POST` | Bulk insert CSV into a collection with embedding |
 | `/api/create-collection` | `POST` | Create collection with optional vector config |
 | `/api/delete-collection` | `POST` | Drop a collection |
 | `/api/delete-documents` | `POST` | Delete documents by filter |
@@ -198,8 +215,8 @@ Each request to `POST /api/chat` streams a sequence of NDJSON events, one per st
 | `/api/keyspaces` | `POST` | List available keyspaces |
 | `/api/embedding-providers` | `POST` | List `$vectorize` providers from Astra |
 | `/api/conversations` | `GET/POST` | Conversation list + create |
-| `/api/conversations/[id]` | `GET/DELETE` | Get or delete a conversation |
-| `/api/conversations/[id]/messages` | `POST` | Append message to conversation |
+| `/api/conversations/[id]` | `PATCH/DELETE` | Rename or delete a conversation |
+| `/api/conversations/[id]/messages` | `GET/POST` | Load or append messages |
 | `/api/astra-status` | `GET` | Whether Astra env vars are set |
 | `/api/watsonx-status` | `GET` | Whether WatsonX env vars are set |
 
@@ -209,19 +226,18 @@ Each request to `POST /api/chat` streams a sequence of NDJSON events, one per st
 
 ### DataStax Astra DB
 - **Auth:** Application token (`AstraCS:…`)
-- **Client:** `@datastax/astra-db-ts` v2
+- **Client:** `@datastax/astra-db-ts`
 - **Key APIs:** `find`, `findAndRerank`, `insertMany`, `deleteMany`, `estimatedDocumentCount`, `listCollections`
 - **Vector modes:** `$vector` (manual), `$vectorize` (server-side), `$hybrid` (reranked)
 
 ### IBM WatsonX AI
 - **Auth:** IBM Cloud IAM key + Project ID
-- **SDK:** `@ibm-cloud/watsonx-ai` + `ibm-cloud-sdk-core`
+- **SDK:** `@ibm-cloud/watsonx-ai`
 - **Chat model:** `ibm/granite-3-8b-instruct` — query analysis & response generation
 - **Embed model:** `ibm/slate-125m-english-rtrvr-v2` — query vectorization
 
 ### HuggingFace *(embed fallback)*
 - **Auth:** `HUGGINGFACE_API_KEY` (optional)
-- **API:** `feature-extraction` inference endpoint
 - **Used when:** WatsonX embed fails or key not configured
 
 ---
@@ -238,7 +254,7 @@ Each request to `POST /api/chat` streams a sequence of NDJSON events, one per st
 | `WATSONX_IAM_URL` | IBM WatsonX | For AI features |
 | `HUGGINGFACE_API_KEY` | HuggingFace | Optional embed fallback |
 
-> All env vars can be overridden at runtime via the Connect Dialog — values are stored in `sessionStorage` and passed with each API request.
+> All env vars can be overridden at runtime via the Connect Dialog — values are stored in `sessionStorage` and passed per-request.
 
 ---
 
@@ -250,22 +266,7 @@ sessionStorage
 ├── astra_endpoint       ← resolved endpoint
 ├── ibm_api_key          ← WatsonX API key
 └── watsonx_project_id   ← WatsonX project ID
-```
 
-The `initializing` React state gate prevents the connect overlay from flashing on refresh when credentials are already present in `sessionStorage`.
-
----
-
-## Streaming Protocol
-
-`POST /api/chat` returns `Content-Type: text/plain` with newline-delimited JSON events:
-
-```jsonc
-{ "step": "analyze",  "status": "running" }
-{ "step": "analyze",  "status": "complete", "latencyMs": 42,  "data": { "collection": "bullets_v2", "limit": 3, "sortField": "bullet_rf_score", "sortDir": "desc" } }
-{ "step": "embed",    "status": "skipped" }
-{ "step": "search",   "status": "running" }
-{ "step": "search",   "status": "complete", "latencyMs": 67,  "data": { "command": "await db.collection(\"bullets_v2\")\n  .find({}, { sort: { bullet_rf_score: -1 }, limit: 3 })\n  .toArray()", "count": 3, "results": [...] } }
-{ "step": "respond",  "status": "running" }
-{ "step": "respond",  "status": "complete", "latencyMs": 810, "data": { "content": "Here are the top 3 bullets…" } }
+localStorage
+└── theme                ← "dark" | "light"
 ```
