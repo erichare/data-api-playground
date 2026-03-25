@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plug, Beaker, ArrowRight, Database, MessageSquare, Table2 } from "lucide-react";
+import { Plug, Beaker, ArrowRight, Database, MessageSquare, Table2, Terminal } from "lucide-react";
 import { Header } from "@/components/shell/Header";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { AstraConnectDialog } from "@/components/connection/AstraConnectDialog";
@@ -12,6 +12,7 @@ import { CollectionViewer } from "@/components/collection/CollectionViewer";
 import { NewCollectionDialog } from "@/components/collection/NewCollectionDialog";
 import { DeleteCollectionDialog } from "@/components/collection/DeleteCollectionDialog";
 import { IngestPanel } from "@/components/collection/IngestPanel";
+import { ApiExplorer } from "@/components/api/ApiExplorer";
 import { usePlaygroundState } from "@/lib/hooks/usePlaygroundState";
 
 export default function PlaygroundPage() {
@@ -143,10 +144,23 @@ export default function PlaygroundPage() {
                 <Table2 size={12} />
                 Browse
               </motion.button>
+              <motion.button
+                onClick={() => setViewMode("api")}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-md text-xs font-medium"
+                style={{
+                  backgroundColor: viewMode === "api" ? "var(--interactive-light)" : "transparent",
+                  color: viewMode === "api" ? "var(--interactive)" : "var(--text-muted)",
+                  boxShadow: viewMode === "api" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                }}
+                whileTap={{ scale: 0.97 }}
+              >
+                <Terminal size={12} />
+                API
+              </motion.button>
             </div>
 
-            {/* Active collection label in Browse mode */}
-            {viewMode === "browse" && activeCollection && (
+            {/* Active collection label in Browse / API mode */}
+            {(viewMode === "browse" || viewMode === "api") && activeCollection && (
               <motion.span
                 initial={{ opacity: 0, x: -6 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -171,6 +185,13 @@ export default function PlaygroundPage() {
                 )
               }
               onOpenIngest={() => setIngestCollapsed(false)}
+            />
+          ) : viewMode === "api" ? (
+            <ApiExplorer
+              collection={activeCollectionObj}
+              astraToken={astraToken}
+              astraEndpoint={astraEndpoint}
+              keyspace={selectedKeyspace}
             />
           ) : (
             <ChatArea
