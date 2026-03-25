@@ -5,26 +5,23 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronLeft,
   ChevronRight,
-  Database,
   Plus,
-  ChevronDown,
   MessageSquare,
   Pencil,
   Trash2,
   Check,
   X,
   Loader2,
+  UploadCloud,
 } from "lucide-react";
-import type { Collection, Conversation, ViewMode } from "@/lib/types";
+import type { Collection, Conversation } from "@/lib/types";
 
 interface SidebarProps {
   collections: Collection[];
   activeCollection: string;
-  viewMode: ViewMode;
   onSelectCollection: (name: string) => void;
-  onSelectChat: () => void;
   onNewCollection: () => void;
-  onDeleteCollection: (name: string) => void;
+  onIngestCollection: (name: string) => void;
   keyspaces?: string[];
   selectedKeyspace?: string;
   onKeyspaceChange?: (keyspace: string) => void;
@@ -40,11 +37,9 @@ interface SidebarProps {
 export function Sidebar({
   collections,
   activeCollection,
-  viewMode,
   onSelectCollection,
-  onSelectChat,
   onNewCollection,
-  onDeleteCollection,
+  onIngestCollection,
   keyspaces = [],
   selectedKeyspace = "default_keyspace",
   onKeyspaceChange,
@@ -77,7 +72,7 @@ export function Sidebar({
         <motion.button
           onClick={() => setCollapsed(!collapsed)}
           className="flex-1 flex items-center gap-2 px-3 py-2.5 text-xs font-medium"
-          style={{ color: "var(--text-muted)" }}
+          style={{ color: "var(--text-muted)", backgroundColor: "rgba(0,0,0,0)" }}
           whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-secondary)" }}
           whileTap={{ scale: 0.97 }}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -110,7 +105,7 @@ export function Sidebar({
                     onClick={() => void onNewConversation()}
                     disabled={creatingConversation}
                     className="w-5 h-5 rounded flex items-center justify-center"
-                    style={{ color: creatingConversation ? "var(--interactive)" : "var(--text-muted)", cursor: creatingConversation ? "default" : "pointer" }}
+                    style={{ color: creatingConversation ? "var(--interactive)" : "var(--text-muted)", cursor: creatingConversation ? "default" : "pointer", backgroundColor: "rgba(0,0,0,0)" }}
                     whileHover={creatingConversation ? {} : { backgroundColor: "var(--interactive-light)", color: "var(--interactive)" }}
                     whileTap={creatingConversation ? {} : { scale: 0.9 }}
                     title="New conversation"
@@ -157,7 +152,7 @@ export function Sidebar({
                     className="text-[9px] px-1.5 py-0.5 rounded"
                     style={{
                       color: showInternal ? "var(--interactive)" : "var(--text-muted)",
-                      backgroundColor: showInternal ? "var(--interactive-light)" : "transparent",
+                      backgroundColor: showInternal ? "var(--interactive-light)" : "rgba(0,0,0,0)",
                       border: `1px solid ${showInternal ? "var(--interactive-border)" : "transparent"}`,
                     }}
                     title={showInternal ? "Hide internal collections" : "Show internal collections"}
@@ -173,27 +168,22 @@ export function Sidebar({
                     collection={col}
                     isActive={activeCollection === col.name}
                     onClick={() => onSelectCollection(col.name)}
-                    onDelete={() => onDeleteCollection(col.name)}
+                    onIngest={() => onIngestCollection(col.name)}
                   />
                 ))}
+                <motion.button
+                  onClick={onNewCollection}
+                  className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium mt-0.5"
+                  style={{ color: "var(--text-muted)", border: "1px dashed var(--border-subtle)", backgroundColor: "rgba(0,0,0,0)" }}
+                  whileHover={{ backgroundColor: "var(--interactive-light)", borderColor: "var(--interactive-border)", color: "var(--interactive)" }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <Plus size={12} />
+                  <span>New Collection</span>
+                </motion.button>
               </div>
             </div>
 
-          </div>
-
-          {/* New Collection — pinned at bottom */}
-          <div className="px-3 pb-3 pt-2 shrink-0">
-            <div className="h-px mb-3" style={{ backgroundColor: "var(--border-subtle)" }} />
-            <motion.button
-              onClick={onNewCollection}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium"
-              style={{ color: "var(--text-muted)", border: "1px dashed var(--border-subtle)" }}
-              whileHover={{ backgroundColor: "var(--interactive-light)", borderColor: "var(--interactive-border)", color: "var(--interactive)" }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <Plus size={14} />
-              <span>New Collection</span>
-            </motion.button>
           </div>
         </div>
       )}
@@ -207,7 +197,7 @@ export function Sidebar({
               onClick={() => void onConversationChange(conv.id)}
               className="w-8 h-8 rounded-lg flex items-center justify-center"
               style={{
-                backgroundColor: conv.id === activeConversationId ? "var(--interactive-light)" : "transparent",
+                backgroundColor: conv.id === activeConversationId ? "var(--interactive-light)" : "rgba(0,0,0,0)",
                 color: conv.id === activeConversationId ? "var(--interactive)" : "var(--text-muted)",
                 borderLeft: conv.id === activeConversationId ? "2px solid var(--interactive)" : "2px solid transparent",
               }}
@@ -224,7 +214,7 @@ export function Sidebar({
               onClick={() => onSelectCollection(col.name)}
               className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold uppercase"
               style={{
-                backgroundColor: activeCollection === col.name ? "var(--interactive-light)" : "transparent",
+                backgroundColor: activeCollection === col.name ? "var(--interactive-light)" : "rgba(0,0,0,0)",
                 color: activeCollection === col.name ? "var(--interactive)" : "var(--text-muted)",
                 borderLeft: activeCollection === col.name ? "2px solid var(--interactive)" : "2px solid transparent",
               }}
@@ -277,7 +267,7 @@ function ConversationItem({
     <div
       className="relative rounded-lg"
       style={{
-        backgroundColor: isActive ? "var(--interactive-light)" : "transparent",
+        backgroundColor: isActive ? "var(--interactive-light)" : "rgba(0,0,0,0)",
         borderLeft: `2px solid ${isActive ? "var(--interactive)" : "transparent"}`,
       }}
       onMouseEnter={() => setHovered(true)}
@@ -360,12 +350,12 @@ function CollectionItem({
   collection,
   isActive,
   onClick,
-  onDelete,
+  onIngest,
 }: {
   collection: Collection;
   isActive: boolean;
   onClick: () => void;
-  onDelete: () => void;
+  onIngest: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -373,7 +363,7 @@ function CollectionItem({
     <div
       className="relative rounded-lg"
       style={{
-        backgroundColor: isActive ? "var(--interactive-light)" : "transparent",
+        backgroundColor: isActive ? "var(--interactive-light)" : "rgba(0,0,0,0)",
         borderLeft: `2px solid ${isActive ? "var(--interactive)" : "transparent"}`,
       }}
       onMouseEnter={() => setHovered(true)}
@@ -403,14 +393,14 @@ function CollectionItem({
           style={{ opacity: hovered ? 1 : 0, pointerEvents: hovered ? "auto" : "none", transition: "opacity 0.15s" }}
         >
           <button
-            onClick={onDelete}
+            onClick={(e) => { e.stopPropagation(); onIngest(); }}
             className="p-1 rounded"
             style={{ color: "var(--text-muted)" }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#ef4444"; }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--interactive)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
-            title="Delete collection"
+            title="Ingest data"
           >
-            <Trash2 size={11} />
+            <UploadCloud size={11} />
           </button>
         </div>
       </div>

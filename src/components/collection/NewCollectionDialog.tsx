@@ -277,7 +277,7 @@ export function NewCollectionDialog({ open, onClose, onCreated, astraToken, astr
                 <motion.button
                   onClick={onClose}
                   className="p-1.5 rounded-lg"
-                  style={{ color: "var(--text-muted)" }}
+                  style={{ color: "var(--text-muted)", backgroundColor: "rgba(0,0,0,0)" }}
                   whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" }}
                   whileTap={{ scale: 0.9 }}
                 >
@@ -522,6 +522,7 @@ export function NewCollectionDialog({ open, onClose, onCreated, astraToken, astr
                         color: "var(--text-muted)",
                         border: "1px solid var(--border-subtle)",
                         opacity: loading ? 0.5 : 1,
+                        backgroundColor: "rgba(0,0,0,0)",
                       }}
                       whileHover={!loading ? { backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" } : {}}
                       whileTap={!loading ? { scale: 0.97 } : {}}

@@ -376,7 +376,7 @@ export function IngestPanel({ collections, astraToken, astraEndpoint, collapsed:
         <motion.button
           onClick={() => setCollapsed(!collapsed)}
           className="flex-1 flex items-center justify-end gap-2 px-3 py-2.5 text-xs font-medium"
-          style={{ color: "var(--text-muted)" }}
+          style={{ color: "var(--text-muted)", backgroundColor: "rgba(0,0,0,0)" }}
           whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-secondary)" }}
           whileTap={{ scale: 0.97 }}
           title={collapsed ? "Expand ingest panel" : "Collapse ingest panel"}
@@ -411,7 +411,7 @@ export function IngestPanel({ collections, astraToken, astraEndpoint, collapsed:
               className="relative rounded-xl border-2 border-dashed cursor-pointer transition-all duration-200 flex flex-col items-center justify-center py-8 gap-3"
               style={{
                 borderColor: isDragOver ? "var(--interactive)" : "var(--border-subtle)",
-                backgroundColor: isDragOver ? "var(--interactive-light)" : "transparent",
+                backgroundColor: isDragOver ? "var(--interactive-light)" : "rgba(0,0,0,0)",
               }}
               onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
               onDragLeave={() => setIsDragOver(false)}

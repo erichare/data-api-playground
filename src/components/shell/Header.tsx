@@ -1,6 +1,6 @@
 "use client";
 
-import { Settings, Plug, PlugZap, Sun, Moon } from "lucide-react";
+import { Settings, Plug, PlugZap, LogOut, Sun, Moon } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface HeaderProps {
@@ -103,43 +103,64 @@ export function Header({
           />
         </a>
 
-        {/* Connection status */}
-        <motion.button
-          onClick={onConnectionClick}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
-          style={{
-            backgroundColor: connected
-              ? "rgba(34,197,94,0.1)"
-              : envReady
-              ? "rgba(251,191,36,0.1)"
-              : "var(--bg-card)",
-            border: connected
-              ? "1px solid rgba(34,197,94,0.3)"
-              : envReady
-              ? "1px solid rgba(251,191,36,0.35)"
-              : "1px solid var(--border-subtle)",
-            color: connected ? "#22c55e" : envReady ? "#fbbf24" : "var(--text-muted)",
-            cursor: "pointer",
-          }}
-          whileHover={{ scale: 1.02, opacity: 0.85 }}
-          whileTap={{ scale: 0.97 }}
-          title={connected ? "Manage connection" : envReady ? "Env credentials detected — click to connect" : "Connect to Astra DB"}
-        >
-          {connected ? <PlugZap size={12} className="shrink-0" /> : <Plug size={12} className="shrink-0" />}
-          <motion.span
-            className="inline-block w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: connected ? "#22c55e" : envReady ? "#fbbf24" : "var(--text-muted)" }}
-            animate={connected || envReady ? { opacity: [1, 0.4, 1] } : { opacity: 1 }}
-            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-          />
-          {connected ? "Connected" : envReady ? "Env Ready" : "Disconnected"}
-        </motion.button>
+        {/* Connection status / disconnect */}
+        {connected ? (
+          <motion.button
+            onClick={onConnectionClick}
+            className="group flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
+            style={{
+              backgroundColor: "rgba(34,197,94,0.1)",
+              border: "1px solid rgba(34,197,94,0.3)",
+              color: "#22c55e",
+              cursor: "pointer",
+            }}
+            whileHover={{ backgroundColor: "rgba(239,68,68,0.1)", borderColor: "rgba(239,68,68,0.35)", color: "#ef4444", scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
+            title="Disconnect and return to demo mode"
+          >
+            <motion.span className="shrink-0" style={{ display: "flex" }}>
+              <PlugZap size={12} className="group-hover:hidden" />
+              <LogOut size={12} className="hidden group-hover:block" />
+            </motion.span>
+            <motion.span
+              className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+              style={{ backgroundColor: "#22c55e" }}
+              animate={{ opacity: [1, 0.4, 1] }}
+              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <span className="group-hover:hidden">Connected</span>
+            <span className="hidden group-hover:inline">Disconnect</span>
+          </motion.button>
+        ) : (
+          <motion.button
+            onClick={onConnectionClick}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
+            style={{
+              backgroundColor: envReady ? "rgba(251,191,36,0.1)" : "var(--bg-card)",
+              border: envReady ? "1px solid rgba(251,191,36,0.35)" : "1px solid var(--border-subtle)",
+              color: envReady ? "#fbbf24" : "var(--text-muted)",
+              cursor: "pointer",
+            }}
+            whileHover={{ scale: 1.02, opacity: 0.85 }}
+            whileTap={{ scale: 0.97 }}
+            title={envReady ? "Env credentials detected — click to connect" : "Connect to Astra DB"}
+          >
+            <Plug size={12} className="shrink-0" />
+            <motion.span
+              className="inline-block w-1.5 h-1.5 rounded-full"
+              style={{ backgroundColor: envReady ? "#fbbf24" : "var(--text-muted)" }}
+              animate={envReady ? { opacity: [1, 0.4, 1] } : { opacity: 1 }}
+              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+            />
+            {envReady ? "Env Ready" : "Connect to Astra DB"}
+          </motion.button>
+        )}
 
         {/* Theme toggle */}
         <motion.button
           onClick={onToggleTheme}
           className="p-2 rounded-lg"
-          style={{ color: "var(--text-muted)" }}
+          style={{ color: "var(--text-muted)", backgroundColor: "rgba(0,0,0,0)" }}
           whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)", scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
@@ -151,7 +172,7 @@ export function Header({
         <motion.button
           onClick={onSettingsClick}
           className="p-2 rounded-lg"
-          style={{ color: "var(--text-muted)" }}
+          style={{ color: "var(--text-muted)", backgroundColor: "rgba(0,0,0,0)" }}
           whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)", scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           title="Quick Start & Settings"

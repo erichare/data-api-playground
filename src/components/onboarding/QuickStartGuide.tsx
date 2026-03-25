@@ -301,7 +301,7 @@ export function QuickStartGuide({ open, onClose }: QuickStartGuideProps) {
               <motion.button
                 onClick={onClose}
                 className="p-1.5 rounded-lg"
-                style={{ color: "var(--text-muted)" }}
+                style={{ color: "var(--text-muted)", backgroundColor: "rgba(0,0,0,0)" }}
                 whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" }}
                 whileTap={{ scale: 0.9 }}
               >

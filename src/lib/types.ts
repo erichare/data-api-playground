@@ -39,7 +39,7 @@ export interface Conversation {
   messageCount: number;
 }
 
-export type ViewMode = "chat" | "browse" | "api";
+export type ViewMode = "chat" | "api";
 
 export type PipelineStepId = "analyze" | "embed" | "search" | "respond";
 export type PipelineStepStatus = "pending" | "running" | "complete" | "error" | "skipped";

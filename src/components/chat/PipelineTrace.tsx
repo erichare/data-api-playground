@@ -72,140 +72,47 @@ function LangToggle({ lang, onChange }: { lang: CodeLang; onChange: (l: CodeLang
 
 type SearchResult = { id: string; similarity: number; preview: Record<string, string | number> };
 
-function SearchStepPreview({ command, count, collection, results }: {
-  command?: string;
+function SearchStepPreview({ count, results }: {
   count?: number;
-  collection?: string;
   results?: SearchResult[];
 }) {
-  const [lang, setLang] = useState<CodeLang>("ts");
-  const [tab, setTab] = useState<"output" | "code">("output");
-
   return (
-    <div className="flex flex-col gap-1.5 pt-1">
-      {/* Tab bar */}
-      <div
-        className="flex items-center gap-0.5 p-0.5 rounded-lg self-start"
-        style={{ backgroundColor: "var(--bg-primary)", border: "1px solid var(--border-subtle)" }}
-      >
-        <button
-          onClick={() => setTab("output")}
-          className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors"
-          style={{
-            backgroundColor: tab === "output" ? "var(--bg-panel)" : "transparent",
-            color: tab === "output" ? "var(--text-primary)" : "var(--text-muted)",
-            boxShadow: tab === "output" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-          }}
+    <div className="flex flex-col gap-1 pt-1">
+      {results && results.length > 0 ? results.map((r, i) => (
+        <div
+          key={r.id}
+          className="rounded-lg px-2 py-1.5 flex flex-col gap-0.5"
+          style={{ backgroundColor: "var(--bg-primary)", border: "1px solid var(--border-subtle)" }}
         >
-          <Table2 size={9} />
-          Output
-          {count !== undefined && (
-            <span className="ml-1 px-1 rounded text-[9px] font-semibold" style={{ backgroundColor: "rgba(255,107,53,0.15)", color: "var(--step-search)" }}>
-              {count}
+          <div className="flex items-center justify-between gap-2">
+            <span
+              className="text-[10px] truncate"
+              style={{ color: "var(--text-muted)", fontFamily: "IBM Plex Mono, monospace" }}
+              title={r.id}
+            >
+              {i + 1}. {r.id}
             </span>
-          )}
-        </button>
-        <button
-          onClick={() => setTab("code")}
-          className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors"
-          style={{
-            backgroundColor: tab === "code" ? "var(--bg-panel)" : "transparent",
-            color: tab === "code" ? "var(--interactive)" : "var(--text-muted)",
-            boxShadow: tab === "code" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-          }}
-        >
-          <Code2 size={9} />
-          Code
-        </button>
-      </div>
-
-      <AnimatePresence mode="wait" initial={false}>
-        {tab === "output" ? (
-          <motion.div
-            key="output"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.1 }}
-            className="flex flex-col gap-1"
-          >
-            {results && results.length > 0 ? results.map((r, i) => (
-              <div
-                key={r.id}
-                className="rounded-lg px-2 py-1.5 flex flex-col gap-0.5"
-                style={{ backgroundColor: "var(--bg-primary)", border: "1px solid var(--border-subtle)" }}
+            {r.similarity > 0 && (
+              <span
+                className="text-[10px] font-semibold shrink-0"
+                style={{
+                  color: r.similarity >= 0.9 ? "#10b981" : r.similarity >= 0.7 ? "#f59e0b" : "var(--step-search)",
+                }}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className="text-[10px] truncate"
-                    style={{ color: "var(--text-muted)", fontFamily: "IBM Plex Mono, monospace" }}
-                    title={r.id}
-                  >
-                    {i + 1}. {r.id}
-                  </span>
-                  {r.similarity > 0 && (
-                    <span
-                      className="text-[10px] font-semibold shrink-0"
-                      style={{
-                        color: r.similarity >= 0.9 ? "#10b981" : r.similarity >= 0.7 ? "#f59e0b" : "var(--step-search)",
-                      }}
-                    >
-                      {r.similarity.toFixed(3)}
-                    </span>
-                  )}
-                </div>
-                {Object.entries(r.preview).slice(0, 2).map(([k, v]) => (
-                  <div key={k} className="flex gap-1.5 items-baseline">
-                    <span className="text-[9px] shrink-0" style={{ color: "var(--text-muted)", fontFamily: "IBM Plex Mono, monospace" }}>{k}</span>
-                    <span className="text-[10px] truncate" style={{ color: "var(--text-secondary)" }}>{String(v)}</span>
-                  </div>
-                ))}
-              </div>
-            )) : (
-              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>No results</p>
+                {r.similarity.toFixed(3)}
+              </span>
             )}
-          </motion.div>
-        ) : (
-          <motion.div
-            key="code"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.1 }}
-          >
-            {command && (
-              <div className="rounded overflow-hidden" style={{ backgroundColor: "var(--bg-primary)", border: "1px solid var(--border-subtle)" }}>
-                <div className="flex items-center justify-between px-2 pt-1.5 pb-0.5">
-                  <span className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)", fontFamily: "IBM Plex Mono, monospace" }}>
-                    {LANG_NAMES[lang]}
-                  </span>
-                  <LangToggle lang={lang} onChange={setLang} />
-                </div>
-                <pre
-                  className="text-[10px] px-2 py-1.5 overflow-x-auto leading-relaxed"
-                  style={{ color: "var(--text-secondary)", whiteSpace: "pre", fontFamily: "IBM Plex Mono, monospace" }}
-                >
-                  {lang === "ts" ? (
-                    <>
-                      <span style={{ color: "var(--interactive)" }}>await </span>
-                      <span style={{ color: "var(--text-primary)" }}>db</span>
-                      <span>.</span>
-                      <span style={{ color: "var(--text-primary)" }}>collection</span>
-                      <span>(</span>
-                      <span style={{ color: "var(--step-search)" }}>&quot;{collection ?? "…"}&quot;</span>
-                      <span>)</span>
-                      {"\n"}
-                      {command.split("\n").slice(1).map((line, i) => (
-                        <span key={i}>{"  "}<span>{line.trim()}</span>{"\n"}</span>
-                      ))}
-                    </>
-                  ) : lang === "python" ? toPythonCommand(command) : toJavaCommand(command)}
-                </pre>
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+          {Object.entries(r.preview).slice(0, 2).map(([k, v]) => (
+            <div key={k} className="flex gap-1.5 items-baseline">
+              <span className="text-[9px] shrink-0" style={{ color: "var(--text-muted)", fontFamily: "IBM Plex Mono, monospace" }}>{k}</span>
+              <span className="text-[10px] truncate" style={{ color: "var(--text-secondary)" }}>{String(v)}</span>
+            </div>
+          ))}
+        </div>
+      )) : (
+        <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>No results</p>
+      )}
     </div>
   );
 }
@@ -315,11 +222,9 @@ function StepDataPreview({ stepId, data }: { stepId: PipelineStepId; data: Recor
   }
 
   if (stepId === "search") {
-    const command = data.command as string | undefined;
     const count = data.count as number | undefined;
-    const collection = data.collection as string | undefined;
     const results = data.results as SearchResult[] | undefined;
-    return <SearchStepPreview command={command} count={count} collection={collection} results={results} />;
+    return <SearchStepPreview count={count} results={results} />;
   }
 
   if (stepId === "respond") {

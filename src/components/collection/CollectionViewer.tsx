@@ -556,7 +556,7 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
           <motion.button
             onClick={handleRefresh}
             className="p-2 rounded-lg"
-            style={{ color: "var(--text-muted)" }}
+            style={{ color: "var(--text-muted)", backgroundColor: "rgba(0,0,0,0)" }}
             whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" }}
             whileTap={{ scale: 0.9 }}
             title="Refresh"
@@ -573,7 +573,7 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
             onClick={handleExport}
             disabled={displayDocs.length === 0}
             className="p-2 rounded-lg"
-            style={{ color: displayDocs.length > 0 ? "var(--text-muted)" : "var(--border-strong)" }}
+            style={{ color: displayDocs.length > 0 ? "var(--text-muted)" : "var(--border-strong)", backgroundColor: "rgba(0,0,0,0)" }}
             whileHover={displayDocs.length > 0 ? { backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" } : {}}
             whileTap={displayDocs.length > 0 ? { scale: 0.9 } : {}}
             title="Export current page as CSV"
@@ -667,7 +667,7 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
                 <motion.button
                   onClick={() => setSelectedIds(new Set())}
                   className="px-3 py-1 rounded-lg text-xs font-medium"
-                  style={{ color: "var(--text-muted)", border: "1px solid var(--border-subtle)" }}
+                  style={{ color: "var(--text-muted)", border: "1px solid var(--border-subtle)", backgroundColor: "rgba(0,0,0,0)" }}
                   whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" }}
                   whileTap={{ scale: 0.97 }}
                 >
@@ -826,7 +826,7 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
                         : isExpanded
                         ? "var(--interactive-light)"
                         : i % 2 === 0
-                        ? "transparent"
+                        ? "rgba(0,0,0,0)"
                         : "var(--bg-card)",
                     }}
                     whileHover={{ backgroundColor: selectedIds.has(doc._id) ? "rgba(239,68,68,0.08)" : "var(--bg-hover)" }}
@@ -903,7 +903,7 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
               onClick={() => handlePageChange(Math.max(0, page - 1))}
               disabled={page === 0 || loading}
               className="p-1.5 rounded-lg"
-              style={{ color: page === 0 || loading ? "var(--border-strong)" : "var(--text-muted)", cursor: page === 0 || loading ? "not-allowed" : "pointer" }}
+              style={{ color: page === 0 || loading ? "var(--border-strong)" : "var(--text-muted)", cursor: page === 0 || loading ? "not-allowed" : "pointer", backgroundColor: "rgba(0,0,0,0)" }}
               whileHover={page > 0 && !loading ? { backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" } : {}}
               whileTap={page > 0 && !loading ? { scale: 0.9 } : {}}
             >
@@ -913,7 +913,7 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
               onClick={() => handlePageChange(Math.min(availablePages - 1, page + 1))}
               disabled={page >= availablePages - 1 || loading}
               className="p-1.5 rounded-lg"
-              style={{ color: page >= availablePages - 1 || loading ? "var(--border-strong)" : "var(--text-muted)", cursor: page >= availablePages - 1 || loading ? "not-allowed" : "pointer" }}
+              style={{ color: page >= availablePages - 1 || loading ? "var(--border-strong)" : "var(--text-muted)", cursor: page >= availablePages - 1 || loading ? "not-allowed" : "pointer", backgroundColor: "rgba(0,0,0,0)" }}
               whileHover={page < availablePages - 1 && !loading ? { backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" } : {}}
               whileTap={page < availablePages - 1 && !loading ? { scale: 0.9 } : {}}
             >

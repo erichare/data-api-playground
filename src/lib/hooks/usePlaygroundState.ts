@@ -141,8 +141,8 @@ export function usePlaygroundState() {
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [connectError, setConnectError] = useState("");
 
-  // Landing / demo mode
-  const [demoModeAccepted, setDemoModeAccepted] = useState(false);
+  // Always start in demo/playground mode — no landing gate
+  const [demoModeAccepted] = useState(true);
 
   // Theme — persisted to localStorage, defaulting to dark
   const [theme, setThemeState] = useState<"dark" | "light">("dark");
@@ -156,7 +156,6 @@ export function usePlaygroundState() {
 
   // UI state
   const [viewMode, setViewMode] = useState<ViewMode>("chat");
-  const [ingestCollapsed, setIngestCollapsed] = useState(true);
   const [newCollectionOpen, setNewCollectionOpen] = useState(false);
   const [quickStartOpen, setQuickStartOpen] = useState(false);
   const [creatingConversation, setCreatingConversation] = useState(false);
@@ -265,11 +264,6 @@ export function usePlaygroundState() {
     setIbmApiKey(ibmKey);
     setWatsonxProjectId(wxProjectId);
 
-    // If user already had credentials, skip the landing screen
-    if (token && endpoint) {
-      setDemoModeAccepted(true);
-    }
-
     const applyConnectionResult = async (r: Awaited<ReturnType<typeof fetchCollectionsFromApi>>, fromEnv: boolean) => {
       setAstraToken(r.token);
       setAstraEndpoint(r.endpoint);
@@ -294,7 +288,6 @@ export function usePlaygroundState() {
         const status = await fetch("/api/astra-status").then((r) => r.json() as Promise<{ hasToken: boolean; hasEndpoint: boolean }>);
         setEnvReady(status.hasToken && status.hasEndpoint);
         if (status.hasToken && status.hasEndpoint) {
-          setDemoModeAccepted(true); // env creds = skip landing
           await fetchCollectionsFromApi("", "")
             .then((r) => applyConnectionResult(r, true))
             .catch(() => {});
@@ -332,7 +325,6 @@ export function usePlaygroundState() {
         sessionStorage.setItem("astra_token", result.token);
         sessionStorage.setItem("astra_endpoint", result.endpoint);
       }
-      setDemoModeAccepted(true);
       persistedMessageIds.current = new Set();
       loadedConvIds.current = new Set();
       await bootstrapConversations(result.token, result.endpoint);
@@ -360,7 +352,6 @@ export function usePlaygroundState() {
     setConversations([blank]);
     setActiveConversationId(blank.id);
     // Return to landing
-    setDemoModeAccepted(false);
   };
 
   // ── Conversation management ───────────────────────────────────────────────
@@ -475,7 +466,6 @@ export function usePlaygroundState() {
 
   const handleSelectCollection = (name: string) => {
     setActiveCollection(name);
-    setViewMode("browse");
   };
 
   const handleKeyspaceChange = async (keyspace: string) => {
@@ -489,32 +479,6 @@ export function usePlaygroundState() {
   const handleCollectionCreated = (collection: Collection) => {
     setCollections((prev) => [...prev, collection]);
     setActiveCollection(collection.name);
-    setViewMode("browse");
-  };
-
-  const handleDeleteCollection = async (name: string) => {
-    setCollections((prev) => {
-      const remaining = prev.filter((c) => c.name !== name);
-      if (activeCollection === name) {
-        setActiveCollection(remaining.find((c) => !c.name.startsWith("dap_"))?.name ?? remaining[0]?.name ?? "");
-        if (remaining.length === 0) setViewMode("chat");
-      }
-      return remaining;
-    });
-    setCollectionFields((prev) => {
-      const next = { ...prev };
-      delete next[name];
-      return next;
-    });
-    const token = astraTokenRef.current;
-    const endpoint = astraEndpointRef.current;
-    if (token && endpoint) {
-      await fetch("/api/delete-collection", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, endpoint, keyspace: selectedKeyspace, name }),
-      }).catch(console.error);
-    }
   };
 
   const handleIbmApiKeyChange = (key: string) => {
@@ -555,10 +519,6 @@ export function usePlaygroundState() {
     handleConnect,
     handleDisconnect,
 
-    // Landing / demo mode
-    demoModeAccepted,
-    setDemoModeAccepted,
-
     // Theme
     theme,
     toggleTheme,
@@ -574,13 +534,10 @@ export function usePlaygroundState() {
     handleSelectCollection,
     handleKeyspaceChange,
     handleCollectionCreated,
-    handleDeleteCollection,
 
     // UI
     viewMode,
     setViewMode,
-    ingestCollapsed,
-    setIngestCollapsed,
     newCollectionOpen,
     setNewCollectionOpen,
     quickStartOpen,
