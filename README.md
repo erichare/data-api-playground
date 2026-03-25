@@ -4,9 +4,12 @@ An interactive web app for exploring [DataStax Astra DB](https://www.datastax.co
 
 ## Features
 
+- **Demo mode or connect** — Choose to explore with built-in sample data (no credentials) or connect your own Astra DB instance. The landing screen presents both options clearly.
 - **AI-powered chat** — Ask natural language questions about your data. IBM Granite analyzes the query, generates embeddings, searches Astra DB, and synthesizes a concise response.
+- **Output / Code tabs** — Every AI response has an **Output** tab (the natural language answer + source documents) and a **Code** tab showing the exact Data API call that was executed, with one-click switching between TypeScript, Python, Java, and cURL.
 - **Persistent conversations** — Conversations and messages are stored in Astra DB and survive page refresh. Create, rename, and delete threads from the sidebar.
 - **Pipeline trace** — Watch each step in real time (Analyze → Embed → Search → Respond) with per-step latency.
+- **Dark / light mode** — Toggle between dark (IBM Carbon Gray 100) and light (IBM Carbon White) themes. Preference is persisted across sessions.
 - **Collection browser** — Browse documents in any collection with pagination and delete support.
 - **CSV ingestion** — Upload CSV files and ingest them as vector documents, with progress streaming.
 - **Collection management** — Create new collections with configurable vector dimensions, similarity metrics, and server-side vectorize providers.
@@ -18,9 +21,10 @@ An interactive web app for exploring [DataStax Astra DB](https://www.datastax.co
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js (App Router) |
+| Framework | Next.js 16 (App Router) |
 | Language | TypeScript |
-| Styling | Tailwind CSS + shadcn/ui |
+| Font | IBM Plex Sans + IBM Plex Mono |
+| Styling | Tailwind CSS + shadcn/ui (IBM Carbon-inspired palette) |
 | Animation | Framer Motion |
 | Database | DataStax Astra DB (`@datastax/astra-db-ts`) |
 | AI / LLM | IBM watsonx Granite (`@ibm-cloud/watsonx-ai`) |

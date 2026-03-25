@@ -210,18 +210,28 @@ function CodeBlock({ code }: { code: string }) {
   };
 
   return (
-    <div className="relative group rounded-xl overflow-hidden" style={{ backgroundColor: "#080c18", border: "1px solid #1e2d4a" }}>
+    <div
+      className="relative group rounded-xl overflow-hidden"
+      style={{ backgroundColor: "var(--bg-primary)", border: "1px solid var(--border-subtle)" }}
+    >
       <button
         onClick={handleCopy}
         className="absolute top-2.5 right-2.5 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-        style={{ backgroundColor: "rgba(30,45,74,0.8)", color: copied ? "#4ade80" : "#64748b" }}
+        style={{
+          backgroundColor: "var(--bg-hover)",
+          color: copied ? "#4ade80" : "var(--text-muted)",
+        }}
         title="Copy to clipboard"
       >
         {copied ? <Check size={12} /> : <Copy size={12} />}
       </button>
       <pre
-        className="text-[12px] font-mono leading-relaxed px-4 py-3.5 overflow-x-auto"
-        style={{ color: "#c0cfe0", whiteSpace: "pre" }}
+        className="text-[12px] leading-relaxed px-4 py-3.5 overflow-x-auto"
+        style={{
+          fontFamily: "IBM Plex Mono, monospace",
+          color: "var(--text-secondary)",
+          whiteSpace: "pre",
+        }}
       >
         {code.split("\n").map((line, i) => (
           <div key={i}>
@@ -229,11 +239,11 @@ function CodeBlock({ code }: { code: string }) {
               .split(/(\b(?:import|from|const|let|var|await|async|new|return|for|if|class|public|static|void|List|of)\b|"[^"]*"|'[^']*'|`[^`]*`|#[^\n]*|\/\/[^\n]*)/)
               .map((part, j) => {
                 if (/^(import|from|const|let|var|await|async|new|return|for|if|class|public|static|void|List|of)$/.test(part))
-                  return <span key={j} style={{ color: "#9d96ff" }}>{part}</span>;
-                if (/^["'`]/.test(part) || /^["'`]/.test(part))
+                  return <span key={j} style={{ color: "var(--interactive)" }}>{part}</span>;
+                if (/^["'`]/.test(part))
                   return <span key={j} style={{ color: "#4ade80" }}>{part}</span>;
                 if (/^(#|\/\/)/.test(part))
-                  return <span key={j} style={{ color: "#475569", fontStyle: "italic" }}>{part}</span>;
+                  return <span key={j} style={{ color: "var(--text-muted)", fontStyle: "italic" }}>{part}</span>;
                 return <span key={j}>{part}</span>;
               })}
           </div>
@@ -246,6 +256,7 @@ function CodeBlock({ code }: { code: string }) {
 export function QuickStartGuide({ open, onClose }: QuickStartGuideProps) {
   const [lang, setLang] = useState<Lang>("python");
 
+  // Per-language accent colours — intentional visual differentiation, kept fixed
   const langColors: Record<Lang, string> = {
     python:     "#fbbf24",
     typescript: "#3b82f6",
@@ -271,19 +282,27 @@ export function QuickStartGuide({ open, onClose }: QuickStartGuideProps) {
             exit={{ opacity: 0, x: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 280 }}
             className="fixed right-0 top-0 h-full z-50 flex flex-col"
-            style={{ width: "min(680px, 95vw)", backgroundColor: "#0d1220", borderLeft: "1px solid #1e2d4a", boxShadow: "-24px 0 64px rgba(0,0,0,0.5)" }}
+            style={{
+              width: "min(680px, 95vw)",
+              backgroundColor: "var(--bg-panel)",
+              borderLeft: "1px solid var(--border-subtle)",
+              boxShadow: "-24px 0 64px rgba(0,0,0,0.35)",
+            }}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: "#1e2d4a" }}>
+            <div
+              className="flex items-center justify-between px-6 py-4 border-b shrink-0"
+              style={{ borderColor: "var(--border-subtle)" }}
+            >
               <div>
-                <h2 className="text-base font-semibold" style={{ color: "#f8fafc" }}>Quick Start Guide</h2>
-                <p className="text-[12px] mt-0.5" style={{ color: "#64748b" }}>Top Astra DB Data API commands</p>
+                <h2 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Quick Start Guide</h2>
+                <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>Top Astra DB Data API commands</p>
               </div>
               <motion.button
                 onClick={onClose}
                 className="p-1.5 rounded-lg"
-                style={{ color: "#64748b" }}
-                whileHover={{ backgroundColor: "rgba(30,45,74,0.8)", color: "#f8fafc" }}
+                style={{ color: "var(--text-muted)" }}
+                whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" }}
                 whileTap={{ scale: 0.9 }}
               >
                 <X size={16} />
@@ -291,7 +310,10 @@ export function QuickStartGuide({ open, onClose }: QuickStartGuideProps) {
             </div>
 
             {/* Language selector */}
-            <div className="flex gap-1.5 px-6 py-3 border-b shrink-0" style={{ borderColor: "#1e2d4a", backgroundColor: "rgba(11,15,26,0.4)" }}>
+            <div
+              className="flex gap-1.5 px-6 py-3 border-b shrink-0"
+              style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-card)" }}
+            >
               {LANGS.map((l) => (
                 <motion.button
                   key={l.id}
@@ -300,9 +322,9 @@ export function QuickStartGuide({ open, onClose }: QuickStartGuideProps) {
                   style={{
                     backgroundColor: lang === l.id ? `${langColors[l.id]}18` : "transparent",
                     border: `1px solid ${lang === l.id ? `${langColors[l.id]}50` : "transparent"}`,
-                    color: lang === l.id ? langColors[l.id] : "#64748b",
+                    color: lang === l.id ? langColors[l.id] : "var(--text-muted)",
                   }}
-                  whileHover={{ color: lang === l.id ? langColors[l.id] : "#94a3b8" }}
+                  whileHover={{ color: lang === l.id ? langColors[l.id] : "var(--text-secondary)" }}
                   whileTap={{ scale: 0.96 }}
                 >
                   <span>{l.icon}</span>
@@ -324,13 +346,17 @@ export function QuickStartGuide({ open, onClose }: QuickStartGuideProps) {
                   <div className="flex items-center gap-2.5">
                     <div
                       className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
-                      style={{ backgroundColor: `${langColors[lang]}18`, color: langColors[lang], border: `1px solid ${langColors[lang]}30` }}
+                      style={{
+                        backgroundColor: `${langColors[lang]}18`,
+                        color: langColors[lang],
+                        border: `1px solid ${langColors[lang]}30`,
+                      }}
                     >
                       {i + 1}
                     </div>
                     <div>
-                      <span className="text-[13px] font-semibold" style={{ color: "#f8fafc" }}>{step.title}</span>
-                      <span className="text-[12px] ml-2" style={{ color: "#64748b" }}>{step.description}</span>
+                      <span className="text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}>{step.title}</span>
+                      <span className="text-[12px] ml-2" style={{ color: "var(--text-muted)" }}>{step.description}</span>
                     </div>
                   </div>
                   <div className="ml-8">
@@ -362,10 +388,15 @@ export function QuickStartGuide({ open, onClose }: QuickStartGuideProps) {
                     href={link.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[11px] px-3 py-1.5 rounded-lg"
-                    style={{ backgroundColor: "rgba(30,45,74,0.5)", border: "1px solid #1e2d4a", color: "#64748b", textDecoration: "none" }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#64748b"; }}
+                    className="text-[11px] px-3 py-1.5 rounded-lg transition-colors"
+                    style={{
+                      backgroundColor: "var(--bg-card)",
+                      border: "1px solid var(--border-subtle)",
+                      color: "var(--text-muted)",
+                      textDecoration: "none",
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
                   >
                     {link.label} ↗
                   </a>

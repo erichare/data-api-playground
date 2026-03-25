@@ -19,8 +19,8 @@ export function SearchModeToggle({ value, onChange }: SearchModeToggleProps) {
     <div
       className="flex items-center rounded-full p-0.5 relative"
       style={{
-        backgroundColor: "#13192b",
-        border: "1px solid #1e2d4a",
+        backgroundColor: "var(--bg-primary)",
+        border: "1px solid var(--border-subtle)",
       }}
     >
       {modes.map((mode) => {
@@ -31,16 +31,16 @@ export function SearchModeToggle({ value, onChange }: SearchModeToggleProps) {
             onClick={() => onChange(mode.value)}
             className="relative px-3 py-1 rounded-full text-xs font-medium z-10 transition-colors"
             style={{
-              color: isActive ? "#f8fafc" : "#64748b",
+              color: isActive ? "#fff" : "var(--text-muted)",
             }}
-            whileHover={{ color: isActive ? "#f8fafc" : "#94a3b8" }}
+            whileHover={{ color: isActive ? "#fff" : "var(--text-secondary)" }}
             title={mode.description}
           >
             {isActive && (
               <motion.span
                 layoutId="search-mode-pill"
                 className="absolute inset-0 rounded-full"
-                style={{ backgroundColor: "#ff6b35" }}
+                style={{ backgroundColor: "var(--interactive)" }}
                 transition={{ type: "spring", stiffness: 350, damping: 30 }}
               />
             )}

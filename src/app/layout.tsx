@@ -1,10 +1,18 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
+const ibmPlexSans = IBM_Plex_Sans({
   variable: "--font-sans",
   subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  display: "swap",
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  variable: "--font-mono",
+  subsets: ["latin"],
+  weight: ["400", "500"],
   display: "swap",
 });
 
@@ -20,8 +28,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} dark h-full`}>
-      <body className="h-full overflow-hidden bg-[#0b0f1a] text-[#f8fafc]">
+    // default to dark; client JS will toggle the class based on user preference
+    <html lang="en" className={`${ibmPlexSans.variable} ${ibmPlexMono.variable} dark h-full`}>
+      <body className="h-full overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)]">
         {children}
       </body>
     </html>

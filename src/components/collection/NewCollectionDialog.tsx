@@ -25,7 +25,16 @@ const METRICS = ["cosine", "dot_product", "euclidean"] as const;
 type CodeLang = "ts" | "python" | "java";
 
 const I = (n: number) => ({ paddingLeft: `${n * 1.2}em` });
-const C = (color: string) => ({ color });
+// Syntax-token colours — intentionally kept as fixed palette so code looks
+// the same in both light and dark themes (same as other code panels).
+const T = {
+  base:   "var(--text-secondary)",
+  kw:     "var(--interactive)",          // await / method names
+  ident:  "var(--step-analyze)",         // db / class names
+  method: "var(--step-embed)",           // createCollection
+  str:    "var(--step-respond)",         // string literals
+  num:    "#818cf8",                     // numbers — neutral purple, fine on both
+};
 
 const LANG_LABELS: Record<CodeLang, string> = { ts: "TS", python: "Py", java: "Java" };
 const LANG_NAMES: Record<CodeLang, string> = { ts: "astra-db-ts", python: "astrapy · python", java: "astra-db-java" };
@@ -39,84 +48,99 @@ function CodePreview({ name, dimension, metric, mode, provider, model }: {
   const metricUpper = metric.toUpperCase();
 
   return (
-    <div className="rounded-lg overflow-hidden text-[12px] leading-relaxed"
-      style={{ backgroundColor: "rgba(11, 15, 26, 0.8)", border: "1px solid #1e2d4a", fontFamily: "JetBrains Mono, monospace" }}>
+    <div
+      className="rounded-lg overflow-hidden text-[12px] leading-relaxed"
+      style={{
+        backgroundColor: "var(--bg-primary)",
+        border: "1px solid var(--border-subtle)",
+        fontFamily: "IBM Plex Mono, monospace",
+      }}
+    >
       {/* Header with lang toggle */}
-      <div className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
-        <span className="text-[10px] uppercase tracking-widest" style={{ color: "#64748b" }}>{LANG_NAMES[lang]}</span>
+      <div
+        className="flex items-center justify-between px-3 pt-2.5 pb-1.5 border-b"
+        style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-panel)" }}
+      >
+        <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+          {LANG_NAMES[lang]}
+        </span>
         <div className="flex gap-0.5">
           {(Object.keys(LANG_LABELS) as CodeLang[]).map((l) => (
-            <button key={l} onClick={() => setLang(l)}
+            <button
+              key={l}
+              onClick={() => setLang(l)}
               className="px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide"
               style={{
-                backgroundColor: lang === l ? "rgba(0,194,203,0.15)" : "transparent",
-                color: lang === l ? "#00c2cb" : "#475569",
-                border: lang === l ? "1px solid rgba(0,194,203,0.25)" : "1px solid transparent",
-              }}>
+                backgroundColor: lang === l ? "var(--interactive-light)" : "transparent",
+                color: lang === l ? "var(--interactive)" : "var(--text-muted)",
+                border: lang === l ? "1px solid var(--interactive-border)" : "1px solid transparent",
+              }}
+            >
               {LANG_LABELS[l]}
             </button>
           ))}
         </div>
       </div>
+
       {/* Code */}
-      <div className="px-3 pb-3 overflow-x-auto">
+      <div className="px-3 py-2.5 overflow-x-auto">
         {lang === "ts" && (
           <>
-            <div style={I(0)}><span style={C("#94a3b8")}>await </span><span style={C("#6c63ff")}>db</span><span style={C("#94a3b8")}>.</span><span style={C("#00c2cb")}>createCollection</span><span style={C("#94a3b8")}>(</span></div>
-            <div style={I(1)}><span style={C("#ff6b35")}>&quot;{displayName}&quot;</span><span style={C("#94a3b8")}>, &#123;</span></div>
-            <div style={I(2)}><span style={C("#94a3b8")}>vector: &#123;</span></div>
+            <div style={I(0)}><span style={{ color: T.kw }}>await </span><span style={{ color: T.ident }}>db</span><span style={{ color: T.base }}>.</span><span style={{ color: T.method }}>createCollection</span><span style={{ color: T.base }}>(</span></div>
+            <div style={I(1)}><span style={{ color: T.str }}>&quot;{displayName}&quot;</span><span style={{ color: T.base }}>, &#123;</span></div>
+            <div style={I(2)}><span style={{ color: T.base }}>vector: &#123;</span></div>
             {mode === "vectorize" ? (<>
-              <div style={I(3)}><span style={C("#94a3b8")}>service: &#123;</span></div>
-              <div style={I(4)}><span style={C("#94a3b8")}>provider: </span><span style={C("#ff6b35")}>&quot;{provider}&quot;</span><span style={C("#94a3b8")}>,</span></div>
-              <div style={I(4)}><span style={C("#94a3b8")}>modelName: </span><span style={C("#ff6b35")}>&quot;{model}&quot;</span><span style={C("#94a3b8")}>,</span></div>
-              <div style={I(3)}><span style={C("#94a3b8")}>&#125;,</span></div>
+              <div style={I(3)}><span style={{ color: T.base }}>service: &#123;</span></div>
+              <div style={I(4)}><span style={{ color: T.base }}>provider: </span><span style={{ color: T.str }}>&quot;{provider}&quot;</span><span style={{ color: T.base }}>,</span></div>
+              <div style={I(4)}><span style={{ color: T.base }}>modelName: </span><span style={{ color: T.str }}>&quot;{model}&quot;</span><span style={{ color: T.base }}>,</span></div>
+              <div style={I(3)}><span style={{ color: T.base }}>&#125;,</span></div>
             </>) : (<>
-              <div style={I(3)}><span style={C("#94a3b8")}>dimension: </span><span style={C("#818cf8")}>{dimension}</span><span style={C("#94a3b8")}>,</span></div>
-              <div style={I(3)}><span style={C("#94a3b8")}>metric: </span><span style={C("#ff6b35")}>&quot;{metric}&quot;</span><span style={C("#94a3b8")}>,</span></div>
+              <div style={I(3)}><span style={{ color: T.base }}>dimension: </span><span style={{ color: T.num }}>{dimension}</span><span style={{ color: T.base }}>,</span></div>
+              <div style={I(3)}><span style={{ color: T.base }}>metric: </span><span style={{ color: T.str }}>&quot;{metric}&quot;</span><span style={{ color: T.base }}>,</span></div>
             </>)}
-            <div style={I(2)}><span style={C("#94a3b8")}>&#125;,</span></div>
-            <div style={I(1)}><span style={C("#94a3b8")}>&#125;</span></div>
-            <div style={I(0)}><span style={C("#94a3b8")}>)</span></div>
+            <div style={I(2)}><span style={{ color: T.base }}>&#125;,</span></div>
+            <div style={I(1)}><span style={{ color: T.base }}>&#125;</span></div>
+            <div style={I(0)}><span style={{ color: T.base }}>)</span></div>
           </>
         )}
         {lang === "python" && (
           <>
-            <div style={I(0)}><span style={C("#94a3b8")}>await </span><span style={C("#6c63ff")}>db</span><span style={C("#94a3b8")}>.</span><span style={C("#00c2cb")}>create_collection</span><span style={C("#94a3b8")}>(</span></div>
-            <div style={I(1)}><span style={C("#ff6b35")}>&quot;{displayName}&quot;</span><span style={C("#94a3b8")}>,</span></div>
-            <div style={I(1)}><span style={C("#94a3b8")}>definition=</span><span style={C("#6c63ff")}>CollectionDefinition</span><span style={C("#94a3b8")}>(</span></div>
-            <div style={I(2)}><span style={C("#94a3b8")}>vector=</span><span style={C("#6c63ff")}>CollectionVectorOptions</span><span style={C("#94a3b8")}>(</span></div>
+            <div style={I(0)}><span style={{ color: T.kw }}>await </span><span style={{ color: T.ident }}>db</span><span style={{ color: T.base }}>.</span><span style={{ color: T.method }}>create_collection</span><span style={{ color: T.base }}>(</span></div>
+            <div style={I(1)}><span style={{ color: T.str }}>&quot;{displayName}&quot;</span><span style={{ color: T.base }}>,</span></div>
+            <div style={I(1)}><span style={{ color: T.base }}>definition=</span><span style={{ color: T.ident }}>CollectionDefinition</span><span style={{ color: T.base }}>(</span></div>
+            <div style={I(2)}><span style={{ color: T.base }}>vector=</span><span style={{ color: T.ident }}>CollectionVectorOptions</span><span style={{ color: T.base }}>(</span></div>
             {mode === "vectorize" ? (<>
-              <div style={I(3)}><span style={C("#94a3b8")}>service=</span><span style={C("#6c63ff")}>VectorServiceOptions</span><span style={C("#94a3b8")}>(</span></div>
-              <div style={I(4)}><span style={C("#94a3b8")}>provider=</span><span style={C("#ff6b35")}>&quot;{provider}&quot;</span><span style={C("#94a3b8")}>,</span></div>
-              <div style={I(4)}><span style={C("#94a3b8")}>model_name=</span><span style={C("#ff6b35")}>&quot;{model}&quot;</span><span style={C("#94a3b8")}>,</span></div>
-              <div style={I(3)}><span style={C("#94a3b8")}>),</span></div>
+              <div style={I(3)}><span style={{ color: T.base }}>service=</span><span style={{ color: T.ident }}>VectorServiceOptions</span><span style={{ color: T.base }}>(</span></div>
+              <div style={I(4)}><span style={{ color: T.base }}>provider=</span><span style={{ color: T.str }}>&quot;{provider}&quot;</span><span style={{ color: T.base }}>,</span></div>
+              <div style={I(4)}><span style={{ color: T.base }}>model_name=</span><span style={{ color: T.str }}>&quot;{model}&quot;</span><span style={{ color: T.base }}>,</span></div>
+              <div style={I(3)}><span style={{ color: T.base }}>),</span></div>
             </>) : (<>
-              <div style={I(3)}><span style={C("#94a3b8")}>dimension=</span><span style={C("#818cf8")}>{dimension}</span><span style={C("#94a3b8")}>,</span></div>
-              <div style={I(3)}><span style={C("#94a3b8")}>metric=</span><span style={C("#6c63ff")}>VectorMetric</span><span style={C("#94a3b8")}>.</span><span style={C("#ff6b35")}>{metricUpper}</span><span style={C("#94a3b8")}>,</span></div>
+              <div style={I(3)}><span style={{ color: T.base }}>dimension=</span><span style={{ color: T.num }}>{dimension}</span><span style={{ color: T.base }}>,</span></div>
+              <div style={I(3)}><span style={{ color: T.base }}>metric=</span><span style={{ color: T.ident }}>VectorMetric</span><span style={{ color: T.base }}>.</span><span style={{ color: T.str }}>{metricUpper}</span><span style={{ color: T.base }}>,</span></div>
             </>)}
-            <div style={I(2)}><span style={C("#94a3b8")}>),</span></div>
-            <div style={I(1)}><span style={C("#94a3b8")}>),</span></div>
-            <div style={I(0)}><span style={C("#94a3b8")}>)</span></div>
+            <div style={I(2)}><span style={{ color: T.base }}>),</span></div>
+            <div style={I(1)}><span style={{ color: T.base }}>),</span></div>
+            <div style={I(0)}><span style={{ color: T.base }}>)</span></div>
           </>
         )}
         {lang === "java" && (
           <>
-            <div style={I(0)}><span style={C("#6c63ff")}>db</span><span style={C("#94a3b8")}>.</span><span style={C("#00c2cb")}>createCollection</span><span style={C("#94a3b8")}>(</span></div>
-            <div style={I(1)}><span style={C("#ff6b35")}>&quot;{displayName}&quot;</span><span style={C("#94a3b8")}>,</span></div>
-            <div style={I(1)}><span style={C("#6c63ff")}>CollectionDefinition</span><span style={C("#94a3b8")}>.builder()</span></div>
-            <div style={I(2)}><span style={C("#94a3b8")}>.vector(</span><span style={C("#6c63ff")}>CollectionVectorDefinition</span><span style={C("#94a3b8")}>.builder()</span></div>
+            <div style={I(0)}><span style={{ color: T.ident }}>db</span><span style={{ color: T.base }}>.</span><span style={{ color: T.method }}>createCollection</span><span style={{ color: T.base }}>(</span></div>
+            <div style={I(1)}><span style={{ color: T.str }}>&quot;{displayName}&quot;</span><span style={{ color: T.base }}>,</span></div>
+            <div style={I(1)}><span style={{ color: T.ident }}>CollectionDefinition</span><span style={{ color: T.base }}>.builder()</span></div>
+            <div style={I(2)}><span style={{ color: T.base }}>.vector(</span><span style={{ color: T.ident }}>CollectionVectorDefinition</span><span style={{ color: T.base }}>.builder()</span></div>
             {mode === "vectorize" ? (<>
-              <div style={I(3)}><span style={C("#94a3b8")}>.service(</span><span style={C("#6c63ff")}>CollectionVectorServiceDefinition</span><span style={C("#94a3b8")}>.builder()</span></div>
-              <div style={I(4)}><span style={C("#94a3b8")}>.provider(</span><span style={C("#ff6b35")}>&quot;{provider}&quot;</span><span style={C("#94a3b8")}>)</span></div>
-              <div style={I(4)}><span style={C("#94a3b8")}>.modelName(</span><span style={C("#ff6b35")}>&quot;{model}&quot;</span><span style={C("#94a3b8")}>)</span></div>
-              <div style={I(4)}><span style={C("#94a3b8")}>.build())</span></div>
+              <div style={I(3)}><span style={{ color: T.base }}>.service(</span><span style={{ color: T.ident }}>CollectionVectorServiceDefinition</span><span style={{ color: T.base }}>.builder()</span></div>
+              <div style={I(4)}><span style={{ color: T.base }}>.provider(</span><span style={{ color: T.str }}>&quot;{provider}&quot;</span><span style={{ color: T.base }}>)</span></div>
+              <div style={I(4)}><span style={{ color: T.base }}>.modelName(</span><span style={{ color: T.str }}>&quot;{model}&quot;</span><span style={{ color: T.base }}>)</span></div>
+              <div style={I(4)}><span style={{ color: T.base }}>.build())</span></div>
             </>) : (<>
-              <div style={I(3)}><span style={C("#94a3b8")}>.dimension(</span><span style={C("#818cf8")}>{dimension}</span><span style={C("#94a3b8")}>)</span></div>
-              <div style={I(3)}><span style={C("#94a3b8")}>.metric(</span><span style={C("#6c63ff")}>SimilarityMetric</span><span style={C("#94a3b8")}>.</span><span style={C("#ff6b35")}>{metricUpper}</span><span style={C("#94a3b8")}>)</span></div>
+              <div style={I(3)}><span style={{ color: T.base }}>.dimension(</span><span style={{ color: T.num }}>{dimension}</span><span style={{ color: T.base }}>)</span></div>
+              <div style={I(3)}><span style={{ color: T.base }}>.metric(</span><span style={{ color: T.ident }}>SimilarityMetric</span><span style={{ color: T.base }}>.</span><span style={{ color: T.str }}>{metricUpper}</span><span style={{ color: T.base }}>)</span></div>
             </>)}
-            <div style={I(2)}><span style={C("#94a3b8")}>.build())</span></div>
-            <div style={I(1)}><span style={C("#94a3b8")}>.build()</span></div>
-            <div style={I(0)}><span style={C("#94a3b8")}>)</span></div>
+            <div style={I(2)}><span style={{ color: T.base }}>.build())</span></div>
+            <div style={I(1)}><span style={{ color: T.base }}>.build()</span></div>
+            <div style={I(0)}><span style={{ color: T.base }}>)</span></div>
           </>
         )}
       </div>
@@ -144,10 +168,9 @@ export function NewCollectionDialog({ open, onClose, onCreated, astraToken, astr
 
   const isConnected = !!(astraToken && astraEndpoint);
 
-  // Fetch providers when dialog opens in vectorize mode while connected
   useEffect(() => {
     if (!open || !isConnected || mode !== "vectorize") return;
-    if (providerModels.length > 0) return; // already loaded
+    if (providerModels.length > 0) return;
 
     setLoadingProviders(true);
     setProvidersError("");
@@ -208,41 +231,56 @@ export function NewCollectionDialog({ open, onClose, onCreated, astraToken, astr
     onClose();
   };
 
-  const inputStyle = {
-    backgroundColor: "#0d1220", border: "1px solid #1e2d4a", color: "#f8fafc",
-    borderRadius: "8px", padding: "8px 12px", fontSize: "13px", width: "100%", outline: "none",
-  };
-  const labelStyle = {
-    fontSize: "11px", fontWeight: 600 as const, textTransform: "uppercase" as const,
-    letterSpacing: "0.08em", color: "#64748b", marginBottom: "6px", display: "block",
-  };
-
   return (
     <AnimatePresence>
       {open && (
         <>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={onClose} className="fixed inset-0 z-40"
-            style={{ backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(2px)" }} />
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 z-40"
+            style={{ backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(2px)" }}
+          />
 
-          <motion.div initial={{ opacity: 0, scale: 0.95, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 16 }} transition={{ duration: 0.2, ease: "easeOut" }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            style={{ pointerEvents: "none" }}>
-            <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl flex flex-col"
-              style={{ backgroundColor: "#0d1220", border: "1px solid #1e2d4a", boxShadow: "0 24px 64px rgba(0,0,0,0.6)", pointerEvents: "auto" }}>
-
+            style={{ pointerEvents: "none" }}
+          >
+            <div
+              className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl flex flex-col"
+              style={{
+                backgroundColor: "var(--bg-panel)",
+                border: "1px solid var(--border-subtle)",
+                boxShadow: "0 24px 64px rgba(0,0,0,0.4)",
+                pointerEvents: "auto",
+              }}
+            >
               {/* Header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: "#1e2d4a" }}>
+              <div
+                className="flex items-center justify-between px-5 py-4 border-b shrink-0"
+                style={{ borderColor: "var(--border-subtle)" }}
+              >
                 <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-                    style={{ background: "linear-gradient(135deg, rgba(255,107,53,0.2), rgba(108,99,255,0.2))", border: "1px solid rgba(255,107,53,0.3)" }}>
-                    <Plus size={14} style={{ color: "#ff6b35" }} />
+                  <div
+                    className="w-7 h-7 rounded-lg flex items-center justify-center"
+                    style={{
+                      background: "linear-gradient(135deg, var(--interactive-light), rgba(108,99,255,0.15))",
+                      border: "1px solid var(--interactive-border)",
+                    }}
+                  >
+                    <Plus size={14} style={{ color: "var(--interactive)" }} />
                   </div>
-                  <h2 className="text-sm font-semibold" style={{ color: "#f8fafc" }}>New Collection</h2>
+                  <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>New Collection</h2>
                 </div>
-                <motion.button onClick={onClose} className="p-1.5 rounded-lg" style={{ color: "#64748b" }}
-                  whileHover={{ backgroundColor: "rgba(30,45,74,0.8)", color: "#f8fafc" }} whileTap={{ scale: 0.9 }}>
+                <motion.button
+                  onClick={onClose}
+                  className="p-1.5 rounded-lg"
+                  style={{ color: "var(--text-muted)" }}
+                  whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" }}
+                  whileTap={{ scale: 0.9 }}
+                >
                   <X size={14} />
                 </motion.button>
               </div>
@@ -251,35 +289,68 @@ export function NewCollectionDialog({ open, onClose, onCreated, astraToken, astr
               <div className="flex flex-col gap-4 px-5 py-4">
                 {/* Name */}
                 <div>
-                  <label style={labelStyle}>Collection Name</label>
-                  <input value={name} onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. my_embeddings" style={inputStyle}
-                    onKeyDown={(e) => e.key === "Enter" && void handleCreate()} autoFocus />
+                  <label
+                    className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    Collection Name
+                  </label>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. my_embeddings"
+                    style={{
+                      backgroundColor: "var(--bg-input)",
+                      border: "1px solid var(--border-subtle)",
+                      color: "var(--text-primary)",
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      fontSize: "13px",
+                      width: "100%",
+                      outline: "none",
+                    }}
+                    onKeyDown={(e) => e.key === "Enter" && void handleCreate()}
+                    autoFocus
+                  />
                 </div>
 
                 {/* Mode toggle */}
                 <div>
-                  <label style={labelStyle}>Embedding Mode</label>
+                  <label
+                    className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    Embedding Mode
+                  </label>
                   <div className="grid grid-cols-2 gap-2">
                     {(["vectorize", "client"] as const).map((m) => {
                       const active = mode === m;
                       return (
-                        <motion.button key={m} onClick={() => setMode(m)}
+                        <motion.button
+                          key={m}
+                          onClick={() => setMode(m)}
                           className="flex items-center gap-2.5 px-3 py-3 rounded-xl text-left"
                           style={{
-                            backgroundColor: active ? (m === "vectorize" ? "rgba(108,99,255,0.12)" : "rgba(0,194,203,0.10)") : "#0b0f1a",
-                            border: `1px solid ${active ? (m === "vectorize" ? "rgba(108,99,255,0.5)" : "rgba(0,194,203,0.4)") : "#1e2d4a"}`,
+                            backgroundColor: active
+                              ? (m === "vectorize" ? "rgba(108,99,255,0.1)" : "rgba(0,194,203,0.08)")
+                              : "var(--bg-card)",
+                            border: `1px solid ${active
+                              ? (m === "vectorize" ? "rgba(108,99,255,0.45)" : "rgba(0,194,203,0.35)")
+                              : "var(--border-subtle)"}`,
                           }}
-                          whileHover={{ borderColor: m === "vectorize" ? "rgba(108,99,255,0.5)" : "rgba(0,194,203,0.4)" }}
-                          whileTap={{ scale: 0.97 }}>
+                          whileHover={{
+                            borderColor: m === "vectorize" ? "rgba(108,99,255,0.45)" : "rgba(0,194,203,0.35)",
+                          }}
+                          whileTap={{ scale: 0.97 }}
+                        >
                           {m === "vectorize"
-                            ? <Zap size={15} style={{ color: active ? "#6c63ff" : "#475569", flexShrink: 0 }} />
-                            : <Cpu size={15} style={{ color: active ? "#00c2cb" : "#475569", flexShrink: 0 }} />}
+                            ? <Zap size={15} style={{ color: active ? "var(--step-analyze)" : "var(--text-muted)", flexShrink: 0 }} />
+                            : <Cpu size={15} style={{ color: active ? "var(--step-embed)" : "var(--text-muted)", flexShrink: 0 }} />}
                           <div>
-                            <div className="text-xs font-semibold" style={{ color: active ? "#f8fafc" : "#64748b" }}>
+                            <div className="text-xs font-semibold" style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}>
                               {m === "vectorize" ? "Vectorize" : "Client-Side"}
                             </div>
-                            <div className="text-[10px]" style={{ color: "#475569" }}>
+                            <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>
                               {m === "vectorize" ? "Server-side embeddings" : "Bring your own vectors"}
                             </div>
                           </div>
@@ -292,32 +363,60 @@ export function NewCollectionDialog({ open, onClose, onCreated, astraToken, astr
                 {/* Vectorize: model picker */}
                 {mode === "vectorize" && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}>
-                    <label style={labelStyle}>Embedding Model</label>
+                    <label
+                      className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      Embedding Model
+                    </label>
                     {!isConnected ? (
-                      <div className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: "rgba(108,99,255,0.08)", border: "1px solid rgba(108,99,255,0.2)", color: "#94a3b8" }}>
+                      <div
+                        className="text-xs px-3 py-2 rounded-lg"
+                        style={{
+                          backgroundColor: "rgba(108,99,255,0.08)",
+                          border: "1px solid rgba(108,99,255,0.2)",
+                          color: "var(--text-secondary)",
+                        }}
+                      >
                         Connect to Astra DB to browse available models
                       </div>
                     ) : loadingProviders ? (
-                      <div className="flex items-center gap-2 px-3 py-2 text-xs" style={{ color: "#64748b" }}>
+                      <div className="flex items-center gap-2 px-3 py-2 text-xs" style={{ color: "var(--text-muted)" }}>
                         <Loader2 size={12} className="animate-spin" /> Loading models…
                       </div>
                     ) : providersError ? (
-                      <div className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171" }}>
+                      <div
+                        className="text-xs px-3 py-2 rounded-lg"
+                        style={{ backgroundColor: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171" }}
+                      >
                         {providersError}
                       </div>
                     ) : (
-                      <select value={selectedModelIdx} onChange={(e) => setSelectedModelIdx(Number(e.target.value))}
-                        style={{ ...inputStyle, cursor: "pointer" }}>
-                        {providerModels.map((m, i) => (
+                      <select
+                        value={selectedModelIdx}
+                        onChange={(e) => setSelectedModelIdx(Number(e.target.value))}
+                        style={{
+                          backgroundColor: "var(--bg-input)",
+                          border: "1px solid var(--border-subtle)",
+                          color: "var(--text-primary)",
+                          borderRadius: "8px",
+                          padding: "8px 12px",
+                          fontSize: "13px",
+                          width: "100%",
+                          outline: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {providerModels.map((pm, i) => (
                           <option key={i} value={i}>
-                            {m.providerDisplayName} — {m.modelName}{m.vectorDimension ? ` (${m.vectorDimension}d)` : ""}
+                            {pm.providerDisplayName} — {pm.modelName}{pm.vectorDimension ? ` (${pm.vectorDimension}d)` : ""}
                           </option>
                         ))}
                       </select>
                     )}
                     {selectedModel?.vectorDimension && (
-                      <p className="text-[11px] mt-1.5" style={{ color: "#64748b" }}>
-                        Vector dimension: <span style={{ color: "#94a3b8" }}>{selectedModel.vectorDimension}</span> · Metric determined by model
+                      <p className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>
+                        Vector dimension: <span style={{ color: "var(--text-secondary)" }}>{selectedModel.vectorDimension}</span> · Metric determined by model
                       </p>
                     )}
                   </motion.div>
@@ -325,17 +424,56 @@ export function NewCollectionDialog({ open, onClose, onCreated, astraToken, astr
 
                 {/* Client-side: dimension + metric */}
                 {mode === "client" && (
-                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
-                    className="flex gap-3">
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
+                    className="flex gap-3"
+                  >
                     <div className="flex-1">
-                      <label style={labelStyle}>Vector Dimension</label>
-                      <input type="number" value={dimension} onChange={(e) => setDimension(Number(e.target.value))}
-                        min={1} max={4096} style={inputStyle} />
+                      <label
+                        className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        Vector Dimension
+                      </label>
+                      <input
+                        type="number"
+                        value={dimension}
+                        onChange={(e) => setDimension(Number(e.target.value))}
+                        min={1} max={4096}
+                        style={{
+                          backgroundColor: "var(--bg-input)",
+                          border: "1px solid var(--border-subtle)",
+                          color: "var(--text-primary)",
+                          borderRadius: "8px",
+                          padding: "8px 12px",
+                          fontSize: "13px",
+                          width: "100%",
+                          outline: "none",
+                        }}
+                      />
                     </div>
                     <div className="flex-1">
-                      <label style={labelStyle}>Similarity Metric</label>
-                      <select value={metric} onChange={(e) => setMetric(e.target.value as typeof METRICS[number])}
-                        style={{ ...inputStyle, cursor: "pointer" }}>
+                      <label
+                        className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        Similarity Metric
+                      </label>
+                      <select
+                        value={metric}
+                        onChange={(e) => setMetric(e.target.value as typeof METRICS[number])}
+                        style={{
+                          backgroundColor: "var(--bg-input)",
+                          border: "1px solid var(--border-subtle)",
+                          color: "var(--text-primary)",
+                          borderRadius: "8px",
+                          padding: "8px 12px",
+                          fontSize: "13px",
+                          width: "100%",
+                          outline: "none",
+                          cursor: "pointer",
+                        }}
+                      >
                         {METRICS.map((m) => <option key={m} value={m}>{m}</option>)}
                       </select>
                     </div>
@@ -344,44 +482,65 @@ export function NewCollectionDialog({ open, onClose, onCreated, astraToken, astr
 
                 {/* Code preview */}
                 <div>
-                  <label style={labelStyle}>Generated Code</label>
+                  <label
+                    className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    Generated Code
+                  </label>
                   <CodePreview
                     name={name} dimension={dimension} metric={metric} mode={mode}
                     provider={selectedModel?.provider ?? "nvidia"}
-                    model={selectedModel?.modelName ?? "NV-Embed-QA"} />
+                    model={selectedModel?.modelName ?? "NV-Embed-QA"}
+                  />
                 </div>
               </div>
 
               {/* Footer */}
-              <div className="flex flex-col gap-2 px-5 py-4 border-t shrink-0" style={{ borderColor: "#1e2d4a" }}>
+              <div
+                className="flex flex-col gap-2 px-5 py-4 border-t shrink-0"
+                style={{ borderColor: "var(--border-subtle)" }}
+              >
                 {error && (
-                  <div className="text-xs rounded-lg px-3 py-2" style={{ backgroundColor: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171" }}>
+                  <div
+                    className="text-xs rounded-lg px-3 py-2"
+                    style={{ backgroundColor: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171" }}
+                  >
                     {error}
                   </div>
                 )}
                 <div className="flex items-center justify-between gap-2">
                   {!isConnected && (
-                    <span className="text-xs" style={{ color: "#64748b" }}>Demo mode — not saved to Astra DB</span>
+                    <span className="text-xs" style={{ color: "var(--text-muted)" }}>Demo mode — not saved to Astra DB</span>
                   )}
                   <div className="flex items-center gap-2 ml-auto">
-                    <motion.button onClick={onClose} disabled={loading}
+                    <motion.button
+                      onClick={onClose}
+                      disabled={loading}
                       className="px-4 py-2 rounded-lg text-sm font-medium"
-                      style={{ color: "#64748b", border: "1px solid #1e2d4a", opacity: loading ? 0.5 : 1 }}
-                      whileHover={!loading ? { backgroundColor: "rgba(30,45,74,0.6)", color: "#f8fafc" } : {}}
-                      whileTap={!loading ? { scale: 0.97 } : {}}>
+                      style={{
+                        color: "var(--text-muted)",
+                        border: "1px solid var(--border-subtle)",
+                        opacity: loading ? 0.5 : 1,
+                      }}
+                      whileHover={!loading ? { backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" } : {}}
+                      whileTap={!loading ? { scale: 0.97 } : {}}
+                    >
                       Cancel
                     </motion.button>
-                    <motion.button onClick={() => void handleCreate()}
+                    <motion.button
+                      onClick={() => void handleCreate()}
                       disabled={!name.trim() || loading || (mode === "vectorize" && isConnected && !selectedModel)}
                       className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
                       style={{
-                        background: (name.trim() && !loading) ? "linear-gradient(135deg, #ff6b35, #ff8c5a)" : "#1e2d4a",
-                        color: (name.trim() && !loading) ? "#fff" : "#475569",
+                        backgroundColor: (name.trim() && !loading) ? "var(--interactive)" : "var(--bg-hover)",
+                        color: (name.trim() && !loading) ? "#fff" : "var(--text-muted)",
                         cursor: (name.trim() && !loading) ? "pointer" : "not-allowed",
-                        boxShadow: (name.trim() && !loading) ? "0 2px 12px rgba(255,107,53,0.3)" : "none",
+                        boxShadow: (name.trim() && !loading) ? "0 2px 12px var(--interactive-border)" : "none",
                       }}
                       whileHover={(name.trim() && !loading) ? { scale: 1.02 } : {}}
-                      whileTap={(name.trim() && !loading) ? { scale: 0.97 } : {}}>
+                      whileTap={(name.trim() && !loading) ? { scale: 0.97 } : {}}
+                    >
                       {loading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                       {loading ? "Creating…" : "Create Collection"}
                     </motion.button>

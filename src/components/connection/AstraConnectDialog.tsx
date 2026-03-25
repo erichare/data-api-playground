@@ -43,7 +43,6 @@ export function AstraConnectDialog({
   const [envAstra, setEnvAstra] = useState<{ hasToken: boolean; hasEndpoint: boolean } | null>(null);
   const isConnected = !!currentToken;
 
-  // Sync when dialog opens
   useEffect(() => {
     if (open) {
       setToken(currentToken);
@@ -52,8 +51,6 @@ export function AstraConnectDialog({
       setWatsonxProjectId(currentWatsonxProjectId);
       setShowToken(false);
       setShowIbmApiKey(false);
-      // Check env key status
-      // Parallelize both status checks
       Promise.all([
         fetch("/api/watsonx-status").then((r) => r.json() as Promise<{ hasKey: boolean; hasProjectId: boolean }>),
         fetch("/api/astra-status").then((r) => r.json() as Promise<{ hasToken: boolean; hasEndpoint: boolean }>),
@@ -93,34 +90,31 @@ export function AstraConnectDialog({
     onClose();
   };
 
-  const handleSaveIbmApiKey = () => {
-    onIbmApiKeyChange(ibmApiKey.trim());
-  };
+  const maskedToken = currentToken
+    ? currentToken.slice(0, 8) + "••••••••••••••••" + currentToken.slice(-4)
+    : "";
 
-  const inputStyle = {
-    backgroundColor: "#0b0f1a",
-    border: "1px solid #1e2d4a",
-    color: "#f8fafc",
+  const inputStyle: React.CSSProperties = {
+    backgroundColor: "var(--bg-input)",
+    border: "1px solid var(--border-subtle)",
+    color: "var(--text-primary)",
     borderRadius: "8px",
     padding: "8px 12px",
     fontSize: "13px",
     width: "100%",
     outline: "none",
+    fontFamily: "IBM Plex Mono, monospace",
   };
 
-  const labelStyle = {
+  const labelStyle: React.CSSProperties = {
     fontSize: "11px",
-    fontWeight: 600 as const,
-    textTransform: "uppercase" as const,
+    fontWeight: 600,
+    textTransform: "uppercase",
     letterSpacing: "0.08em",
-    color: "#64748b",
+    color: "var(--text-muted)",
     marginBottom: "6px",
     display: "block",
   };
-
-  const maskedToken = currentToken
-    ? currentToken.slice(0, 8) + "••••••••••••••••" + currentToken.slice(-4)
-    : "";
 
   return (
     <AnimatePresence>
@@ -133,7 +127,7 @@ export function AstraConnectDialog({
             exit={{ opacity: 0 }}
             onClick={onClose}
             className="fixed inset-0 z-40"
-            style={{ backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(2px)" }}
+            style={{ backgroundColor: "rgba(0,0,0,0.5)", backdropFilter: "blur(3px)" }}
           />
 
           {/* Dialog */}
@@ -148,38 +142,36 @@ export function AstraConnectDialog({
             <div
               className="w-full max-w-md rounded-2xl flex flex-col"
               style={{
-                backgroundColor: "#0d1220",
-                border: "1px solid #1e2d4a",
-                boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
+                backgroundColor: "var(--bg-panel)",
+                border: "1px solid var(--border-subtle)",
+                boxShadow: "0 24px 64px rgba(0,0,0,0.3)",
                 pointerEvents: "auto",
               }}
             >
               {/* Header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: "#1e2d4a" }}>
+              <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
                 <div className="flex items-center gap-2.5">
                   <div
                     className="w-7 h-7 rounded-lg flex items-center justify-center"
                     style={{
-                      background: isConnected
-                        ? "linear-gradient(135deg, rgba(0,194,203,0.2), rgba(108,99,255,0.2))"
-                        : "linear-gradient(135deg, rgba(100,116,139,0.2), rgba(30,45,74,0.4))",
-                      border: `1px solid ${isConnected ? "rgba(0,194,203,0.3)" : "rgba(100,116,139,0.3)"}`,
+                      backgroundColor: isConnected ? "rgba(34,197,94,0.1)" : "var(--bg-hover)",
+                      border: `1px solid ${isConnected ? "rgba(34,197,94,0.3)" : "var(--border-subtle)"}`,
                     }}
                   >
                     {isConnected
-                      ? <PlugZap size={14} style={{ color: "#00c2cb" }} />
-                      : <Plug size={14} style={{ color: "#64748b" }} />
+                      ? <PlugZap size={14} style={{ color: "#22c55e" }} />
+                      : <Plug size={14} style={{ color: "var(--text-muted)" }} />
                     }
                   </div>
-                  <h2 className="text-sm font-semibold" style={{ color: "#f8fafc" }}>
+                  <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
                     {isConnected ? "Astra DB Connected" : "Connect to Astra DB"}
                   </h2>
                 </div>
                 <motion.button
                   onClick={onClose}
                   className="p-1.5 rounded-lg"
-                  style={{ color: "#64748b" }}
-                  whileHover={{ backgroundColor: "rgba(30,45,74,0.8)", color: "#f8fafc" }}
+                  style={{ color: "var(--text-muted)" }}
+                  whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" }}
                   whileTap={{ scale: 0.9 }}
                 >
                   <X size={14} />
@@ -191,29 +183,28 @@ export function AstraConnectDialog({
                 {isConnected && (
                   <div
                     className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg"
-                    style={{ backgroundColor: "rgba(0,194,203,0.06)", border: "1px solid rgba(0,194,203,0.15)" }}
+                    style={{ backgroundColor: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.15)" }}
                   >
                     <motion.div
                       className="w-2 h-2 rounded-full shrink-0"
-                      style={{ backgroundColor: "#00c2cb" }}
+                      style={{ backgroundColor: "#22c55e" }}
                       animate={{ opacity: [1, 0.4, 1] }}
                       transition={{ duration: 2, repeat: Infinity }}
                     />
                     <div className="flex flex-col min-w-0">
-                      <span className="text-[11px]" style={{ color: "#64748b" }}>Active token</span>
-                      <span className="text-[12px] font-mono" style={{ color: "#00c2cb" }}>{maskedToken}</span>
+                      <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>Active token</span>
+                      <span className="text-[12px]" style={{ color: "#22c55e", fontFamily: "IBM Plex Mono, monospace" }}>{maskedToken}</span>
                     </div>
                   </div>
                 )}
 
-                {/* Token field */}
+                {/* Token */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label style={{ ...labelStyle, marginBottom: 0 }}>Astra DB Application Token</label>
                     {envAstra?.hasToken && !token && (
-                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#4ade80" }}>
-                        <CheckCircle2 size={10} />
-                        Set via environment
+                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#22c55e" }}>
+                        <CheckCircle2 size={10} /> Set via environment
                       </span>
                     )}
                   </div>
@@ -236,24 +227,23 @@ export function AstraConnectDialog({
                       type="button"
                       onClick={() => setShowToken((v) => !v)}
                       className="absolute right-3 top-1/2 -translate-y-1/2"
-                      style={{ color: "#475569" }}
+                      style={{ color: "var(--text-muted)" }}
                     >
                       {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
                   </div>
-                  <p className="text-[11px] mt-1.5" style={{ color: "#475569" }}>
-                    Find your token in the Astra DB console under "Token Management". Stored in session memory only — never persisted.
+                  <p className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>
+                    Find in Astra DB console → Token Management. Stored in session memory only.
                   </p>
                 </div>
 
-                {/* Endpoint field */}
+                {/* Endpoint */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label style={{ ...labelStyle, marginBottom: 0 }}>Astra DB Endpoint</label>
                     {envAstra?.hasEndpoint && !endpoint && (
-                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#4ade80" }}>
-                        <CheckCircle2 size={10} />
-                        Set via environment
+                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#22c55e" }}>
+                        <CheckCircle2 size={10} /> Set via environment
                       </span>
                     )}
                   </div>
@@ -269,25 +259,23 @@ export function AstraConnectDialog({
                 </div>
 
                 {/* Divider */}
-                <div style={{ borderTop: "1px solid #1e2d4a", margin: "0 -4px" }} />
+                <div style={{ borderTop: "1px solid var(--border-subtle)", margin: "0 -4px" }} />
 
                 {/* IBM Cloud API Key */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label style={{ ...labelStyle, marginBottom: 0 }}>watsonx API Key</label>
                     {envHasKey === true && !ibmApiKey && (
-                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#4ade80" }}>
-                        <CheckCircle2 size={10} />
-                        Set via environment
+                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#22c55e" }}>
+                        <CheckCircle2 size={10} /> Set via environment
                       </span>
                     )}
                     {envHasKey === false && !ibmApiKey && (
                       <span className="text-[10px]" style={{ color: "#f87171" }}>Not set in environment</span>
                     )}
                     {ibmApiKey && (
-                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#4ade80" }}>
-                        <CheckCircle2 size={10} />
-                        Will override env
+                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#22c55e" }}>
+                        <CheckCircle2 size={10} /> Will override env
                       </span>
                     )}
                   </div>
@@ -296,7 +284,7 @@ export function AstraConnectDialog({
                       type={showIbmApiKey ? "text" : "password"}
                       value={ibmApiKey}
                       onChange={(e) => setIbmApiKey(e.target.value)}
-                      onBlur={handleSaveIbmApiKey}
+                      onBlur={() => onIbmApiKeyChange(ibmApiKey.trim())}
                       placeholder={envHasKey ? "Override environment key…" : "••••••••••••••••"}
                       style={{ ...inputStyle, paddingRight: "40px" }}
                       autoComplete="off"
@@ -308,13 +296,13 @@ export function AstraConnectDialog({
                       type="button"
                       onClick={() => setShowIbmApiKey((v) => !v)}
                       className="absolute right-3 top-1/2 -translate-y-1/2"
-                      style={{ color: "#475569" }}
+                      style={{ color: "var(--text-muted)" }}
                     >
                       {showIbmApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
                   </div>
-                  <p className="text-[11px] mt-1.5" style={{ color: "#475569" }}>
-                    Your IBM Cloud API key for watsonx.ai. Found in IBM Cloud → Manage → Access (IAM) → API keys.
+                  <p className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>
+                    IBM Cloud API key for watsonx.ai. IBM Cloud → Manage → Access (IAM) → API keys.
                   </p>
                 </div>
 
@@ -323,18 +311,16 @@ export function AstraConnectDialog({
                   <div className="flex items-center justify-between mb-1.5">
                     <label style={{ ...labelStyle, marginBottom: 0 }}>watsonx Project ID</label>
                     {envHasProjectId === true && !watsonxProjectId && (
-                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#4ade80" }}>
-                        <CheckCircle2 size={10} />
-                        Set via environment
+                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#22c55e" }}>
+                        <CheckCircle2 size={10} /> Set via environment
                       </span>
                     )}
                     {envHasProjectId === false && !watsonxProjectId && (
                       <span className="text-[10px]" style={{ color: "#f87171" }}>Not set in environment</span>
                     )}
                     {watsonxProjectId && (
-                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#4ade80" }}>
-                        <CheckCircle2 size={10} />
-                        Will override env
+                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#22c55e" }}>
+                        <CheckCircle2 size={10} /> Will override env
                       </span>
                     )}
                   </div>
@@ -348,41 +334,39 @@ export function AstraConnectDialog({
                     autoComplete="off"
                     spellCheck={false}
                   />
-                  <p className="text-[11px] mt-1.5" style={{ color: "#475569" }}>
-                    Found in watsonx.ai → your project → Manage tab → General → Project ID.
+                  <p className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>
+                    watsonx.ai → your project → Manage → General → Project ID.
                   </p>
                 </div>
               </div>
 
               {/* Error */}
               {error && (
-                <div className="mx-5 mb-1 flex items-start gap-2 px-3 py-2.5 rounded-lg" style={{ backgroundColor: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                <div className="mx-5 mb-1 flex items-start gap-2 px-3 py-2.5 rounded-lg" style={{ backgroundColor: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)" }}>
                   <AlertCircle size={13} style={{ color: "#ef4444", marginTop: "1px", flexShrink: 0 }} />
                   <span className="text-[12px] leading-relaxed" style={{ color: "#fca5a5" }}>{error}</span>
                 </div>
               )}
 
               {/* Footer */}
-              <div className="flex items-center justify-between gap-2 px-5 py-4 border-t shrink-0" style={{ borderColor: "#1e2d4a" }}>
+              <div className="flex items-center justify-between gap-2 px-5 py-4 border-t shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
                 {isConnected ? (
                   <motion.button
                     onClick={handleDisconnect}
                     className="px-4 py-2 rounded-lg text-sm font-medium"
-                    style={{ color: "#ef4444", border: "1px solid rgba(239,68,68,0.25)" }}
-                    whileHover={{ backgroundColor: "rgba(239,68,68,0.08)" }}
+                    style={{ color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}
+                    whileHover={{ backgroundColor: "rgba(239,68,68,0.07)" }}
                     whileTap={{ scale: 0.97 }}
                   >
                     Disconnect
                   </motion.button>
-                ) : (
-                  <div />
-                )}
+                ) : <div />}
                 <div className="flex items-center gap-2">
                   <motion.button
                     onClick={onClose}
                     className="px-4 py-2 rounded-lg text-sm font-medium"
-                    style={{ color: "#64748b", border: "1px solid #1e2d4a" }}
-                    whileHover={{ backgroundColor: "rgba(30,45,74,0.6)", color: "#f8fafc" }}
+                    style={{ color: "var(--text-muted)", border: "1px solid var(--border-subtle)" }}
+                    whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" }}
                     whileTap={{ scale: 0.97 }}
                   >
                     Cancel
@@ -392,15 +376,19 @@ export function AstraConnectDialog({
                     disabled={!canConnect}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
                     style={{
-                      background: canConnect ? "linear-gradient(135deg, #00c2cb, #0099a3)" : "#1e2d4a",
-                      color: canConnect ? "#fff" : "#475569",
+                      backgroundColor: canConnect ? "var(--interactive)" : "var(--bg-hover)",
+                      color: canConnect ? "#fff" : "var(--text-muted)",
                       cursor: canConnect ? "pointer" : "not-allowed",
-                      boxShadow: canConnect ? "0 2px 12px rgba(0,194,203,0.25)" : "none",
+                      boxShadow: canConnect ? "0 2px 8px var(--interactive-border)" : "none",
                     }}
                     whileHover={canConnect ? { scale: 1.02 } : {}}
                     whileTap={canConnect ? { scale: 0.97 } : {}}
                   >
-                    {loading && <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}><Loader2 size={13} /></motion.div>}
+                    {loading && (
+                      <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
+                        <Loader2 size={13} />
+                      </motion.div>
+                    )}
                     {loading ? "Connecting…" : isConnected ? "Update" : "Connect"}
                   </motion.button>
                 </div>

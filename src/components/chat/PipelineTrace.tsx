@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Zap, Database, MessageSquare, ChevronDown, CheckCircle2, Loader2, Clock, Minus, XCircle } from "lucide-react";
+import { Search, Zap, Database, MessageSquare, ChevronDown, CheckCircle2, Loader2, Clock, Minus, XCircle, Table2, Code2 } from "lucide-react";
 import type { PipelineStep, PipelineStepId } from "@/lib/types";
 
 interface PipelineTraceProps {
@@ -10,11 +10,11 @@ interface PipelineTraceProps {
   defaultExpanded?: boolean;
 }
 
-const STEP_META: Record<PipelineStepId, { label: string; color: string; icon: React.ElementType }> = {
-  analyze: { label: "Analyze Query",        color: "#6c63ff", icon: Search      },
-  embed:   { label: "Embed with Granite",   color: "#00c2cb", icon: Zap         },
-  search:  { label: "Search Astra DB",      color: "#ff6b35", icon: Database    },
-  respond: { label: "Generate Response",    color: "#22c55e", icon: MessageSquare },
+const STEP_META: Record<PipelineStepId, { label: string; colorVar: string; icon: React.ElementType }> = {
+  analyze: { label: "Analyze Query",       colorVar: "var(--step-analyze)", icon: Search       },
+  embed:   { label: "Embed with Granite",  colorVar: "var(--step-embed)",   icon: Zap          },
+  search:  { label: "Search Astra DB",     colorVar: "var(--step-search)",  icon: Database     },
+  respond: { label: "Generate Response",   colorVar: "var(--step-respond)", icon: MessageSquare },
 };
 
 const ORDER: PipelineStepId[] = ["analyze", "embed", "search", "respond"];
@@ -23,18 +23,11 @@ type CodeLang = "ts" | "python" | "java";
 const LANG_LABELS: Record<CodeLang, string> = { ts: "TS", python: "Py", java: "Java" };
 const LANG_NAMES: Record<CodeLang, string> = { ts: "astra-db-ts", python: "astrapy · python", java: "astra-db-java" };
 
-/** Derive an astrapy (Python) equivalent from the TypeScript command string. */
 function toPythonCommand(tsCmd: string): string {
   const limit = tsCmd.match(/limit:\s*(\d+)/)?.[1] ?? "5";
-  if (tsCmd.includes(".findAndRerank(")) {
-    return `collection.find_and_rerank(\n  {},\n  sort={"$hybrid": {"$vectorize": query}},\n  limit=${limit}\n)`;
-  }
-  if (tsCmd.includes("$vectorize")) {
-    return `collection.find(\n  {},\n  sort={"$vectorize": query},\n  limit=${limit},\n  include_similarity=True\n)`;
-  }
-  if (tsCmd.includes("$vector")) {
-    return `collection.find(\n  {},\n  sort={"$vector": embedding},\n  limit=${limit},\n  include_similarity=True\n)`;
-  }
+  if (tsCmd.includes(".findAndRerank(")) return `collection.find_and_rerank(\n  {},\n  sort={"$hybrid": {"$vectorize": query}},\n  limit=${limit}\n)`;
+  if (tsCmd.includes("$vectorize")) return `collection.find(\n  {},\n  sort={"$vectorize": query},\n  limit=${limit},\n  include_similarity=True\n)`;
+  if (tsCmd.includes("$vector")) return `collection.find(\n  {},\n  sort={"$vector": embedding},\n  limit=${limit},\n  include_similarity=True\n)`;
   const sortMatch = tsCmd.match(/sort:\s*\{\s*(\w+):\s*(-?1)/);
   if (sortMatch) {
     const dir = sortMatch[2] === "1" ? "ASCENDING" : "DESCENDING";
@@ -43,18 +36,11 @@ function toPythonCommand(tsCmd: string): string {
   return `collection.find({}, limit=${limit})`;
 }
 
-/** Derive a Java (astra-db-java) equivalent from the TypeScript command string. */
 function toJavaCommand(tsCmd: string): string {
   const limit = tsCmd.match(/limit:\s*(\d+)/)?.[1] ?? "5";
-  if (tsCmd.includes(".findAndRerank(")) {
-    return `collection.findAndRerank(\n  Filter.empty(),\n  new FindOneAndRerankOptions()\n    .sort(Sorts.hybrid(query))\n    .limit(${limit})\n)`;
-  }
-  if (tsCmd.includes("$vectorize")) {
-    return `collection.find(\n  Filter.empty(),\n  new FindOptions()\n    .sort(Sorts.vectorize(query))\n    .limit(${limit})\n)`;
-  }
-  if (tsCmd.includes("$vector")) {
-    return `collection.find(\n  Filter.empty(),\n  new FindOptions()\n    .sort(Sorts.vector(embedding))\n    .limit(${limit})\n)`;
-  }
+  if (tsCmd.includes(".findAndRerank(")) return `collection.findAndRerank(\n  Filter.empty(),\n  new FindOneAndRerankOptions()\n    .sort(Sorts.hybrid(query))\n    .limit(${limit})\n)`;
+  if (tsCmd.includes("$vectorize")) return `collection.find(\n  Filter.empty(),\n  new FindOptions()\n    .sort(Sorts.vectorize(query))\n    .limit(${limit})\n)`;
+  if (tsCmd.includes("$vector")) return `collection.find(\n  Filter.empty(),\n  new FindOptions()\n    .sort(Sorts.vector(embedding))\n    .limit(${limit})\n)`;
   const sortMatch = tsCmd.match(/sort:\s*\{\s*(\w+):\s*(-?1)/);
   if (sortMatch) {
     const dir = sortMatch[2] === "1" ? "ascending" : "descending";
@@ -72,9 +58,9 @@ function LangToggle({ lang, onChange }: { lang: CodeLang; onChange: (l: CodeLang
           onClick={() => onChange(l)}
           className="px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide"
           style={{
-            backgroundColor: lang === l ? "rgba(0,194,203,0.15)" : "transparent",
-            color: lang === l ? "#00c2cb" : "#475569",
-            border: lang === l ? "1px solid rgba(0,194,203,0.25)" : "1px solid transparent",
+            backgroundColor: lang === l ? "var(--interactive-light)" : "transparent",
+            color: lang === l ? "var(--interactive)" : "var(--text-muted)",
+            border: lang === l ? "1px solid var(--interactive-border)" : "1px solid transparent",
           }}
         >
           {LANG_LABELS[l]}
@@ -84,52 +70,142 @@ function LangToggle({ lang, onChange }: { lang: CodeLang; onChange: (l: CodeLang
   );
 }
 
-function SearchStepPreview({ command, count, collection }: { command?: string; count?: number; collection?: string }) {
+type SearchResult = { id: string; similarity: number; preview: Record<string, string | number> };
+
+function SearchStepPreview({ command, count, collection, results }: {
+  command?: string;
+  count?: number;
+  collection?: string;
+  results?: SearchResult[];
+}) {
   const [lang, setLang] = useState<CodeLang>("ts");
+  const [tab, setTab] = useState<"output" | "code">("output");
 
   return (
     <div className="flex flex-col gap-1.5 pt-1">
-      {command && (
-        <div className="rounded overflow-hidden" style={{ backgroundColor: "rgba(11,15,26,0.9)", border: "1px solid #2a3a5a" }}>
-          <div className="flex items-center justify-between px-2 pt-1.5 pb-0.5">
-            <span className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: "#475569", fontFamily: "monospace" }}>
-              {LANG_NAMES[lang]}
+      {/* Tab bar */}
+      <div
+        className="flex items-center gap-0.5 p-0.5 rounded-lg self-start"
+        style={{ backgroundColor: "var(--bg-primary)", border: "1px solid var(--border-subtle)" }}
+      >
+        <button
+          onClick={() => setTab("output")}
+          className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors"
+          style={{
+            backgroundColor: tab === "output" ? "var(--bg-panel)" : "transparent",
+            color: tab === "output" ? "var(--text-primary)" : "var(--text-muted)",
+            boxShadow: tab === "output" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+          }}
+        >
+          <Table2 size={9} />
+          Output
+          {count !== undefined && (
+            <span className="ml-1 px-1 rounded text-[9px] font-semibold" style={{ backgroundColor: "rgba(255,107,53,0.15)", color: "var(--step-search)" }}>
+              {count}
             </span>
-            <LangToggle lang={lang} onChange={setLang} />
-          </div>
-          <pre
-            className="text-[10px] font-mono px-2 py-1.5 overflow-x-auto leading-relaxed"
-            style={{ color: "#c0cfe0", whiteSpace: "pre" }}
+          )}
+        </button>
+        <button
+          onClick={() => setTab("code")}
+          className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors"
+          style={{
+            backgroundColor: tab === "code" ? "var(--bg-panel)" : "transparent",
+            color: tab === "code" ? "var(--interactive)" : "var(--text-muted)",
+            boxShadow: tab === "code" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+          }}
+        >
+          <Code2 size={9} />
+          Code
+        </button>
+      </div>
+
+      <AnimatePresence mode="wait" initial={false}>
+        {tab === "output" ? (
+          <motion.div
+            key="output"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.1 }}
+            className="flex flex-col gap-1"
           >
-            {lang === "ts" ? (
-              <>
-                <span style={{ color: "#9d96ff" }}>await </span>
-                <span style={{ color: "#2dd6e0" }}>db</span>
-                <span style={{ color: "#c0cfe0" }}>.</span>
-                <span style={{ color: "#2dd6e0" }}>collection</span>
-                <span style={{ color: "#c0cfe0" }}>(</span>
-                <span style={{ color: "#ff8050" }}>&quot;{collection ?? "…"}&quot;</span>
-                <span style={{ color: "#c0cfe0" }}>)</span>
-                {"\n"}
-                {command.split("\n").slice(1).map((line, i) => (
-                  <span key={i}>{"  "}<span style={{ color: "#c0cfe0" }}>{line.trim()}</span>{"\n"}</span>
+            {results && results.length > 0 ? results.map((r, i) => (
+              <div
+                key={r.id}
+                className="rounded-lg px-2 py-1.5 flex flex-col gap-0.5"
+                style={{ backgroundColor: "var(--bg-primary)", border: "1px solid var(--border-subtle)" }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className="text-[10px] truncate"
+                    style={{ color: "var(--text-muted)", fontFamily: "IBM Plex Mono, monospace" }}
+                    title={r.id}
+                  >
+                    {i + 1}. {r.id}
+                  </span>
+                  {r.similarity > 0 && (
+                    <span
+                      className="text-[10px] font-semibold shrink-0"
+                      style={{
+                        color: r.similarity >= 0.9 ? "#10b981" : r.similarity >= 0.7 ? "#f59e0b" : "var(--step-search)",
+                      }}
+                    >
+                      {r.similarity.toFixed(3)}
+                    </span>
+                  )}
+                </div>
+                {Object.entries(r.preview).slice(0, 2).map(([k, v]) => (
+                  <div key={k} className="flex gap-1.5 items-baseline">
+                    <span className="text-[9px] shrink-0" style={{ color: "var(--text-muted)", fontFamily: "IBM Plex Mono, monospace" }}>{k}</span>
+                    <span className="text-[10px] truncate" style={{ color: "var(--text-secondary)" }}>{String(v)}</span>
+                  </div>
                 ))}
-              </>
-            ) : lang === "python" ? toPythonCommand(command) : toJavaCommand(command)}
-          </pre>
-        </div>
-      )}
-      {count !== undefined && (
-        <div className="flex gap-1.5 items-center">
-          <span style={{ color: "#8899b4", fontSize: "10px" }}>Results</span>
-          <span
-            className="px-1.5 py-0.5 rounded text-[10px] font-semibold font-mono"
-            style={{ backgroundColor: "rgba(255,107,53,0.18)", color: "#ff8050" }}
+              </div>
+            )) : (
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>No results</p>
+            )}
+          </motion.div>
+        ) : (
+          <motion.div
+            key="code"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.1 }}
           >
-            {count} docs
-          </span>
-        </div>
-      )}
+            {command && (
+              <div className="rounded overflow-hidden" style={{ backgroundColor: "var(--bg-primary)", border: "1px solid var(--border-subtle)" }}>
+                <div className="flex items-center justify-between px-2 pt-1.5 pb-0.5">
+                  <span className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)", fontFamily: "IBM Plex Mono, monospace" }}>
+                    {LANG_NAMES[lang]}
+                  </span>
+                  <LangToggle lang={lang} onChange={setLang} />
+                </div>
+                <pre
+                  className="text-[10px] px-2 py-1.5 overflow-x-auto leading-relaxed"
+                  style={{ color: "var(--text-secondary)", whiteSpace: "pre", fontFamily: "IBM Plex Mono, monospace" }}
+                >
+                  {lang === "ts" ? (
+                    <>
+                      <span style={{ color: "var(--interactive)" }}>await </span>
+                      <span style={{ color: "var(--text-primary)" }}>db</span>
+                      <span>.</span>
+                      <span style={{ color: "var(--text-primary)" }}>collection</span>
+                      <span>(</span>
+                      <span style={{ color: "var(--step-search)" }}>&quot;{collection ?? "…"}&quot;</span>
+                      <span>)</span>
+                      {"\n"}
+                      {command.split("\n").slice(1).map((line, i) => (
+                        <span key={i}>{"  "}<span>{line.trim()}</span>{"\n"}</span>
+                      ))}
+                    </>
+                  ) : lang === "python" ? toPythonCommand(command) : toJavaCommand(command)}
+                </pre>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -150,67 +226,52 @@ function StepDataPreview({ stepId, data }: { stepId: PipelineStepId; data: Recor
       <div className="flex flex-col gap-1.5 pt-1">
         {intent && (
           <div className="flex gap-2 items-start">
-            <span style={{ color: "#8899b4", fontSize: "10px", minWidth: "52px", paddingTop: "1px" }}>Intent</span>
-            <span style={{ color: "#dde6f0", fontSize: "11px" }}>{intent}</span>
+            <span style={{ color: "var(--text-muted)", fontSize: "10px", minWidth: "52px", paddingTop: "1px" }}>Intent</span>
+            <span style={{ color: "var(--text-primary)", fontSize: "11px" }}>{intent}</span>
           </div>
         )}
         <div className="flex flex-wrap gap-3">
           {collection && (
             <div className="flex gap-1.5 items-center">
-              <span style={{ color: "#8899b4", fontSize: "10px" }}>Collection</span>
-              <span
-                className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold"
-                style={{ backgroundColor: "rgba(255,107,53,0.18)", color: "#ff8050" }}
-              >
+              <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>Collection</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold" style={{ backgroundColor: "rgba(255,107,53,0.12)", color: "var(--step-search)" }}>
                 {collection}
               </span>
             </div>
           )}
           {sm && (
             <div className="flex gap-1.5 items-center">
-              <span style={{ color: "#8899b4", fontSize: "10px" }}>Mode</span>
-              <span
-                className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
-                style={{ backgroundColor: "rgba(108,99,255,0.18)", color: "#9d96ff" }}
-              >
+              <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>Mode</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide" style={{ backgroundColor: "rgba(108,99,255,0.12)", color: "var(--step-analyze)" }}>
                 {sm}
               </span>
             </div>
           )}
           {limit != null && (
             <div className="flex gap-1.5 items-center">
-              <span style={{ color: "#8899b4", fontSize: "10px" }}>Limit</span>
-              <span className="text-[10px] font-mono" style={{ color: "#dde6f0" }}>{limit}</span>
+              <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>Limit</span>
+              <span className="text-[10px] font-mono" style={{ color: "var(--text-primary)" }}>{limit}</span>
             </div>
           )}
           {sortField && (
             <div className="flex gap-1.5 items-center">
-              <span style={{ color: "#8899b4", fontSize: "10px" }}>Sort</span>
-              <span
-                className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold"
-                style={{ backgroundColor: "rgba(34,197,94,0.12)", color: "#4ade80" }}
-              >
+              <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>Sort</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold" style={{ backgroundColor: "rgba(34,197,94,0.1)", color: "var(--step-respond)" }}>
                 {sortField} {sortDir}
               </span>
             </div>
           )}
           {filterField && (
             <div className="flex gap-1.5 items-center">
-              <span style={{ color: "#8899b4", fontSize: "10px" }}>Filter</span>
-              <span
-                className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold"
-                style={{ backgroundColor: "rgba(108,99,255,0.12)", color: "#9d96ff" }}
-              >
+              <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>Filter</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold" style={{ backgroundColor: "rgba(108,99,255,0.1)", color: "var(--step-analyze)" }}>
                 {filterField} {filterOp !== "$eq" ? filterOp + " " : ""}{JSON.stringify(filterValue)}
               </span>
             </div>
           )}
         </div>
         {raw && (
-          <pre
-            className="text-[9px] font-mono px-2 py-1 rounded overflow-x-auto mt-1"
-            style={{ backgroundColor: "rgba(11,15,26,0.8)", border: "1px solid #1e2d4a", color: "#6b7fa0", whiteSpace: "pre-wrap", wordBreak: "break-all" }}
-          >
+          <pre className="text-[9px] font-mono px-2 py-1 rounded overflow-x-auto mt-1" style={{ backgroundColor: "var(--bg-primary)", border: "1px solid var(--border-subtle)", color: "var(--text-muted)", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
             {raw}
           </pre>
         )}
@@ -226,35 +287,26 @@ function StepDataPreview({ stepId, data }: { stepId: PipelineStepId; data: Recor
     return (
       <div className="flex flex-col gap-1.5 pt-1">
         {preview && preview.length > 0 && (
-          <div
-            className="px-2 py-1.5 rounded text-[10px] font-mono overflow-x-auto"
-            style={{ backgroundColor: "rgba(0,194,203,0.08)", border: "1px solid rgba(0,194,203,0.25)", color: "#2dd6e0", whiteSpace: "nowrap" }}
-          >
+          <div className="px-2 py-1.5 rounded text-[10px] font-mono overflow-x-auto" style={{ backgroundColor: "rgba(0,194,203,0.07)", border: "1px solid rgba(0,194,203,0.2)", color: "var(--step-embed)", whiteSpace: "nowrap" }}>
             [{preview.map((v) => v.toFixed(4)).join(", ")}, …]
           </div>
         )}
         <div className="flex gap-3 items-center flex-wrap">
           {dims && (
             <div className="flex gap-1.5 items-center">
-              <span style={{ color: "#8899b4", fontSize: "10px" }}>Dims</span>
-              <span style={{ color: "#dde6f0", fontSize: "11px", fontFamily: "monospace" }}>{dims}</span>
+              <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>Dims</span>
+              <span style={{ color: "var(--text-primary)", fontSize: "11px", fontFamily: "IBM Plex Mono, monospace" }}>{dims}</span>
             </div>
           )}
           <div className="flex gap-1.5 items-center">
-            <span style={{ color: "#8899b4", fontSize: "10px" }}>Source</span>
-            <span
-              className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
-              style={{
-                backgroundColor: real ? "rgba(34,197,94,0.15)" : "rgba(100,116,139,0.2)",
-                color: real ? "#4ade80" : "#8899b4",
-              }}
-            >
+            <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>Source</span>
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: real ? "rgba(34,197,94,0.12)" : "var(--bg-hover)", color: real ? "var(--step-respond)" : "var(--text-muted)" }}>
               {real ? "ibm/slate-125m-english-rtrvr-v2" : "mock"}
             </span>
           </div>
         </div>
         {!real && embedError && (
-          <div className="text-[10px] leading-relaxed" style={{ color: "#64748b", fontFamily: "monospace" }}>
+          <div className="text-[10px] leading-relaxed" style={{ color: "var(--text-muted)", fontFamily: "IBM Plex Mono, monospace" }}>
             {embedError}
           </div>
         )}
@@ -266,7 +318,8 @@ function StepDataPreview({ stepId, data }: { stepId: PipelineStepId; data: Recor
     const command = data.command as string | undefined;
     const count = data.count as number | undefined;
     const collection = data.collection as string | undefined;
-    return <SearchStepPreview command={command} count={count} collection={collection} />;
+    const results = data.results as SearchResult[] | undefined;
+    return <SearchStepPreview command={command} count={count} collection={collection} results={results} />;
   }
 
   if (stepId === "respond") {
@@ -274,7 +327,7 @@ function StepDataPreview({ stepId, data }: { stepId: PipelineStepId; data: Recor
     if (!content) return null;
     return (
       <div className="pt-1">
-        <p className="text-[11px] leading-relaxed" style={{ color: "#c0cfe0", fontStyle: "italic" }}>
+        <p className="text-[11px] leading-relaxed" style={{ color: "var(--text-secondary)", fontStyle: "italic" }}>
           &ldquo;{content.slice(0, 120)}{content.length > 120 ? "…" : ""}&rdquo;
         </p>
       </div>
@@ -287,6 +340,7 @@ function StepDataPreview({ stepId, data }: { stepId: PipelineStepId; data: Recor
 function PipelineStepRow({ step }: { step: PipelineStep }) {
   const meta = STEP_META[step.id];
   const Icon = meta.icon;
+  const color = meta.colorVar;
   const [expanded, setExpanded] = useState(step.status === "complete");
   const hasData = step.data && Object.keys(step.data).length > 0;
 
@@ -301,24 +355,24 @@ function PipelineStepRow({ step }: { step: PipelineStep }) {
         className="w-full flex items-center gap-3 py-2 px-3 rounded-lg text-left transition-colors"
         style={{
           cursor: hasData ? "pointer" : "default",
-          backgroundColor: step.status === "running" ? `${meta.color}08` : "transparent",
-          border: step.status === "running" ? `1px solid ${meta.color}20` : "1px solid transparent",
+          backgroundColor: step.status === "running" ? `rgba(0,0,0,0.03)` : "transparent",
+          border: step.status === "running" ? `1px solid var(--border-subtle)` : "1px solid transparent",
         }}
       >
         {/* Status icon */}
-        <div className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: `${meta.color}15` }}>
+        <div className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: `${color.replace("var(--", "").replace(")", "")}`.includes("step") ? "rgba(0,0,0,0.05)" : "var(--bg-hover)" }}>
           {step.status === "error" ? (
             <XCircle size={11} style={{ color: "#ef4444" }} />
           ) : step.status === "running" ? (
             <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
-              <Loader2 size={11} style={{ color: meta.color }} />
+              <Loader2 size={11} style={{ color }} />
             </motion.div>
           ) : step.status === "complete" ? (
-            <CheckCircle2 size={11} style={{ color: meta.color }} />
+            <CheckCircle2 size={11} style={{ color }} />
           ) : step.status === "skipped" ? (
-            <Minus size={11} style={{ color: "#374151" }} />
+            <Minus size={11} style={{ color: "var(--text-muted)" }} />
           ) : (
-            <Icon size={11} style={{ color: step.status === "pending" ? "#374151" : meta.color }} />
+            <Icon size={11} style={{ color: step.status === "pending" ? "var(--text-muted)" : color }} />
           )}
         </div>
 
@@ -327,22 +381,21 @@ function PipelineStepRow({ step }: { step: PipelineStep }) {
           <span
             className="text-[12px] font-medium"
             style={{
-              color: step.status === "error" ? "#ef4444" : step.status === "pending" || step.status === "skipped" ? "#374151" : step.status === "running" ? meta.color : "#e2e8f0",
+              color: step.status === "error" ? "#ef4444"
+                : step.status === "pending" || step.status === "skipped" ? "var(--text-muted)"
+                : step.status === "running" ? color
+                : "var(--text-primary)",
             }}
           >
             {meta.label}{step.status === "skipped" ? " — skipped" : ""}
           </span>
           {step.status === "running" && (
-            <motion.div
-              className="flex gap-1"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-            >
+            <motion.div className="flex gap-1" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               {[0, 1, 2].map((i) => (
                 <motion.div
                   key={i}
                   className="w-1 h-1 rounded-full"
-                  style={{ backgroundColor: meta.color }}
+                  style={{ backgroundColor: color }}
                   animate={{ opacity: [0.3, 1, 0.3] }}
                   transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
                 />
@@ -351,23 +404,20 @@ function PipelineStepRow({ step }: { step: PipelineStep }) {
           )}
         </div>
 
-        {/* Latency */}
         {step.latencyMs !== undefined && (
           <div className="flex items-center gap-1 shrink-0">
-            <Clock size={9} style={{ color: "#475569" }} />
-            <span className="text-[10px] font-mono" style={{ color: "#6b7fa0" }}>{step.latencyMs}ms</span>
+            <Clock size={9} style={{ color: "var(--text-muted)" }} />
+            <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)", fontFamily: "IBM Plex Mono, monospace" }}>{step.latencyMs}ms</span>
           </div>
         )}
 
-        {/* Chevron */}
         {hasData && (
           <motion.div animate={{ rotate: expanded ? 180 : 0 }} transition={{ duration: 0.15 }}>
-            <ChevronDown size={12} style={{ color: "#475569" }} />
+            <ChevronDown size={12} style={{ color: "var(--text-muted)" }} />
           </motion.div>
         )}
       </button>
 
-      {/* Expanded data */}
       <AnimatePresence initial={false}>
         {expanded && hasData && step.data && (
           <motion.div
@@ -390,15 +440,10 @@ function PipelineStepRow({ step }: { step: PipelineStep }) {
 export function PipelineTrace({ steps, defaultExpanded = true }: PipelineTraceProps) {
   const [open, setOpen] = useState(defaultExpanded);
 
-  // Build a map for quick lookup
   const stepMap = new Map(steps.map((s) => [s.id, s]));
-
-  // Determine overall status
   const allComplete = steps.length > 0 && steps.every((s) => s.status === "complete" || s.status === "skipped");
   const hasRunning = steps.some((s) => s.status === "running");
-  const totalMs = allComplete
-    ? steps.reduce((sum, s) => sum + (s.latencyMs ?? 0), 0)
-    : null;
+  const totalMs = allComplete ? steps.reduce((sum, s) => sum + (s.latencyMs ?? 0), 0) : null;
 
   return (
     <motion.div
@@ -406,56 +451,46 @@ export function PipelineTrace({ steps, defaultExpanded = true }: PipelineTracePr
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
       className="rounded-xl overflow-hidden"
-      style={{
-        backgroundColor: "#0d1220",
-        border: "1px solid #1e2d4a",
-        marginBottom: "4px",
-      }}
+      style={{ backgroundColor: "var(--bg-panel)", border: "1px solid var(--border-subtle)", marginBottom: "4px" }}
     >
       {/* Header */}
       <button
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between px-3 py-2.5 text-left"
-        style={{ backgroundColor: "rgba(30,45,74,0.3)" }}
+        style={{ backgroundColor: "var(--bg-hover)" }}
       >
         <div className="flex items-center gap-2">
           <div className="flex gap-0.5">
             {ORDER.map((id) => {
               const s = stepMap.get(id);
-              const color = STEP_META[id].color;
+              const color = STEP_META[id].colorVar;
               return (
                 <motion.div
                   key={id}
                   className="w-1.5 h-1.5 rounded-full"
-                  style={{
-                    backgroundColor:
-                      s?.status === "complete" ? color
-                      : s?.status === "running" ? color
-                      : "#1e2d4a",
-                    opacity: s?.status === "running" ? undefined : undefined,
-                  }}
+                  style={{ backgroundColor: s?.status === "complete" || s?.status === "running" ? color : "var(--border-strong)" }}
                   animate={s?.status === "running" ? { opacity: [0.4, 1, 0.4] } : {}}
                   transition={s?.status === "running" ? { duration: 1, repeat: Infinity } : {}}
                 />
               );
             })}
           </div>
-          <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "#64748b" }}>
+          <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
             Pipeline Trace
           </span>
           {hasRunning && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: "rgba(255,107,53,0.12)", color: "#ff6b35" }}>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: "rgba(255,107,53,0.1)", color: "var(--step-search)" }}>
               Running
             </span>
           )}
           {allComplete && totalMs !== null && (
-            <span className="text-[10px] font-mono" style={{ color: "#475569" }}>
+            <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)", fontFamily: "IBM Plex Mono, monospace" }}>
               {totalMs}ms total
             </span>
           )}
         </div>
         <motion.div animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.15 }}>
-          <ChevronDown size={13} style={{ color: "#475569" }} />
+          <ChevronDown size={13} style={{ color: "var(--text-muted)" }} />
         </motion.div>
       </button>
 
@@ -473,13 +508,12 @@ export function PipelineTrace({ steps, defaultExpanded = true }: PipelineTracePr
               {ORDER.map((id) => {
                 const step = stepMap.get(id);
                 if (!step) {
-                  // Show pending placeholder
                   return (
-                    <div key={id} className="flex items-center gap-3 py-2 px-3 opacity-20">
-                      <div className="w-6 h-6 rounded-full border border-[#1e2d4a] flex items-center justify-center">
-                        {(() => { const I = STEP_META[id].icon; return <I size={11} style={{ color: "#374151" }} />; })()}
+                    <div key={id} className="flex items-center gap-3 py-2 px-3 opacity-25">
+                      <div className="w-6 h-6 rounded-full border flex items-center justify-center" style={{ borderColor: "var(--border-subtle)" }}>
+                        {(() => { const I = STEP_META[id].icon; return <I size={11} style={{ color: "var(--text-muted)" }} />; })()}
                       </div>
-                      <span className="text-[12px]" style={{ color: "#374151" }}>{STEP_META[id].label}</span>
+                      <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>{STEP_META[id].label}</span>
                     </div>
                   );
                 }

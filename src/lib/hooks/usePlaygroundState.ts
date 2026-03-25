@@ -95,7 +95,6 @@ function serializeMessage(msg: Message): Record<string, unknown> {
     timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : String(msg.timestamp),
     ...(msg.searchMode ? { searchMode: msg.searchMode } : {}),
     ...(msg.latencyMs != null ? { latencyMs: msg.latencyMs } : {}),
-    // Store pipeline steps without bulky search result data
     ...(msg.pipelineSteps ? {
       pipelineSteps: msg.pipelineSteps.map((s) => ({
         id: s.id,
@@ -142,6 +141,12 @@ export function usePlaygroundState() {
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [connectError, setConnectError] = useState("");
 
+  // Landing / demo mode
+  const [demoModeAccepted, setDemoModeAccepted] = useState(false);
+
+  // Theme — persisted to localStorage, defaulting to dark
+  const [theme, setThemeState] = useState<"dark" | "light">("dark");
+
   // Collections / keyspaces
   const [collections, setCollections] = useState<Collection[]>([]);
   const [collectionFields, setCollectionFields] = useState<Record<string, string[]>>({});
@@ -171,6 +176,24 @@ export function usePlaygroundState() {
   useEffect(() => { astraEndpointRef.current = astraEndpoint; }, [astraEndpoint]);
   useEffect(() => { activeConvIdRef.current = activeConversationId; }, [activeConversationId]);
 
+  // ── Theme management ──────────────────────────────────────────────────────
+
+  const applyTheme = (t: "dark" | "light") => {
+    const html = document.documentElement;
+    if (t === "dark") {
+      html.classList.add("dark");
+    } else {
+      html.classList.remove("dark");
+    }
+  };
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setThemeState(next);
+    applyTheme(next);
+    localStorage.setItem("theme", next);
+  };
+
   // ── Helpers ──────────────────────────────────────────────────────────────
 
   const loadConversationMessages = async (convId: string, token: string, endpoint: string) => {
@@ -193,13 +216,12 @@ export function usePlaygroundState() {
         pipelineSteps: m.pipelineSteps as Message["pipelineSteps"],
         sources: m.sources as Message["sources"],
       }));
-      // Mark all loaded messages as already persisted
       messages.forEach((m) => persistedMessageIds.current.add(m.id));
       setConversations((prev) =>
         prev.map((c) => c.id === convId ? { ...c, messages, messageCount: messages.length } : c)
       );
     } catch {
-      loadedConvIds.current.delete(convId); // allow retry
+      loadedConvIds.current.delete(convId);
     }
   };
 
@@ -210,7 +232,6 @@ export function usePlaygroundState() {
       setActiveConversationId(convs[0].id);
       await loadConversationMessages(convs[0].id, token, endpoint);
     } else {
-      // First time: create an initial conversation
       try {
         const newConv = await createConversationInApi(token, endpoint);
         loadedConvIds.current.add(newConv.id);
@@ -228,12 +249,26 @@ export function usePlaygroundState() {
   // ── Mount: restore session ────────────────────────────────────────────────
 
   useEffect(() => {
+    // Restore theme preference
+    const savedTheme = localStorage.getItem("theme") as "dark" | "light" | null;
+    if (savedTheme) {
+      setThemeState(savedTheme);
+      applyTheme(savedTheme);
+    } else {
+      applyTheme("dark"); // default to dark
+    }
+
     const token = sessionStorage.getItem("astra_token") ?? "";
     const endpoint = sessionStorage.getItem("astra_endpoint") ?? "";
     const ibmKey = sessionStorage.getItem("ibm_api_key") ?? "";
     const wxProjectId = sessionStorage.getItem("watsonx_project_id") ?? "";
     setIbmApiKey(ibmKey);
     setWatsonxProjectId(wxProjectId);
+
+    // If user already had credentials, skip the landing screen
+    if (token && endpoint) {
+      setDemoModeAccepted(true);
+    }
 
     const applyConnectionResult = async (r: Awaited<ReturnType<typeof fetchCollectionsFromApi>>, fromEnv: boolean) => {
       setAstraToken(r.token);
@@ -250,17 +285,16 @@ export function usePlaygroundState() {
 
     const restorePromise = (async () => {
       if (token && endpoint) {
-        // Restore from sessionStorage credentials
         await fetchCollectionsFromApi(token, endpoint)
           .then((r) => applyConnectionResult(r, false))
           .catch(() => {});
         return;
       }
-      // No sessionStorage credentials — check if env vars are available and auto-connect
       try {
         const status = await fetch("/api/astra-status").then((r) => r.json() as Promise<{ hasToken: boolean; hasEndpoint: boolean }>);
         setEnvReady(status.hasToken && status.hasEndpoint);
         if (status.hasToken && status.hasEndpoint) {
+          setDemoModeAccepted(true); // env creds = skip landing
           await fetchCollectionsFromApi("", "")
             .then((r) => applyConnectionResult(r, true))
             .catch(() => {});
@@ -298,7 +332,7 @@ export function usePlaygroundState() {
         sessionStorage.setItem("astra_token", result.token);
         sessionStorage.setItem("astra_endpoint", result.endpoint);
       }
-      // Reset conversation state and load from Astra
+      setDemoModeAccepted(true);
       persistedMessageIds.current = new Set();
       loadedConvIds.current = new Set();
       await bootstrapConversations(result.token, result.endpoint);
@@ -319,13 +353,14 @@ export function usePlaygroundState() {
     setViewMode("chat");
     sessionStorage.removeItem("astra_token");
     sessionStorage.removeItem("astra_endpoint");
-    // Reset to a blank in-memory conversation
     persistedMessageIds.current = new Set();
     loadedConvIds.current = new Set();
     const blank = makeBlankConversation();
     loadedConvIds.current.add(blank.id);
     setConversations([blank]);
     setActiveConversationId(blank.id);
+    // Return to landing
+    setDemoModeAccepted(false);
   };
 
   // ── Conversation management ───────────────────────────────────────────────
@@ -344,7 +379,6 @@ export function usePlaygroundState() {
     if (creatingConversation) return;
     const token = astraTokenRef.current;
     const endpoint = astraEndpointRef.current;
-    // Pick a unique name: "New Conversation", "New Conversation (1)", etc.
     const names = new Set(conversations.map((c) => c.name));
     const base = "New Conversation";
     let name = base;
@@ -369,7 +403,6 @@ export function usePlaygroundState() {
   };
 
   const handleRenameConversation = async (id: string, name: string) => {
-    // Optimistic update
     setConversations((prev) => prev.map((c) => c.id === id ? { ...c, name } : c));
     const token = astraTokenRef.current;
     const endpoint = astraEndpointRef.current;
@@ -385,7 +418,6 @@ export function usePlaygroundState() {
   const handleDeleteConversation = async (id: string) => {
     setConversations((prev) => {
       const remaining = prev.filter((c) => c.id !== id);
-      // Switch to another conversation if deleting the active one
       if (id === activeConvIdRef.current) {
         const next = remaining[0];
         if (next) {
@@ -396,7 +428,6 @@ export function usePlaygroundState() {
             void loadConversationMessages(next.id, token, endpoint);
           }
         } else {
-          // No conversations left — create a blank one
           const blank = makeBlankConversation();
           loadedConvIds.current.add(blank.id);
           setActiveConversationId(blank.id);
@@ -423,7 +454,6 @@ export function usePlaygroundState() {
     setConversations((prev) =>
       prev.map((c) => c.id === convId ? { ...c, messages: updated, messageCount: updated.length, updatedAt: new Date() } : c)
     );
-    // Persist any new messages (fire-and-forget)
     const token = astraTokenRef.current;
     const endpoint = astraEndpointRef.current;
     if (token && endpoint) {
@@ -435,7 +465,7 @@ export function usePlaygroundState() {
           headers: { "Content-Type": "application/json", ...astraHeaders(token, endpoint) },
           body: JSON.stringify({ message: serializeMessage(msg) }),
         }).catch(() => {
-          persistedMessageIds.current.delete(msg.id); // allow retry
+          persistedMessageIds.current.delete(msg.id);
         });
       }
     }
@@ -463,7 +493,6 @@ export function usePlaygroundState() {
   };
 
   const handleDeleteCollection = async (name: string) => {
-    // Optimistic UI update
     setCollections((prev) => {
       const remaining = prev.filter((c) => c.name !== name);
       if (activeCollection === name) {
@@ -525,6 +554,14 @@ export function usePlaygroundState() {
     setConnectError,
     handleConnect,
     handleDisconnect,
+
+    // Landing / demo mode
+    demoModeAccepted,
+    setDemoModeAccepted,
+
+    // Theme
+    theme,
+    toggleTheme,
 
     // Collections / keyspaces
     collections,

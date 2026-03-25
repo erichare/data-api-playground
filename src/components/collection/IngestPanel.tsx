@@ -10,56 +10,127 @@ import {
   ChevronRight,
   Database,
   AlertCircle,
+  Copy,
+  Check,
 } from "lucide-react";
 import type { Collection } from "@/lib/types";
 
-type CodeLang = "ts" | "python" | "java";
+type IngestCodeLang = "ts" | "python" | "java" | "curl";
 
-function IngestCodeHint() {
-  const [lang, setLang] = useState<CodeLang>("ts");
+const INGEST_LANG_LABELS: Record<IngestCodeLang, string> = {
+  ts: "TypeScript",
+  python: "Python",
+  java: "Java",
+  curl: "cURL",
+};
+const INGEST_LANG_SDK: Record<IngestCodeLang, string> = {
+  ts: "astra-db-ts",
+  python: "astrapy",
+  java: "astra-db-java",
+  curl: "Data API",
+};
+
+function getIngestCode(lang: IngestCodeLang, collectionName: string): string {
+  switch (lang) {
+    case "ts":
+      return `await db.collection("${collectionName}")\n  .insertMany(rows)`;
+    case "python":
+      return `collection.insert_many(rows)`;
+    case "java":
+      return `collection.insertMany(rows)`;
+    case "curl":
+      return `curl -X POST "$ASTRA_DB_API_ENDPOINT/api/json/v1/$KEYSPACE/${collectionName}" \\\n  -H "Token: $ASTRA_DB_APPLICATION_TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"insertMany": {"documents": rows}}'`;
+  }
+}
+
+function IngestCopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
   return (
-    <div
-      className="rounded-lg overflow-hidden text-[11px]"
-      style={{ backgroundColor: "rgba(11,15,26,0.7)", border: "1px solid #1e2d4a", fontFamily: "JetBrains Mono, monospace" }}
+    <button
+      onClick={() => void handleCopy()}
+      className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors"
+      style={{
+        color: copied ? "var(--step-respond)" : "var(--text-muted)",
+        backgroundColor: copied ? "rgba(34,197,94,0.08)" : "transparent",
+        border: `1px solid ${copied ? "rgba(34,197,94,0.2)" : "transparent"}`,
+      }}
+      title="Copy to clipboard"
     >
-      <div className="flex items-center justify-between px-2.5 pt-1.5 pb-0.5">
-        <span style={{ color: "#475569" }}>{{ ts: "astra-db-ts", python: "astrapy", java: "astra-db-java" }[lang]}</span>
+      {copied ? <Check size={10} /> : <Copy size={10} />}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+function IngestCodePanel({ collectionName }: { collectionName: string }) {
+  const [lang, setLang] = useState<IngestCodeLang>("ts");
+  const code = getIngestCode(lang, collectionName);
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border-subtle)" }}>
+      {/* Language selector bar */}
+      <div
+        className="flex items-center justify-between px-3 py-2 border-b"
+        style={{ backgroundColor: "var(--bg-panel)", borderColor: "var(--border-subtle)" }}
+      >
         <div className="flex gap-0.5">
-          {(["ts", "python", "java"] as const).map((l) => (
-            <button key={l} onClick={() => setLang(l)}
-              className="px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide"
+          {(Object.keys(INGEST_LANG_LABELS) as IngestCodeLang[]).map((l) => (
+            <button
+              key={l}
+              onClick={() => setLang(l)}
+              className="px-2 py-1 rounded text-[10px] font-medium transition-colors"
               style={{
-                backgroundColor: lang === l ? "rgba(0,194,203,0.15)" : "transparent",
-                color: lang === l ? "#00c2cb" : "#475569",
-                border: lang === l ? "1px solid rgba(0,194,203,0.25)" : "1px solid transparent",
+                backgroundColor: lang === l ? "var(--interactive-light)" : "transparent",
+                color: lang === l ? "var(--interactive)" : "var(--text-muted)",
+                border: lang === l ? "1px solid var(--interactive-border)" : "1px solid transparent",
               }}
             >
-              {{ ts: "TS", python: "Py", java: "Java" }[l]}
+              {INGEST_LANG_LABELS[l]}
             </button>
           ))}
         </div>
+        <div className="flex items-center gap-1">
+          <span className="text-[10px]" style={{ color: "var(--text-muted)", fontFamily: "IBM Plex Mono, monospace" }}>
+            {INGEST_LANG_SDK[lang]}
+          </span>
+          <IngestCopyButton text={code} />
+        </div>
       </div>
-      <div className="px-2.5 pb-2 overflow-x-auto" style={{ whiteSpace: "nowrap" }}>
-        {lang === "ts" && <>
-          <span style={{ color: "#9d96ff" }}>await </span>
-          <span style={{ color: "#00c2cb" }}>collection</span>
-          <span style={{ color: "#94a3b8" }}>.insertMany(</span>
-          <span style={{ color: "#f8fafc" }}>rows</span>
-          <span style={{ color: "#94a3b8" }}>)</span>
-        </>}
-        {lang === "python" && <>
-          <span style={{ color: "#9d96ff" }}>await </span>
-          <span style={{ color: "#00c2cb" }}>collection</span>
-          <span style={{ color: "#94a3b8" }}>.insert_many(</span>
-          <span style={{ color: "#f8fafc" }}>rows</span>
-          <span style={{ color: "#94a3b8" }}>)</span>
-        </>}
-        {lang === "java" && <>
-          <span style={{ color: "#00c2cb" }}>collection</span>
-          <span style={{ color: "#94a3b8" }}>.insertMany(</span>
-          <span style={{ color: "#f8fafc" }}>rows</span>
-          <span style={{ color: "#94a3b8" }}>)</span>
-        </>}
+      {/* Code block */}
+      <div style={{ backgroundColor: "var(--bg-card)" }}>
+        <pre
+          className="text-[11px] px-3 py-2.5 overflow-x-auto leading-relaxed"
+          style={{
+            fontFamily: "IBM Plex Mono, monospace",
+            color: "var(--text-secondary)",
+            whiteSpace: "pre",
+            margin: 0,
+          }}
+        >
+          {code.split("\n").map((line, i) => (
+            <span key={i}>
+              {line
+                .replace(/^(await )/, "⟨await⟩")
+                .split(/(⟨await⟩|"[^"]*"|\$[A-Z_]+|\b(?:collection|db)\b|\.insertMany\b|\.insert_many\b|-[XHd]|curl\b)/g)
+                .map((part, j) => {
+                  if (part === "⟨await⟩") return <span key={j} style={{ color: "var(--interactive)" }}>await </span>;
+                  if (part === "curl") return <span key={j} style={{ color: "var(--interactive)" }}>{part}</span>;
+                  if (part === "-X" || part === "-H" || part === "-d") return <span key={j} style={{ color: "var(--text-muted)" }}>{part}</span>;
+                  if (part.startsWith('"')) return <span key={j} style={{ color: "var(--step-respond)" }}>{part}</span>;
+                  if (part.startsWith("$")) return <span key={j} style={{ color: "var(--step-embed)" }}>{part}</span>;
+                  if (part === ".insertMany" || part === ".insert_many") return <span key={j} style={{ color: "var(--interactive)" }}>{part}</span>;
+                  if (part === "collection" || part === "db") return <span key={j} style={{ color: "var(--text-primary)" }}>{part}</span>;
+                  return <span key={j}>{part}</span>;
+                })}
+              {"\n"}
+            </span>
+          ))}
+        </pre>
       </div>
     </div>
   );
@@ -125,7 +196,8 @@ interface IngestPanelProps {
 }
 
 export function IngestPanel({ collections, astraToken, astraEndpoint, collapsed: collapsedProp, onCollapsedChange }: IngestPanelProps) {
-  const displayCollections = collections ?? [];
+  // Filter out internal dap_ collections
+  const displayCollections = (collections ?? []).filter((c) => !c.name.startsWith("dap_"));
   const isConnected = !!astraToken && !!astraEndpoint;
 
   const [collapsedInternal, setCollapsedInternal] = useState(false);
@@ -297,15 +369,15 @@ export function IngestPanel({ collections, astraToken, astraEndpoint, collapsed:
       animate={{ width: collapsed ? 40 : 320 }}
       transition={{ duration: 0.25, ease: "easeInOut" }}
       className="shrink-0 flex flex-col border-l overflow-hidden"
-      style={{ backgroundColor: "#0d1220", borderColor: "#1e2d4a" }}
+      style={{ backgroundColor: "var(--bg-panel)", borderColor: "var(--border-subtle)" }}
     >
       {/* Collapse toggle */}
-      <div className="shrink-0 border-b flex" style={{ borderColor: "#1e2d4a" }}>
+      <div className="shrink-0 border-b flex" style={{ borderColor: "var(--border-subtle)" }}>
         <motion.button
           onClick={() => setCollapsed(!collapsed)}
           className="flex-1 flex items-center justify-end gap-2 px-3 py-2.5 text-xs font-medium"
-          style={{ color: "#475569" }}
-          whileHover={{ backgroundColor: "rgba(30,45,74,0.6)", color: "#94a3b8" }}
+          style={{ color: "var(--text-muted)" }}
+          whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-secondary)" }}
           whileTap={{ scale: 0.97 }}
           title={collapsed ? "Expand ingest panel" : "Collapse ingest panel"}
         >
@@ -322,10 +394,10 @@ export function IngestPanel({ collections, astraToken, astraEndpoint, collapsed:
             className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
             style={{ background: "linear-gradient(135deg, rgba(0,194,203,0.2), rgba(108,99,255,0.2))", border: "1px solid rgba(0,194,203,0.3)" }}
           >
-            <Database size={11} style={{ color: "#00c2cb" }} />
+            <Database size={11} style={{ color: "var(--step-embed)" }} />
           </div>
-          <span className="text-xs font-semibold" style={{ color: "#f8fafc" }}>Ingest Data</span>
-          <span className="text-[10px] ml-auto" style={{ color: "#64748b" }}>Upload CSV</span>
+          <span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>Ingest Data</span>
+          <span className="text-[10px] ml-auto" style={{ color: "var(--text-muted)" }}>Upload CSV</span>
         </div>
 
         {/* Drop zone */}
@@ -338,46 +410,32 @@ export function IngestPanel({ collections, astraToken, astraEndpoint, collapsed:
               exit={{ opacity: 0 }}
               className="relative rounded-xl border-2 border-dashed cursor-pointer transition-all duration-200 flex flex-col items-center justify-center py-8 gap-3"
               style={{
-                borderColor: isDragOver ? "#00c2cb" : "#1e2d4a",
-                backgroundColor: isDragOver
-                  ? "rgba(0, 194, 203, 0.05)"
-                  : "transparent",
+                borderColor: isDragOver ? "var(--interactive)" : "var(--border-subtle)",
+                backgroundColor: isDragOver ? "var(--interactive-light)" : "transparent",
               }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setIsDragOver(true);
-              }}
+              onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
               onDragLeave={() => setIsDragOver(false)}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              whileHover={{
-                borderColor: "#00c2cb",
-                backgroundColor: "rgba(0, 194, 203, 0.04)",
-              }}
+              whileHover={{ borderColor: "var(--interactive)", backgroundColor: "var(--interactive-light)" }}
             >
               <motion.div
                 animate={isDragOver ? { scale: 1.1 } : { scale: 1 }}
                 transition={{ duration: 0.2 }}
               >
-                <UploadCloud
-                  size={28}
-                  style={{ color: isDragOver ? "#00c2cb" : "#64748b" }}
-                />
+                <UploadCloud size={28} style={{ color: isDragOver ? "var(--interactive)" : "var(--text-muted)" }} />
               </motion.div>
               <div className="text-center">
-                <p className="text-sm font-medium" style={{ color: "#94a3b8" }}>
+                <p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
                   Drop a CSV file here
                 </p>
-                <p className="text-[11px] mt-0.5" style={{ color: "#64748b" }}>
+                <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
                   or click to browse
                 </p>
               </div>
               <span
                 className="text-[10px] px-2 py-1 rounded"
-                style={{
-                  backgroundColor: "rgba(30, 45, 74, 0.6)",
-                  color: "#64748b",
-                }}
+                style={{ backgroundColor: "var(--bg-hover)", color: "var(--text-muted)" }}
               >
                 .csv files only
               </span>
@@ -396,35 +454,25 @@ export function IngestPanel({ collections, astraToken, astraEndpoint, collapsed:
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6 }}
               className="rounded-xl overflow-hidden"
-              style={{
-                backgroundColor: "#13192b",
-                border: "1px solid #1e2d4a",
-              }}
+              style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}
             >
               {/* File info */}
               <div className="px-3 py-2.5 flex items-center gap-2.5">
-                <FileSpreadsheet size={16} style={{ color: "#00c2cb" }} />
+                <FileSpreadsheet size={16} style={{ color: "var(--step-embed)" }} />
                 <div className="flex-1 min-w-0">
-                  <p
-                    className="text-xs font-medium truncate"
-                    style={{ color: "#f8fafc" }}
-                  >
+                  <p className="text-xs font-medium truncate" style={{ color: "var(--text-primary)" }}>
                     {selectedFile.name}
                   </p>
-                  <p className="text-[11px]" style={{ color: "#64748b" }}>
+                  <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
                     {selectedFile.rows.toLocaleString()} rows detected
                   </p>
                 </div>
                 <button
                   onClick={() => setSelectedFile(null)}
-                  className="text-[11px] px-2 py-0.5 rounded"
-                  style={{ color: "#64748b" }}
-                  onMouseEnter={(e) =>
-                    ((e.target as HTMLElement).style.color = "#f8fafc")
-                  }
-                  onMouseLeave={(e) =>
-                    ((e.target as HTMLElement).style.color = "#64748b")
-                  }
+                  className="text-[11px] px-2 py-0.5 rounded transition-colors"
+                  style={{ color: "var(--text-muted)" }}
+                  onMouseEnter={(e) => ((e.target as HTMLElement).style.color = "var(--text-primary)")}
+                  onMouseLeave={(e) => ((e.target as HTMLElement).style.color = "var(--text-muted)")}
                 >
                   ✕
                 </button>
@@ -432,18 +480,15 @@ export function IngestPanel({ collections, astraToken, astraEndpoint, collapsed:
 
               {/* Preview table */}
               {selectedFile.preview.length > 0 && (
-                <div
-                  className="overflow-x-auto"
-                  style={{ borderTop: "1px solid #1e2d4a" }}
-                >
+                <div className="overflow-x-auto" style={{ borderTop: "1px solid var(--border-subtle)" }}>
                   <table className="w-full text-[11px]">
                     <thead>
-                      <tr style={{ backgroundColor: "rgba(11, 15, 26, 0.4)" }}>
+                      <tr style={{ backgroundColor: "var(--bg-primary)" }}>
                         {Object.keys(selectedFile.preview[0]).slice(0, 4).map((key) => (
                           <th
                             key={key}
                             className="px-2 py-1.5 text-left font-medium uppercase tracking-wide"
-                            style={{ color: "#64748b" }}
+                            style={{ color: "var(--text-muted)" }}
                           >
                             {key}
                           </th>
@@ -452,17 +497,12 @@ export function IngestPanel({ collections, astraToken, astraEndpoint, collapsed:
                     </thead>
                     <tbody>
                       {selectedFile.preview.map((row, i) => (
-                        <tr
-                          key={i}
-                          style={{
-                            borderTop: "1px solid rgba(30, 45, 74, 0.5)",
-                          }}
-                        >
+                        <tr key={i} style={{ borderTop: "1px solid var(--border-subtle)" }}>
                           {Object.values(row).slice(0, 4).map((val, j) => (
                             <td
                               key={j}
                               className="px-2 py-1.5 truncate max-w-[80px]"
-                              style={{ color: "#94a3b8" }}
+                              style={{ color: "var(--text-secondary)" }}
                             >
                               {val}
                             </td>
@@ -477,31 +517,28 @@ export function IngestPanel({ collections, astraToken, astraEndpoint, collapsed:
           )}
         </AnimatePresence>
 
-        {/* code hint — shown when file is ready */}
-        {selectedFile && <IngestCodeHint />}
+        {/* Code panel — shown when file is ready */}
+        {selectedFile && <IngestCodePanel collectionName={effectiveTarget} />}
 
         {/* Collection selector */}
         <div className="relative">
-          <p
-            className="text-[10px] font-semibold uppercase tracking-widest mb-1.5"
-            style={{ color: "#64748b" }}
-          >
+          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--text-muted)" }}>
             Target Collection
             {!isConnected && (
-              <span className="ml-1.5 normal-case" style={{ color: "#475569" }}>(demo)</span>
+              <span className="ml-1.5 normal-case" style={{ color: "var(--text-muted)" }}>(demo)</span>
             )}
           </p>
           <button
             onClick={() => setShowCollDropdown(!showCollDropdown)}
             className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm"
             style={{
-              backgroundColor: "#13192b",
-              border: "1px solid #1e2d4a",
-              color: "#f8fafc",
+              backgroundColor: "var(--bg-input)",
+              border: "1px solid var(--border-subtle)",
+              color: "var(--text-primary)",
             }}
           >
             <span>{effectiveTarget}</span>
-            <ChevronDown size={13} style={{ color: "#64748b" }} />
+            <ChevronDown size={13} style={{ color: "var(--text-muted)" }} />
           </button>
 
           <AnimatePresence>
@@ -512,39 +549,19 @@ export function IngestPanel({ collections, astraToken, astraEndpoint, collapsed:
                 exit={{ opacity: 0, y: -4 }}
                 transition={{ duration: 0.15 }}
                 className="absolute top-full left-0 right-0 mt-1 rounded-lg overflow-hidden z-50 shadow-xl"
-                style={{
-                  backgroundColor: "#13192b",
-                  border: "1px solid #1e2d4a",
-                }}
+                style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}
               >
                 {displayCollections.map((col) => (
                   <button
                     key={col.name}
-                    onClick={() => {
-                      setTargetCollection(col.name);
-                      setShowCollDropdown(false);
-                    }}
-                    className="w-full px-3 py-2 text-left text-sm flex items-center justify-between"
+                    onClick={() => { setTargetCollection(col.name); setShowCollDropdown(false); }}
+                    className="w-full px-3 py-2 text-left text-sm flex items-center justify-between transition-colors"
                     style={{
-                      backgroundColor:
-                        col.name === effectiveTarget
-                          ? "rgba(255, 107, 53, 0.08)"
-                          : "transparent",
-                      color:
-                        col.name === effectiveTarget
-                          ? "#f8fafc"
-                          : "#94a3b8",
+                      backgroundColor: col.name === effectiveTarget ? "var(--interactive-light)" : "transparent",
+                      color: col.name === effectiveTarget ? "var(--text-primary)" : "var(--text-secondary)",
                     }}
-                    onMouseEnter={(e) =>
-                      ((e.currentTarget as HTMLElement).style.backgroundColor =
-                        "rgba(30, 45, 74, 0.6)")
-                    }
-                    onMouseLeave={(e) =>
-                      ((e.currentTarget as HTMLElement).style.backgroundColor =
-                        col.name === effectiveTarget
-                          ? "rgba(255, 107, 53, 0.08)"
-                          : "transparent")
-                    }
+                    onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = "var(--bg-hover)")}
+                    onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = col.name === effectiveTarget ? "var(--interactive-light)" : "transparent")}
                   >
                     <span>{col.name}</span>
                   </button>
@@ -554,22 +571,20 @@ export function IngestPanel({ collections, astraToken, astraEndpoint, collapsed:
           </AnimatePresence>
         </div>
 
-        {/* Vectorize info / embedding model indicator */}
+        {/* Vectorize / embedding indicator */}
         {isConnected && activeCollection && (
           <div
             className="px-3 py-2.5 rounded-lg flex items-start gap-2"
             style={{
-              backgroundColor: useVectorize
-                ? "rgba(108,99,255,0.08)"
-                : "rgba(0,194,203,0.06)",
+              backgroundColor: useVectorize ? "rgba(108,99,255,0.08)" : "rgba(0,194,203,0.06)",
               border: `1px solid ${useVectorize ? "rgba(108,99,255,0.25)" : "rgba(0,194,203,0.15)"}`,
             }}
           >
             <div className="flex flex-col gap-0.5 min-w-0">
-              <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: useVectorize ? "#6c63ff" : "#00c2cb" }}>
+              <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: useVectorize ? "var(--step-analyze)" : "var(--step-embed)" }}>
                 {useVectorize ? "Server-side Vectorize" : "Client-side Embedding"}
               </span>
-              <span className="text-[11px]" style={{ color: "#94a3b8" }}>
+              <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
                 {useVectorize
                   ? `${activeCollection.vectorizeService!.provider} · ${activeCollection.vectorizeService!.modelName}`
                   : "IBM Granite · granite-embedding-125m-english · 768d"}
@@ -584,16 +599,10 @@ export function IngestPanel({ collections, astraToken, astraEndpoint, collapsed:
           disabled={!selectedFile || ingesting}
           className="w-full py-2.5 rounded-lg text-sm font-semibold transition-all"
           style={{
-            background:
-              selectedFile && !ingesting
-                ? "linear-gradient(135deg, #ff6b35, #ff8c5a)"
-                : "#1e2d4a",
-            color: selectedFile && !ingesting ? "#f8fafc" : "#64748b",
+            backgroundColor: selectedFile && !ingesting ? "var(--interactive)" : "var(--bg-hover)",
+            color: selectedFile && !ingesting ? "#fff" : "var(--text-muted)",
             cursor: selectedFile && !ingesting ? "pointer" : "not-allowed",
-            boxShadow:
-              selectedFile && !ingesting
-                ? "0 2px 16px rgba(255, 107, 53, 0.25)"
-                : "none",
+            boxShadow: selectedFile && !ingesting ? "0 2px 12px var(--interactive-border)" : "none",
           }}
           whileHover={selectedFile && !ingesting ? { scale: 1.01 } : {}}
           whileTap={selectedFile && !ingesting ? { scale: 0.98 } : {}}
@@ -623,30 +632,24 @@ export function IngestPanel({ collections, astraToken, astraEndpoint, collapsed:
             >
               <div
                 className="rounded-xl p-3"
-                style={{
-                  backgroundColor: "#13192b",
-                  border: "1px solid #1e2d4a",
-                }}
+                style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium" style={{ color: "#f8fafc" }}>
+                  <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
                     Vectorizing rows...
                   </span>
-                  <span className="text-xs" style={{ color: "#00c2cb" }}>
+                  <span className="text-xs" style={{ color: "var(--step-embed)" }}>
                     {progressRows.toLocaleString()} / {totalRows.toLocaleString()}
                   </span>
                 </div>
-                <div
-                  className="h-1.5 rounded-full overflow-hidden"
-                  style={{ backgroundColor: "#1e2d4a" }}
-                >
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "var(--border-subtle)" }}>
                   <motion.div
                     className="h-full rounded-full progress-shimmer"
                     animate={{ width: `${progress}%` }}
                     transition={{ duration: 0.1 }}
                   />
                 </div>
-                <p className="text-[11px] mt-1.5" style={{ color: "#64748b" }}>
+                <p className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>
                   {useVectorize
                     ? `${activeCollection?.vectorizeService?.provider ?? "Vectorize"} · ${activeCollection?.vectorizeService?.modelName ?? "server-side"}`
                     : "IBM Granite · granite-embedding-125m-english · 768d"}

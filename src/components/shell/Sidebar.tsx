@@ -9,7 +9,6 @@ import {
   Plus,
   ChevronDown,
   MessageSquare,
-  Table2,
   Pencil,
   Trash2,
   Check,
@@ -29,7 +28,6 @@ interface SidebarProps {
   keyspaces?: string[];
   selectedKeyspace?: string;
   onKeyspaceChange?: (keyspace: string) => void;
-  // Conversations
   conversations: Conversation[];
   activeConversationId: string;
   onConversationChange: (id: string) => void;
@@ -59,7 +57,6 @@ export function Sidebar({
   onDeleteConversation,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const [showKsDropdown, setShowKsDropdown] = useState(false);
   const [showInternal, setShowInternal] = useState(false);
   const sortedCollections = [
     ...collections.filter((c) => !c.name.startsWith("dap_")),
@@ -73,15 +70,15 @@ export function Sidebar({
       animate={{ width: collapsed ? 48 : 256 }}
       transition={{ duration: 0.25, ease: "easeInOut" }}
       className="relative flex flex-col shrink-0 border-r overflow-hidden"
-      style={{ backgroundColor: "#0d1220", borderColor: "#1e2d4a" }}
+      style={{ backgroundColor: "var(--bg-panel)", borderColor: "var(--border-subtle)" }}
     >
       {/* Collapse toggle */}
-      <div className="shrink-0 border-b flex" style={{ borderColor: "#1e2d4a" }}>
+      <div className="shrink-0 border-b flex" style={{ borderColor: "var(--border-subtle)" }}>
         <motion.button
           onClick={() => setCollapsed(!collapsed)}
           className="flex-1 flex items-center gap-2 px-3 py-2.5 text-xs font-medium"
-          style={{ color: "#475569" }}
-          whileHover={{ backgroundColor: "rgba(30,45,74,0.6)", color: "#94a3b8" }}
+          style={{ color: "var(--text-muted)" }}
+          whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-secondary)" }}
           whileTap={{ scale: 0.97 }}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
@@ -93,52 +90,19 @@ export function Sidebar({
       {!collapsed && (
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
-          {/* Mode toggle: Chat / Browse */}
-          <div className="px-3 pt-3 pb-2 shrink-0">
-            <div
-              className="flex rounded-lg p-0.5 gap-0.5"
-              style={{ backgroundColor: "#13192b", border: "1px solid #1e2d4a" }}
-            >
-              <motion.button
-                onClick={onSelectChat}
-                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium"
-                style={{
-                  backgroundColor: viewMode === "chat" ? "#1e2d4a" : "transparent",
-                  color: viewMode === "chat" ? "#f8fafc" : "#64748b",
-                }}
-                whileTap={{ scale: 0.97 }}
-              >
-                <MessageSquare size={11} />
-                Chat
-              </motion.button>
-              <motion.button
-                onClick={() => onSelectCollection(activeCollection)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium"
-                style={{
-                  backgroundColor: viewMode === "browse" ? "rgba(255,107,53,0.15)" : "transparent",
-                  color: viewMode === "browse" ? "#ff6b35" : "#64748b",
-                }}
-                whileTap={{ scale: 0.97 }}
-              >
-                <Table2 size={11} />
-                Browse
-              </motion.button>
-            </div>
-          </div>
-
           {/* Scrollable body */}
           <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
 
             {/* ── Conversations ── */}
             <div className="px-3 pt-1 pb-2">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "#64748b" }}>
+                <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
                   Conversations
                 </p>
                 <div className="flex items-center gap-1.5">
                   <span
                     className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
-                    style={{ backgroundColor: "rgba(0,194,203,0.12)", color: "#00c2cb" }}
+                    style={{ backgroundColor: "var(--interactive-light)", color: "var(--interactive)" }}
                   >
                     {conversations.length}
                   </span>
@@ -146,8 +110,8 @@ export function Sidebar({
                     onClick={() => void onNewConversation()}
                     disabled={creatingConversation}
                     className="w-5 h-5 rounded flex items-center justify-center"
-                    style={{ color: creatingConversation ? "#00c2cb" : "#475569", cursor: creatingConversation ? "default" : "pointer" }}
-                    whileHover={creatingConversation ? {} : { backgroundColor: "rgba(0,194,203,0.12)", color: "#00c2cb" }}
+                    style={{ color: creatingConversation ? "var(--interactive)" : "var(--text-muted)", cursor: creatingConversation ? "default" : "pointer" }}
+                    whileHover={creatingConversation ? {} : { backgroundColor: "var(--interactive-light)", color: "var(--interactive)" }}
                     whileTap={creatingConversation ? {} : { scale: 0.9 }}
                     title="New conversation"
                   >
@@ -173,74 +137,18 @@ export function Sidebar({
             </div>
 
             {/* Divider */}
-            <div className="mx-3 my-1 h-px shrink-0" style={{ backgroundColor: "#1e2d4a" }} />
-
-            {/* ── Keyspace ── */}
-            <div className="px-3 pt-1 pb-2 relative shrink-0">
-              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "#64748b" }}>
-                Keyspace
-              </p>
-              <button
-                onClick={() => keyspaces.length > 1 && setShowKsDropdown(!showKsDropdown)}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium"
-                style={{
-                  backgroundColor: "#13192b",
-                  border: "1px solid #1e2d4a",
-                  color: "#f8fafc",
-                  cursor: keyspaces.length > 1 ? "pointer" : "default",
-                }}
-              >
-                <div className="flex items-center gap-2">
-                  <Database size={13} style={{ color: "#00c2cb" }} />
-                  <span className="truncate">{selectedKeyspace}</span>
-                </div>
-                {keyspaces.length > 1 && <ChevronDown size={13} style={{ color: "#64748b" }} />}
-              </button>
-
-              <AnimatePresence>
-                {showKsDropdown && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.15 }}
-                    className="absolute top-full left-3 right-3 mt-1 rounded-lg overflow-hidden z-50 shadow-xl"
-                    style={{ backgroundColor: "#13192b", border: "1px solid #1e2d4a" }}
-                  >
-                    {keyspaces.map((ks) => (
-                      <button
-                        key={ks}
-                        onClick={() => { setShowKsDropdown(false); onKeyspaceChange?.(ks); }}
-                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2"
-                        style={{
-                          backgroundColor: ks === selectedKeyspace ? "rgba(0,194,203,0.08)" : "transparent",
-                          color: ks === selectedKeyspace ? "#00c2cb" : "#94a3b8",
-                        }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(30,45,74,0.6)"; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = ks === selectedKeyspace ? "rgba(0,194,203,0.08)" : "transparent"; }}
-                      >
-                        <Database size={11} style={{ color: ks === selectedKeyspace ? "#00c2cb" : "#64748b" }} />
-                        {ks}
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* Divider */}
-            <div className="mx-3 my-1 h-px shrink-0" style={{ backgroundColor: "#1e2d4a" }} />
+            <div className="mx-3 my-1 h-px shrink-0" style={{ backgroundColor: "var(--border-subtle)" }} />
 
             {/* ── Collections ── */}
             <div className="px-3 pt-1 pb-2">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "#64748b" }}>
+                <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
                   Collections
                 </p>
                 <div className="flex items-center gap-1.5">
                   <span
                     className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
-                    style={{ backgroundColor: "rgba(108,99,255,0.15)", color: "#6c63ff" }}
+                    style={{ backgroundColor: "var(--bg-hover)", color: "var(--text-secondary)" }}
                   >
                     {visibleCollections.length}
                   </span>
@@ -248,9 +156,9 @@ export function Sidebar({
                     onClick={() => setShowInternal((v) => !v)}
                     className="text-[9px] px-1.5 py-0.5 rounded"
                     style={{
-                      color: showInternal ? "#6c63ff" : "#475569",
-                      backgroundColor: showInternal ? "rgba(108,99,255,0.12)" : "transparent",
-                      border: `1px solid ${showInternal ? "rgba(108,99,255,0.3)" : "transparent"}`,
+                      color: showInternal ? "var(--interactive)" : "var(--text-muted)",
+                      backgroundColor: showInternal ? "var(--interactive-light)" : "transparent",
+                      border: `1px solid ${showInternal ? "var(--interactive-border)" : "transparent"}`,
                     }}
                     title={showInternal ? "Hide internal collections" : "Show internal collections"}
                   >
@@ -275,12 +183,12 @@ export function Sidebar({
 
           {/* New Collection — pinned at bottom */}
           <div className="px-3 pb-3 pt-2 shrink-0">
-            <div className="h-px mb-3" style={{ backgroundColor: "#1e2d4a" }} />
+            <div className="h-px mb-3" style={{ backgroundColor: "var(--border-subtle)" }} />
             <motion.button
               onClick={onNewCollection}
               className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium"
-              style={{ color: "#64748b", border: "1px dashed #1e2d4a" }}
-              whileHover={{ backgroundColor: "rgba(255,107,53,0.05)", borderColor: "rgba(255,107,53,0.4)", color: "#ff6b35" }}
+              style={{ color: "var(--text-muted)", border: "1px dashed var(--border-subtle)" }}
+              whileHover={{ backgroundColor: "var(--interactive-light)", borderColor: "var(--interactive-border)", color: "var(--interactive)" }}
               whileTap={{ scale: 0.98 }}
             >
               <Plus size={14} />
@@ -299,28 +207,28 @@ export function Sidebar({
               onClick={() => void onConversationChange(conv.id)}
               className="w-8 h-8 rounded-lg flex items-center justify-center"
               style={{
-                backgroundColor: conv.id === activeConversationId ? "rgba(0,194,203,0.15)" : "transparent",
-                color: conv.id === activeConversationId ? "#00c2cb" : "#64748b",
-                borderLeft: conv.id === activeConversationId ? "2px solid #00c2cb" : "2px solid transparent",
+                backgroundColor: conv.id === activeConversationId ? "var(--interactive-light)" : "transparent",
+                color: conv.id === activeConversationId ? "var(--interactive)" : "var(--text-muted)",
+                borderLeft: conv.id === activeConversationId ? "2px solid var(--interactive)" : "2px solid transparent",
               }}
-              whileHover={{ backgroundColor: "rgba(0,194,203,0.1)" }}
+              whileHover={{ backgroundColor: "var(--bg-hover)" }}
               title={conv.name}
             >
               <MessageSquare size={13} />
             </motion.button>
           ))}
-          <div className="w-4 h-px my-1" style={{ backgroundColor: "#1e2d4a" }} />
+          <div className="w-4 h-px my-1" style={{ backgroundColor: "var(--border-subtle)" }} />
           {collections.map((col) => (
             <motion.button
               key={col.name}
               onClick={() => onSelectCollection(col.name)}
               className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold uppercase"
               style={{
-                backgroundColor: activeCollection === col.name ? "rgba(255,107,53,0.15)" : "transparent",
-                color: activeCollection === col.name ? "#ff6b35" : "#64748b",
-                borderLeft: activeCollection === col.name ? "2px solid #ff6b35" : "2px solid transparent",
+                backgroundColor: activeCollection === col.name ? "var(--interactive-light)" : "transparent",
+                color: activeCollection === col.name ? "var(--interactive)" : "var(--text-muted)",
+                borderLeft: activeCollection === col.name ? "2px solid var(--interactive)" : "2px solid transparent",
               }}
-              whileHover={{ backgroundColor: "rgba(255,107,53,0.1)" }}
+              whileHover={{ backgroundColor: "var(--bg-hover)" }}
               title={col.name}
             >
               {col.name[0].toUpperCase()}
@@ -369,8 +277,8 @@ function ConversationItem({
     <div
       className="relative rounded-lg"
       style={{
-        backgroundColor: isActive ? "rgba(0,194,203,0.06)" : "transparent",
-        borderLeft: `2px solid ${isActive ? "#00c2cb" : "transparent"}`,
+        backgroundColor: isActive ? "var(--interactive-light)" : "transparent",
+        borderLeft: `2px solid ${isActive ? "var(--interactive)" : "transparent"}`,
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -386,12 +294,12 @@ function ConversationItem({
               if (e.key === "Escape") cancelRename();
             }}
             className="flex-1 min-w-0 text-xs bg-transparent outline-none"
-            style={{ color: "#f8fafc", borderBottom: "1px solid #00c2cb" }}
+            style={{ color: "var(--text-primary)", borderBottom: "1px solid var(--interactive)" }}
           />
-          <button onClick={commitRename} className="p-0.5 rounded" style={{ color: "#4ade80" }}>
+          <button onClick={commitRename} className="p-0.5 rounded" style={{ color: "#22c55e" }}>
             <Check size={11} />
           </button>
-          <button onClick={cancelRename} className="p-0.5 rounded" style={{ color: "#64748b" }}>
+          <button onClick={cancelRename} className="p-0.5 rounded" style={{ color: "var(--text-muted)" }}>
             <X size={11} />
           </button>
         </div>
@@ -405,11 +313,11 @@ function ConversationItem({
             onKeyDown={(e) => { if (e.key === "Enter") onClick(); }}
             className="flex flex-col min-w-0 flex-1 cursor-pointer"
           >
-            <span className="text-xs font-medium truncate" style={{ color: isActive ? "#f8fafc" : "#94a3b8" }}>
+            <span className="text-xs font-medium truncate" style={{ color: isActive ? "var(--text-primary)" : "var(--text-secondary)" }}>
               {conversation.name}
             </span>
             {count > 0 && (
-              <span className="text-[10px]" style={{ color: "#475569" }}>
+              <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
                 {count} {count === 1 ? "message" : "messages"}
               </span>
             )}
@@ -422,9 +330,9 @@ function ConversationItem({
             <button
               onClick={() => { setEditing(true); setEditValue(conversation.name); }}
               className="p-1 rounded"
-              style={{ color: "#475569" }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#00c2cb"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+              style={{ color: "var(--text-muted)" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--interactive)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
               title="Rename"
             >
               <Pencil size={11} />
@@ -432,9 +340,9 @@ function ConversationItem({
             <button
               onClick={onDelete}
               className="p-1 rounded"
-              style={{ color: "#475569" }}
+              style={{ color: "var(--text-muted)" }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#ef4444"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
               title="Delete"
             >
               <Trash2 size={11} />
@@ -465,15 +373,15 @@ function CollectionItem({
     <div
       className="relative rounded-lg"
       style={{
-        backgroundColor: isActive ? "rgba(255,107,53,0.08)" : "transparent",
-        borderLeft: `2px solid ${isActive ? "#ff6b35" : "transparent"}`,
+        backgroundColor: isActive ? "var(--interactive-light)" : "transparent",
+        borderLeft: `2px solid ${isActive ? "var(--interactive)" : "transparent"}`,
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       <div
         className="flex items-center px-2.5 py-2 rounded-lg transition-colors"
-        style={{ backgroundColor: hovered && !isActive ? "rgba(30,45,74,0.6)" : "transparent" }}
+        style={{ backgroundColor: hovered && !isActive ? "var(--bg-hover)" : "transparent" }}
       >
         <div
           role="button"
@@ -482,10 +390,10 @@ function CollectionItem({
           onKeyDown={(e) => { if (e.key === "Enter") onClick(); }}
           className="flex flex-col min-w-0 flex-1 cursor-pointer"
         >
-          <span className="text-sm font-medium truncate" style={{ color: isActive ? "#f8fafc" : "#94a3b8" }}>
+          <span className="text-sm font-medium truncate" style={{ color: isActive ? "var(--text-primary)" : "var(--text-secondary)" }}>
             {collection.name}
           </span>
-          <span className="text-[11px] mt-0.5" style={{ color: "#64748b" }}>
+          <span className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
             {collection.count.toLocaleString()} docs
           </span>
         </div>
@@ -497,9 +405,9 @@ function CollectionItem({
           <button
             onClick={onDelete}
             className="p-1 rounded"
-            style={{ color: "#475569" }}
+            style={{ color: "var(--text-muted)" }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#ef4444"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
             title="Delete collection"
           >
             <Trash2 size={11} />

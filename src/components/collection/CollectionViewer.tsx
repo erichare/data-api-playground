@@ -12,9 +12,12 @@ import {
   MessageSquare,
   RefreshCw,
   Table2,
+  Code2,
   Loader2,
   Trash2,
   Download,
+  Copy,
+  Check,
 } from "lucide-react";
 import { PAGE_SIZE } from "@/lib/mock/data";
 import type { Collection, CollectionDocument } from "@/lib/types";
@@ -54,7 +57,7 @@ function CellValue({ col, value }: { col: string; value: unknown }) {
         style={{
           backgroundColor: "rgba(0, 194, 203, 0.1)",
           border: "1px solid rgba(0, 194, 203, 0.2)",
-          color: "#00c2cb",
+          color: "var(--step-embed)",
         }}
       >
         [{value.length} dims]
@@ -66,8 +69,8 @@ function CellValue({ col, value }: { col: string; value: unknown }) {
       <span
         className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium"
         style={{
-          backgroundColor: value ? "rgba(16, 185, 129, 0.12)" : "rgba(100, 116, 139, 0.12)",
-          color: value ? "#10b981" : "#64748b",
+          backgroundColor: value ? "rgba(34, 197, 94, 0.12)" : "var(--bg-hover)",
+          color: value ? "var(--step-respond)" : "var(--text-muted)",
         }}
       >
         {value ? "true" : "false"}
@@ -75,102 +78,185 @@ function CellValue({ col, value }: { col: string; value: unknown }) {
     );
   }
   if (value === null || value === undefined) {
-    return <span style={{ color: "#475569" }}>null</span>;
+    return <span style={{ color: "var(--text-muted)" }}>null</span>;
   }
   const str = String(value);
   return (
     <span
       className="truncate max-w-[180px] inline-block align-bottom"
       title={str}
-      style={{ color: "#e2e8f0" }}
+      style={{ color: "var(--text-primary)" }}
     >
       {str}
     </span>
   );
 }
 
-type CodeLang = "ts" | "python" | "java";
+type BrowseCodeLang = "ts" | "python" | "java" | "curl";
 
-function BrowseCodeHint({ collectionName, sort }: {
+const BROWSE_LANG_LABELS: Record<BrowseCodeLang, string> = {
+  ts: "TypeScript",
+  python: "Python",
+  java: "Java",
+  curl: "cURL",
+};
+const BROWSE_LANG_SDK: Record<BrowseCodeLang, string> = {
+  ts: "astra-db-ts",
+  python: "astrapy",
+  java: "astra-db-java",
+  curl: "Data API",
+};
+
+function getBrowseCode(lang: BrowseCodeLang, collectionName: string, sort: { col: string; dir: 1 | -1 } | null): string {
+  switch (lang) {
+    case "ts":
+      return sort
+        ? `await db.collection("${collectionName}")\n  .find({}, { sort: { "${sort.col}": ${sort.dir} } })\n  .toArray()`
+        : `await db.collection("${collectionName}")\n  .find({})\n  .toArray()`;
+    case "python":
+      return sort
+        ? `from astrapy.constants import SortDocuments\ncollection.find(\n    {},\n    sort={"${sort.col}": SortDocuments.${sort.dir === 1 ? "ASCENDING" : "DESCENDING"}}\n)`
+        : `collection.find({})`;
+    case "java":
+      return sort
+        ? `collection.find(\n    Filter.empty(),\n    new FindOptions()\n        .sort(Sorts.${sort.dir === 1 ? "ascending" : "descending"}("${sort.col}"))\n)`
+        : `collection.find(Filter.empty())`;
+    case "curl": {
+      const body = sort
+        ? JSON.stringify({ find: { filter: {}, sort: { [sort.col]: sort.dir } } }, null, 2)
+        : JSON.stringify({ find: { filter: {} } }, null, 2);
+      return `curl -X POST "$ASTRA_DB_API_ENDPOINT/api/json/v1/$KEYSPACE/${collectionName}" \\\n  -H "Token: $ASTRA_DB_APPLICATION_TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '${body}'`;
+    }
+  }
+}
+
+function BrowseCopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+  return (
+    <button
+      onClick={() => void handleCopy()}
+      className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors"
+      style={{
+        color: copied ? "var(--step-respond)" : "var(--text-muted)",
+        backgroundColor: copied ? "rgba(34,197,94,0.08)" : "transparent",
+        border: `1px solid ${copied ? "rgba(34,197,94,0.2)" : "transparent"}`,
+      }}
+      title="Copy to clipboard"
+    >
+      {copied ? <Check size={10} /> : <Copy size={10} />}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+function BrowseCodePanel({ collectionName, sort }: {
   collectionName: string;
   sort: { col: string; dir: 1 | -1 } | null;
 }) {
-  const [lang, setLang] = useState<CodeLang>("ts");
+  const [lang, setLang] = useState<BrowseCodeLang>("ts");
+  const code = getBrowseCode(lang, collectionName, sort);
 
   return (
     <div
-      className="hidden lg:flex flex-col rounded-lg overflow-hidden text-[11px]"
-      style={{ backgroundColor: "rgba(11,15,26,0.8)", border: "1px solid #1e2d4a", fontFamily: "JetBrains Mono, monospace" }}
+      className="rounded-xl overflow-hidden"
+      style={{ border: "1px solid var(--border-subtle)" }}
     >
-      {/* Language toggle */}
-      <div className="flex items-center justify-between px-2 pt-1 pb-0.5">
-        <span style={{ color: "#475569" }}>{{ ts: "astra-db-ts", python: "astrapy", java: "astra-db-java" }[lang]}</span>
+      {/* Language selector bar */}
+      <div
+        className="flex items-center justify-between px-3 py-2 border-b"
+        style={{ backgroundColor: "var(--bg-panel)", borderColor: "var(--border-subtle)" }}
+      >
         <div className="flex gap-0.5">
-          {(["ts", "python", "java"] as const).map((l) => (
-            <button key={l} onClick={() => setLang(l)}
-              className="px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide"
+          {(Object.keys(BROWSE_LANG_LABELS) as BrowseCodeLang[]).map((l) => (
+            <button
+              key={l}
+              onClick={() => setLang(l)}
+              className="px-2.5 py-1 rounded text-[11px] font-medium transition-colors"
               style={{
-                backgroundColor: lang === l ? "rgba(0,194,203,0.15)" : "transparent",
-                color: lang === l ? "#00c2cb" : "#475569",
-                border: lang === l ? "1px solid rgba(0,194,203,0.25)" : "1px solid transparent",
+                backgroundColor: lang === l ? "var(--interactive-light)" : "transparent",
+                color: lang === l ? "var(--interactive)" : "var(--text-muted)",
+                border: lang === l ? "1px solid var(--interactive-border)" : "1px solid transparent",
               }}
             >
-              {{ ts: "TS", python: "Py", java: "Java" }[l]}
+              {BROWSE_LANG_LABELS[l]}
             </button>
           ))}
         </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px]" style={{ color: "var(--text-muted)", fontFamily: "IBM Plex Mono, monospace" }}>
+            {BROWSE_LANG_SDK[lang]}
+          </span>
+          <BrowseCopyButton text={code} />
+        </div>
       </div>
-      {/* Code */}
-      <div className="flex items-center gap-0.5 px-2 pb-1.5 overflow-x-auto" style={{ whiteSpace: "nowrap" }}>
-        {lang === "ts" && <>
-          <span style={{ color: "#6c63ff" }}>db</span>
-          <span style={{ color: "#94a3b8" }}>.</span>
-          <span style={{ color: "#00c2cb" }}>collection</span>
-          <span style={{ color: "#94a3b8" }}>(</span>
-          <span style={{ color: "#ff6b35" }}>&quot;{collectionName}&quot;</span>
-          <span style={{ color: "#94a3b8" }}>).</span>
-          <span style={{ color: "#00c2cb" }}>find</span>
-          <span style={{ color: "#94a3b8" }}>(&#123;&#125;</span>
-          {sort && <>
-            <span style={{ color: "#94a3b8" }}>, &#123; sort: &#123; </span>
-            <span style={{ color: "#ff6b35" }}>&quot;{sort.col}&quot;</span>
-            <span style={{ color: "#94a3b8" }}>: </span>
-            <span style={{ color: "#818cf8" }}>{sort.dir}</span>
-            <span style={{ color: "#94a3b8" }}> &#125; &#125;</span>
-          </>}
-          <span style={{ color: "#94a3b8" }}>)</span>
-        </>}
-        {lang === "python" && <>
-          <span style={{ color: "#6c63ff" }}>collection</span>
-          <span style={{ color: "#94a3b8" }}>.</span>
-          <span style={{ color: "#00c2cb" }}>find</span>
-          <span style={{ color: "#94a3b8" }}>(&#123;&#125;</span>
-          {sort && <>
-            <span style={{ color: "#94a3b8" }}>, sort=&#123;</span>
-            <span style={{ color: "#ff6b35" }}>&quot;{sort.col}&quot;</span>
-            <span style={{ color: "#94a3b8" }}>: SortDocuments.</span>
-            <span style={{ color: "#818cf8" }}>{sort.dir === 1 ? "ASCENDING" : "DESCENDING"}</span>
-            <span style={{ color: "#94a3b8" }}>&#125;</span>
-          </>}
-          <span style={{ color: "#94a3b8" }}>)</span>
-        </>}
-        {lang === "java" && <>
-          <span style={{ color: "#6c63ff" }}>collection</span>
-          <span style={{ color: "#94a3b8" }}>.</span>
-          <span style={{ color: "#00c2cb" }}>find</span>
-          <span style={{ color: "#94a3b8" }}>(Filter.empty()</span>
-          {sort && <>
-            <span style={{ color: "#94a3b8" }}>, new FindOptions().sort(Sorts.</span>
-            <span style={{ color: "#ff6b35" }}>{sort.dir === 1 ? "ascending" : "descending"}</span>
-            <span style={{ color: "#94a3b8" }}>(</span>
-            <span style={{ color: "#818cf8" }}>&quot;{sort.col}&quot;</span>
-            <span style={{ color: "#94a3b8" }}>))</span>
-          </>}
-          <span style={{ color: "#94a3b8" }}>)</span>
-        </>}
+      {/* Code block */}
+      <div style={{ backgroundColor: "var(--bg-card)" }}>
+        <pre
+          className="text-[12px] px-4 py-3 overflow-x-auto leading-relaxed"
+          style={{
+            fontFamily: "IBM Plex Mono, monospace",
+            color: "var(--text-secondary)",
+            whiteSpace: "pre",
+            margin: 0,
+          }}
+        >
+          {renderBrowseCode(lang, code)}
+        </pre>
       </div>
     </div>
   );
+}
+
+function renderBrowseCode(lang: BrowseCodeLang, code: string) {
+  return code.split("\n").map((line, i) => (
+    <span key={i}>
+      {lang === "ts" && line
+        .replace(/^(await )/, "⟨await⟩")
+        .split(/(⟨await⟩|"[^"]*"|\$[a-zA-Z]+|\.find\b|\b(?:db|collection)\b)/g)
+        .map((part, j) => {
+          if (part === "⟨await⟩") return <span key={j} style={{ color: "var(--interactive)" }}>await </span>;
+          if (part.startsWith('"')) return <span key={j} style={{ color: "var(--step-respond)" }}>{part}</span>;
+          if (part.startsWith("$")) return <span key={j} style={{ color: "var(--step-embed)" }}>{part}</span>;
+          if (part === ".find") return <span key={j} style={{ color: "var(--interactive)" }}>{part}</span>;
+          if (part === "db" || part === "collection") return <span key={j} style={{ color: "var(--text-primary)" }}>{part}</span>;
+          return <span key={j}>{part}</span>;
+        })}
+      {lang === "python" && line
+        .split(/(from\s+\w+|import\s+\w+|"[^"]*"|\bSortDocuments\b|\bcollection\b)/g)
+        .map((part, j) => {
+          if (part.startsWith("from ") || part.startsWith("import ")) return <span key={j} style={{ color: "var(--interactive)" }}>{part}</span>;
+          if (part.startsWith('"')) return <span key={j} style={{ color: "var(--step-respond)" }}>{part}</span>;
+          if (part === "SortDocuments") return <span key={j} style={{ color: "var(--step-embed)" }}>{part}</span>;
+          if (part === "collection") return <span key={j} style={{ color: "var(--text-primary)" }}>{part}</span>;
+          return <span key={j}>{part}</span>;
+        })}
+      {lang === "java" && line
+        .split(/(new\s+\w+|Filter\.empty\(\)|Sorts\.\w+|"[^"]*"|\bcollection\b)/g)
+        .map((part, j) => {
+          if (part.startsWith("new ")) return <span key={j} style={{ color: "var(--interactive)" }}>{part}</span>;
+          if (part === "Filter.empty()") return <span key={j} style={{ color: "var(--text-muted)" }}>{part}</span>;
+          if (part.startsWith("Sorts.")) return <span key={j} style={{ color: "var(--step-embed)" }}>{part}</span>;
+          if (part.startsWith('"')) return <span key={j} style={{ color: "var(--step-respond)" }}>{part}</span>;
+          if (part === "collection") return <span key={j} style={{ color: "var(--text-primary)" }}>{part}</span>;
+          return <span key={j}>{part}</span>;
+        })}
+      {lang === "curl" && line
+        .split(/(curl|-[XHd]|"[^"]*"|\$[A-Z_]+)/g)
+        .map((part, j) => {
+          if (part === "curl") return <span key={j} style={{ color: "var(--interactive)" }}>{part}</span>;
+          if (part === "-X" || part === "-H" || part === "-d") return <span key={j} style={{ color: "var(--text-muted)" }}>{part}</span>;
+          if (part.startsWith('"')) return <span key={j} style={{ color: "var(--step-respond)" }}>{part}</span>;
+          if (part.startsWith("$")) return <span key={j} style={{ color: "var(--step-embed)" }}>{part}</span>;
+          return <span key={j}>{part}</span>;
+        })}
+      {"\n"}
+    </span>
+  ));
 }
 
 function ExpandedRow({
@@ -192,17 +278,17 @@ function ExpandedRow({
         >
           <div
             className="px-6 py-4 mx-4 my-2 rounded-lg"
-            style={{ backgroundColor: "rgba(11, 15, 26, 0.7)", border: "1px solid #1e2d4a" }}
+            style={{ backgroundColor: "var(--bg-primary)", border: "1px solid var(--border-subtle)" }}
           >
             <p
               className="text-[10px] font-semibold uppercase tracking-widest mb-2"
-              style={{ color: "#64748b" }}
+              style={{ color: "var(--text-muted)" }}
             >
               Full Document
             </p>
             <pre
               className="text-[12px] leading-relaxed overflow-x-auto"
-              style={{ color: "#7dd3fc", fontFamily: "JetBrains Mono, monospace" }}
+              style={{ color: "var(--interactive)", fontFamily: "IBM Plex Mono, monospace" }}
             >
               {JSON.stringify(
                 {
@@ -223,6 +309,7 @@ function ExpandedRow({
 }
 
 export function CollectionViewer({ collection, onSwitchToChat, astraToken, astraEndpoint, onCountChange, onOpenIngest }: CollectionViewerProps) {
+  const [activeTab, setActiveTab] = useState<"output" | "code">("output");
   const [page, setPage] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -378,6 +465,7 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
       setDeleting(false);
     }
   };
+
   const handleExport = () => {
     if (displayDocs.length === 0) return;
     const exportCols = columns.filter((c) => c !== "$vector");
@@ -419,12 +507,12 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
       className="flex-1 flex flex-col min-h-0 overflow-hidden"
-      style={{ backgroundColor: "#0b0f1a" }}
+      style={{ backgroundColor: "var(--bg-primary)" }}
     >
       {/* Header */}
       <div
         className="px-6 py-4 border-b shrink-0 flex items-center justify-between"
-        style={{ borderColor: "#1e2d4a", backgroundColor: "#0d1220" }}
+        style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-panel)" }}
       >
         <div className="flex items-center gap-3">
           <div
@@ -434,13 +522,13 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
               border: "1px solid rgba(255, 107, 53, 0.3)",
             }}
           >
-            <Table2 size={15} style={{ color: "#ff6b35" }} />
+            <Table2 size={15} style={{ color: "var(--step-search)" }} />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h2
                 className="text-base font-semibold"
-                style={{ color: "#f8fafc", fontFamily: "JetBrains Mono, monospace" }}
+                style={{ color: "var(--text-primary)", fontFamily: "IBM Plex Mono, monospace" }}
               >
                 {collection.name}
               </h2>
@@ -450,28 +538,26 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
                   style={{
                     backgroundColor: "rgba(0, 194, 203, 0.1)",
                     border: "1px solid rgba(0, 194, 203, 0.2)",
-                    color: "#00c2cb",
+                    color: "var(--step-embed)",
                   }}
                 >
                   {collection.vectorDim}d
                 </span>
               )}
             </div>
-            <p className="text-[12px] mt-0.5" style={{ color: "#64748b" }}>
+            <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>
               {inferredTotal !== null ? `${inferredTotal.toLocaleString()}${!isLastKnownPage && !knownTotal ? "+" : ""} documents` : "documents"}
             </p>
           </div>
         </div>
 
-        {/* Code hint + actions */}
+        {/* Actions */}
         <div className="flex items-center gap-3">
-          <BrowseCodeHint collectionName={collection.name} sort={sort} />
-
           <motion.button
             onClick={handleRefresh}
             className="p-2 rounded-lg"
-            style={{ color: "#64748b" }}
-            whileHover={{ backgroundColor: "rgba(30, 45, 74, 0.8)", color: "#f8fafc" }}
+            style={{ color: "var(--text-muted)" }}
+            whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" }}
             whileTap={{ scale: 0.9 }}
             title="Refresh"
           >
@@ -487,8 +573,8 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
             onClick={handleExport}
             disabled={displayDocs.length === 0}
             className="p-2 rounded-lg"
-            style={{ color: displayDocs.length > 0 ? "#64748b" : "#2a3a5a" }}
-            whileHover={displayDocs.length > 0 ? { backgroundColor: "rgba(30, 45, 74, 0.8)", color: "#f8fafc" } : {}}
+            style={{ color: displayDocs.length > 0 ? "var(--text-muted)" : "var(--border-strong)" }}
+            whileHover={displayDocs.length > 0 ? { backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" } : {}}
             whileTap={displayDocs.length > 0 ? { scale: 0.9 } : {}}
             title="Export current page as CSV"
           >
@@ -499,13 +585,13 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
             onClick={onSwitchToChat}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium"
             style={{
-              backgroundColor: "rgba(108, 99, 255, 0.12)",
-              border: "1px solid rgba(108, 99, 255, 0.3)",
-              color: "#6c63ff",
+              backgroundColor: "var(--interactive-light)",
+              border: "1px solid var(--interactive-border)",
+              color: "var(--interactive)",
             }}
             whileHover={{
-              backgroundColor: "rgba(108, 99, 255, 0.2)",
-              borderColor: "rgba(108, 99, 255, 0.5)",
+              backgroundColor: "var(--interactive-light)",
+              borderColor: "var(--interactive)",
             }}
             whileTap={{ scale: 0.97 }}
           >
@@ -515,6 +601,50 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
         </div>
       </div>
 
+      {/* Tab bar */}
+      <div
+        className="px-6 py-2 border-b shrink-0 flex items-center gap-2"
+        style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-panel)" }}
+      >
+        <div
+          className="flex items-center gap-0.5 p-0.5 rounded-lg"
+          style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}
+        >
+          <button
+            onClick={() => setActiveTab("output")}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+            style={{
+              backgroundColor: activeTab === "output" ? "var(--bg-panel)" : "transparent",
+              color: activeTab === "output" ? "var(--text-primary)" : "var(--text-muted)",
+              boxShadow: activeTab === "output" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+            }}
+          >
+            <Table2 size={11} />
+            Output
+          </button>
+          <button
+            onClick={() => setActiveTab("code")}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+            style={{
+              backgroundColor: activeTab === "code" ? "var(--bg-panel)" : "transparent",
+              color: activeTab === "code" ? "var(--interactive)" : "var(--text-muted)",
+              boxShadow: activeTab === "code" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+            }}
+          >
+            <Code2 size={11} />
+            Code
+          </button>
+        </div>
+      </div>
+
+      {/* Code tab content */}
+      {activeTab === "code" && (
+        <div className="flex-1 overflow-auto px-6 py-4">
+          <BrowseCodePanel collectionName={collection.name} sort={sort} />
+        </div>
+      )}
+
+      {activeTab === "output" && <>
       {/* Selection toolbar */}
       <AnimatePresence>
         {selectedIds.size > 0 && (
@@ -537,8 +667,8 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
                 <motion.button
                   onClick={() => setSelectedIds(new Set())}
                   className="px-3 py-1 rounded-lg text-xs font-medium"
-                  style={{ color: "#64748b", border: "1px solid #1e2d4a" }}
-                  whileHover={{ backgroundColor: "rgba(30,45,74,0.6)", color: "#f8fafc" }}
+                  style={{ color: "var(--text-muted)", border: "1px solid var(--border-subtle)" }}
+                  whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" }}
                   whileTap={{ scale: 0.97 }}
                 >
                   Clear
@@ -548,9 +678,9 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
                   disabled={deleting}
                   className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold"
                   style={{
-                    backgroundColor: deleting ? "#1e2d4a" : "rgba(239,68,68,0.15)",
+                    backgroundColor: deleting ? "var(--bg-card)" : "rgba(239,68,68,0.15)",
                     border: "1px solid rgba(239,68,68,0.4)",
-                    color: deleting ? "#64748b" : "#f87171",
+                    color: deleting ? "var(--text-muted)" : "#f87171",
                     cursor: deleting ? "not-allowed" : "pointer",
                   }}
                   whileHover={!deleting ? { backgroundColor: "rgba(239,68,68,0.25)" } : {}}
@@ -571,20 +701,20 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
       <div className="flex-1 overflow-auto relative">
         {/* Loading overlay */}
         {loading && (
-          <div className="absolute inset-0 flex items-center justify-center z-10" style={{ backgroundColor: "rgba(11,15,26,0.6)" }}>
-            <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ backgroundColor: "#0d1220", border: "1px solid #1e2d4a" }}>
+          <div className="absolute inset-0 flex items-center justify-center z-10" style={{ backgroundColor: "rgba(0,0,0,0.4)" }}>
+            <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ backgroundColor: "var(--bg-panel)", border: "1px solid var(--border-subtle)" }}>
               <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
-                <Loader2 size={14} style={{ color: "#00c2cb" }} />
+                <Loader2 size={14} style={{ color: "var(--step-embed)" }} />
               </motion.div>
-              <span className="text-[12px]" style={{ color: "#94a3b8" }}>Loading…</span>
+              <span className="text-[12px]" style={{ color: "var(--text-secondary)" }}>Loading…</span>
             </div>
           </div>
         )}
         {fetchError && (
-          <div className="absolute inset-0 flex items-center justify-center z-10" style={{ backgroundColor: "rgba(11,15,26,0.85)" }}>
+          <div className="absolute inset-0 flex items-center justify-center z-10" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
             <div className="text-center px-6">
               <p className="text-sm font-medium mb-1" style={{ color: "#fca5a5" }}>Failed to load documents</p>
-              <p className="text-[12px]" style={{ color: "#64748b" }}>{fetchError}</p>
+              <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>{fetchError}</p>
             </div>
           </div>
         )}
@@ -594,19 +724,19 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               className="flex flex-col items-center gap-5 text-center px-8 py-10 rounded-2xl max-w-sm"
-              style={{ backgroundColor: "#0d1220", border: "1px solid #1e2d4a", boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}
+              style={{ backgroundColor: "var(--bg-panel)", border: "1px solid var(--border-subtle)", boxShadow: "0 24px 64px rgba(0,0,0,0.15)" }}
             >
               <div
                 className="w-14 h-14 rounded-2xl flex items-center justify-center"
                 style={{ background: "linear-gradient(135deg, rgba(0,194,203,0.12), rgba(108,99,255,0.12))", border: "1px solid rgba(0,194,203,0.2)" }}
               >
-                <Table2 size={22} style={{ color: "#00c2cb" }} />
+                <Table2 size={22} style={{ color: "var(--step-embed)" }} />
               </div>
               <div>
-                <h3 className="text-base font-semibold mb-1.5" style={{ color: "#f8fafc" }}>
+                <h3 className="text-base font-semibold mb-1.5" style={{ color: "var(--text-primary)" }}>
                   No documents yet
                 </h3>
-                <p className="text-sm leading-relaxed" style={{ color: "#64748b" }}>
+                <p className="text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
                   This collection is empty. Ingest a CSV file to add documents.
                 </p>
               </div>
@@ -615,9 +745,9 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
                   onClick={onOpenIngest}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold"
                   style={{
-                    background: "linear-gradient(135deg, #00c2cb, #0099a3)",
+                    backgroundColor: "var(--interactive)",
                     color: "#fff",
-                    boxShadow: "0 2px 16px rgba(0,194,203,0.25)",
+                    boxShadow: "0 2px 16px var(--interactive-border)",
                   }}
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
@@ -630,7 +760,7 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
         )}
         {!loading && !fetchError && displayDocs.length === 0 ? null : <table className="w-full border-collapse" style={{ minWidth: "600px" }}>
           <thead>
-            <tr style={{ backgroundColor: "#0d1220", borderBottom: "1px solid #1e2d4a" }}>
+            <tr style={{ backgroundColor: "var(--bg-panel)", borderBottom: "1px solid var(--border-subtle)" }}>
               {/* Checkbox select-all */}
               <th className="w-10 px-3 py-3" onClick={handleSelectAll} style={{ cursor: "pointer" }}>
                 <input
@@ -639,7 +769,7 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
                   checked={displayDocs.length > 0 && selectedIds.size === displayDocs.length}
                   ref={(el) => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < displayDocs.length; }}
                   className="cursor-pointer"
-                  style={{ accentColor: "#ff6b35" }}
+                  style={{ accentColor: "var(--interactive)" }}
                 />
               </th>
               {/* Expand toggle column */}
@@ -653,9 +783,9 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
                     onClick={() => isSortable && handleSortColumn(col)}
                     className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap select-none"
                     style={{
-                      color: isSorted ? "#f8fafc" : col === "_id" ? "#ff6b35" : col === "$vector" ? "#00c2cb" : "#64748b",
-                      borderBottom: `1px solid ${isSorted ? "rgba(255,107,53,0.4)" : "#1e2d4a"}`,
-                      fontFamily: col === "_id" || col === "$vector" ? "JetBrains Mono, monospace" : undefined,
+                      color: isSorted ? "var(--text-primary)" : col === "_id" ? "var(--step-search)" : col === "$vector" ? "var(--step-embed)" : "var(--text-muted)",
+                      borderBottom: `1px solid ${isSorted ? "rgba(255,107,53,0.4)" : "var(--border-subtle)"}`,
+                      fontFamily: col === "_id" || col === "$vector" ? "IBM Plex Mono, monospace" : undefined,
                       cursor: isSortable ? "pointer" : "default",
                       backgroundColor: isSorted ? "rgba(255,107,53,0.06)" : undefined,
                       transition: "color 0.15s, background-color 0.15s",
@@ -666,10 +796,10 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
                       {isSortable && (
                         isSorted ? (
                           sort.dir === 1
-                            ? <ArrowUp size={11} style={{ color: "#ff6b35" }} />
-                            : <ArrowDown size={11} style={{ color: "#ff6b35" }} />
+                            ? <ArrowUp size={11} style={{ color: "var(--step-search)" }} />
+                            : <ArrowDown size={11} style={{ color: "var(--step-search)" }} />
                         ) : (
-                          <ChevronsUpDown size={10} style={{ color: "#334155", opacity: 0 }} className="group-hover:opacity-100" />
+                          <ChevronsUpDown size={10} style={{ color: "var(--border-strong)", opacity: 0 }} className="group-hover:opacity-100" />
                         )
                       )}
                     </div>
@@ -690,16 +820,16 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
                     onClick={() => setExpandedId(isExpanded ? null : doc._id)}
                     className="cursor-pointer group"
                     style={{
-                      borderBottom: isExpanded ? "none" : "1px solid rgba(30, 45, 74, 0.5)",
+                      borderBottom: isExpanded ? "none" : "1px solid var(--border-subtle)",
                       backgroundColor: selectedIds.has(doc._id)
                         ? "rgba(239,68,68,0.05)"
                         : isExpanded
-                        ? "rgba(255, 107, 53, 0.05)"
+                        ? "var(--interactive-light)"
                         : i % 2 === 0
                         ? "transparent"
-                        : "rgba(13, 18, 32, 0.4)",
+                        : "var(--bg-card)",
                     }}
-                    whileHover={{ backgroundColor: selectedIds.has(doc._id) ? "rgba(239,68,68,0.08)" : "rgba(255, 107, 53, 0.04)" }}
+                    whileHover={{ backgroundColor: selectedIds.has(doc._id) ? "rgba(239,68,68,0.08)" : "var(--bg-hover)" }}
                   >
                     {/* Checkbox */}
                     <td className="px-3 py-3 w-10" onClick={(e) => handleToggleSelect(doc._id, e)}>
@@ -717,7 +847,7 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
                         animate={{ rotate: isExpanded ? 180 : 0 }}
                         transition={{ duration: 0.2 }}
                       >
-                        <ChevronDown size={13} style={{ color: "#475569" }} />
+                        <ChevronDown size={13} style={{ color: "var(--text-muted)" }} />
                       </motion.div>
                     </td>
                     {columns.map((col) => (
@@ -725,9 +855,9 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
                         key={col}
                         className="px-4 py-3 text-sm max-w-[220px]"
                         style={{
-                          fontFamily: col === "_id" ? "JetBrains Mono, monospace" : undefined,
+                          fontFamily: col === "_id" ? "IBM Plex Mono, monospace" : undefined,
                           fontSize: col === "_id" ? "11px" : undefined,
-                          color: col === "_id" ? "#94a3b8" : undefined,
+                          color: col === "_id" ? "var(--text-secondary)" : undefined,
                         }}
                       >
                         <CellValue col={col} value={doc[col]} />
@@ -753,19 +883,19 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
       {/* Pagination footer */}
       <div
         className="px-6 py-3 border-t shrink-0 flex items-center justify-between"
-        style={{ borderColor: "#1e2d4a", backgroundColor: "#0d1220" }}
+        style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-panel)" }}
       >
-        <p className="text-[12px]" style={{ color: "#64748b" }}>
+        <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>
           Showing{" "}
-          <span style={{ color: "#f8fafc" }}>{startRow.toLocaleString()}–{endRow.toLocaleString()}</span>
+          <span style={{ color: "var(--text-primary)" }}>{startRow.toLocaleString()}–{endRow.toLocaleString()}</span>
           {inferredTotal !== null ? (
-            <>{" "}of{" "}<span style={{ color: "#f8fafc" }}>{inferredTotal.toLocaleString()}{!isLastKnownPage && !knownTotal ? "+" : ""}</span></>
+            <>{" "}of{" "}<span style={{ color: "var(--text-primary)" }}>{inferredTotal.toLocaleString()}{!isLastKnownPage && !knownTotal ? "+" : ""}</span></>
           ) : null}
           {" "}documents
         </p>
 
         <div className="flex items-center gap-2">
-          <span className="text-[12px]" style={{ color: "#475569" }}>
+          <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>
             Page {page + 1}{totalPages > 1 ? ` of ${totalPages.toLocaleString()}` : ""}
           </span>
           <div className="flex items-center gap-1">
@@ -773,8 +903,8 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
               onClick={() => handlePageChange(Math.max(0, page - 1))}
               disabled={page === 0 || loading}
               className="p-1.5 rounded-lg"
-              style={{ color: page === 0 || loading ? "#334155" : "#64748b", cursor: page === 0 || loading ? "not-allowed" : "pointer" }}
-              whileHover={page > 0 && !loading ? { backgroundColor: "rgba(30, 45, 74, 0.8)", color: "#f8fafc" } : {}}
+              style={{ color: page === 0 || loading ? "var(--border-strong)" : "var(--text-muted)", cursor: page === 0 || loading ? "not-allowed" : "pointer" }}
+              whileHover={page > 0 && !loading ? { backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" } : {}}
               whileTap={page > 0 && !loading ? { scale: 0.9 } : {}}
             >
               <ChevronLeft size={15} />
@@ -783,8 +913,8 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
               onClick={() => handlePageChange(Math.min(availablePages - 1, page + 1))}
               disabled={page >= availablePages - 1 || loading}
               className="p-1.5 rounded-lg"
-              style={{ color: page >= availablePages - 1 || loading ? "#334155" : "#64748b", cursor: page >= availablePages - 1 || loading ? "not-allowed" : "pointer" }}
-              whileHover={page < availablePages - 1 && !loading ? { backgroundColor: "rgba(30, 45, 74, 0.8)", color: "#f8fafc" } : {}}
+              style={{ color: page >= availablePages - 1 || loading ? "var(--border-strong)" : "var(--text-muted)", cursor: page >= availablePages - 1 || loading ? "not-allowed" : "pointer" }}
+              whileHover={page < availablePages - 1 && !loading ? { backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" } : {}}
               whileTap={page < availablePages - 1 && !loading ? { scale: 0.9 } : {}}
             >
               <ChevronRight size={15} />
@@ -792,6 +922,7 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
           </div>
         </div>
       </div>
+      </>}
     </motion.div>
   );
 }

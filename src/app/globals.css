@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -19,11 +19,6 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -44,89 +39,125 @@
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
-
-  /* Astra DB custom colors */
-  --color-astra-bg: #0b0f1a;
-  --color-astra-card: #13192b;
-  --color-astra-border: #1e2d4a;
-  --color-astra-orange: #ff6b35;
-  --color-astra-purple: #6c63ff;
-  --color-astra-teal: #00c2cb;
-  --color-astra-muted: #64748b;
-  --color-astra-code: #7dd3fc;
-  --color-astra-white: #f8fafc;
 }
 
+/* ── Light mode (default) — IBM Carbon White ───────────────────────────────── */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  /* Surface layers */
+  --bg-primary:   #f4f4f4;
+  --bg-panel:     #ffffff;
+  --bg-card:      #ffffff;
+  --bg-input:     #f4f4f4;
+  --bg-hover:     #e8e8e8;
+  --bg-overlay:   rgba(244,244,244,0.85);
+
+  /* Borders */
+  --border-subtle: #e0e0e0;
+  --border-strong: #c6c6c6;
+
+  /* Text */
+  --text-primary:     #161616;
+  --text-secondary:   #525252;
+  --text-muted:       #8d8d8d;
+  --text-placeholder: #a8a8a8;
+
+  /* Interactive — IBM Blue */
+  --interactive:        #0f62fe;
+  --interactive-hover:  #0050e6;
+  --interactive-light:  rgba(15,98,254,0.08);
+  --interactive-border: rgba(15,98,254,0.25);
+  --interactive-text:   #0f62fe;
+
+  /* shadcn tokens (light) */
+  --background: #f4f4f4;
+  --foreground: #161616;
+  --card: #ffffff;
+  --card-foreground: #161616;
+  --popover: #ffffff;
+  --popover-foreground: #161616;
+  --primary: #0f62fe;
+  --primary-foreground: #ffffff;
+  --secondary: #e0e0e0;
+  --secondary-foreground: #161616;
+  --muted: #e0e0e0;
+  --muted-foreground: #8d8d8d;
+  --accent: #e0e0e0;
+  --accent-foreground: #161616;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --border: #e0e0e0;
+  --input: #e0e0e0;
+  --ring: #0f62fe;
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #161616;
+  --sidebar-primary: #0f62fe;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e8e8e8;
+  --sidebar-accent-foreground: #161616;
+  --sidebar-border: #e0e0e0;
+  --sidebar-ring: #0f62fe;
+
+  /* Pipeline step colors — same in both modes (flourish only) */
+  --step-analyze: #6c63ff;
+  --step-embed:   #00c2cb;
+  --step-search:  #ff6b35;
+  --step-respond: #22c55e;
 }
 
+/* ── Dark mode — IBM Carbon Gray 100 ──────────────────────────────────────── */
 .dark {
-  --background: #0b0f1a;
-  --foreground: #f8fafc;
-  --card: #13192b;
-  --card-foreground: #f8fafc;
-  --popover: #13192b;
-  --popover-foreground: #f8fafc;
-  --primary: #ff6b35;
-  --primary-foreground: #f8fafc;
-  --secondary: #1e2d4a;
-  --secondary-foreground: #f8fafc;
-  --muted: #1e2d4a;
-  --muted-foreground: #64748b;
-  --accent: #6c63ff;
-  --accent-foreground: #f8fafc;
+  /* Surface layers */
+  --bg-primary:   #161616;
+  --bg-panel:     #262626;
+  --bg-card:      #303030;
+  --bg-input:     #393939;
+  --bg-hover:     #3d3d3d;
+  --bg-overlay:   rgba(22,22,22,0.88);
+
+  /* Borders */
+  --border-subtle: #3d3d3d;
+  --border-strong: #525252;
+
+  /* Text */
+  --text-primary:     #f4f4f4;
+  --text-secondary:   #c6c6c6;
+  --text-muted:       #8d8d8d;
+  --text-placeholder: #6f6f6f;
+
+  /* Interactive — IBM Blue (lighter in dark) */
+  --interactive:        #4589ff;
+  --interactive-hover:  #78a9ff;
+  --interactive-light:  rgba(69,137,255,0.12);
+  --interactive-border: rgba(69,137,255,0.3);
+  --interactive-text:   #78a9ff;
+
+  /* shadcn tokens (dark) */
+  --background: #161616;
+  --foreground: #f4f4f4;
+  --card: #303030;
+  --card-foreground: #f4f4f4;
+  --popover: #262626;
+  --popover-foreground: #f4f4f4;
+  --primary: #4589ff;
+  --primary-foreground: #ffffff;
+  --secondary: #3d3d3d;
+  --secondary-foreground: #f4f4f4;
+  --muted: #3d3d3d;
+  --muted-foreground: #8d8d8d;
+  --accent: #3d3d3d;
+  --accent-foreground: #f4f4f4;
   --destructive: oklch(0.704 0.191 22.216);
-  --border: #1e2d4a;
-  --input: #1e2d4a;
-  --ring: #6c63ff;
-  --chart-1: #ff6b35;
-  --chart-2: #00c2cb;
-  --chart-3: #6c63ff;
-  --chart-4: #f59e0b;
-  --chart-5: #10b981;
-  --sidebar: #0d1220;
-  --sidebar-foreground: #f8fafc;
-  --sidebar-primary: #ff6b35;
-  --sidebar-primary-foreground: #f8fafc;
-  --sidebar-accent: #1e2d4a;
-  --sidebar-accent-foreground: #f8fafc;
-  --sidebar-border: #1e2d4a;
-  --sidebar-ring: #6c63ff;
+  --border: #3d3d3d;
+  --input: #393939;
+  --ring: #4589ff;
+  --sidebar: #262626;
+  --sidebar-foreground: #f4f4f4;
+  --sidebar-primary: #4589ff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #3d3d3d;
+  --sidebar-accent-foreground: #f4f4f4;
+  --sidebar-border: #3d3d3d;
+  --sidebar-ring: #4589ff;
 }
 
 @layer base {
@@ -135,7 +166,7 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -146,6 +177,9 @@
   body {
     height: 100%;
     overflow: hidden;
+  }
+  code, pre, kbd {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
   }
 }
 
@@ -158,11 +192,11 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e2d4a;
+  background: var(--border-subtle);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #2a3d5e;
+  background: var(--border-strong);
 }
 
 /* Typing indicator */
@@ -182,7 +216,7 @@
   100% { background-position: 200% 0; }
 }
 .progress-shimmer {
-  background: linear-gradient(90deg, #ff6b35 0%, #ff9a6c 50%, #ff6b35 100%);
+  background: linear-gradient(90deg, var(--interactive) 0%, var(--interactive-hover) 50%, var(--interactive) 100%);
   background-size: 200% 100%;
   animation: progressShimmer 2s ease-in-out infinite;
 }

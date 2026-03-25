@@ -386,9 +386,9 @@ JSON format: {"collection": "...", "searchMode": "...", "intent": "...", "limit"
               ).join("\n\n")
             : null;
 
-          const systemPrompt = `You are a concise data analyst for an Astra DB playground. The user is exploring the "${collection}" collection.${collectionFields && collectionFields.length > 0 ? ` Known fields: ${collectionFields.join(", ")}.` : ""} CRITICAL RULES: (1) Answer the question directly and immediately — your first sentence must be the answer. (2) Match the format the user asks for exactly: "one word" → one word; "table" → markdown table; "list" → bullet list; "briefly" → short. (3) NEVER repeat or quote the raw search data you were given — use it to answer but do not echo it. (4) Do NOT include lines like "[Search results shown to user:]" or "[End of Conversation]" in your response. (5) Only add analysis if the user asked for it.`;
+          const systemPrompt = `You are a concise data analyst for an Astra DB playground. The user is exploring the "${collection}" collection.${collectionFields && collectionFields.length > 0 ? ` Known fields: ${collectionFields.join(", ")}.` : ""} CRITICAL RULES: (1) Answer the question directly and immediately — your first sentence must be the answer. (2) Match the format the user asks for exactly: "one word" → one word; "table" → markdown table; "list" → bullet list; "briefly" → short. (3) NEVER output the raw source data you were given — do not echo field names, IDs, pipe-separated rows, or numbered result blocks. Use the data to derive your answer only. (4) Do NOT include lines like "[Search results shown to user:]", "[1] field: value", or any raw record dump in your response. (5) Only add analysis if the user explicitly asked for it.`;
           const userContent = resultContext
-            ? `User asked: "${query}"\n\nContext data from "${collection}":\n${resultContext}\n\nAnswer using this data. Do not quote or repeat the raw context — just answer.`
+            ? `User asked: "${query}"\n\nContext data from "${collection}" (use this to answer — do not reproduce it):\n${resultContext}\n\nAnswer the question only. Do not output the raw records.`
             : query;
 
           try {
@@ -400,7 +400,8 @@ JSON format: {"collection": "...", "searchMode": "...", "intent": "...", "limit"
                 ...(history ?? []).slice(-10).map((m) => ({
                   ...m,
                   content: m.content
-                    .replace(/\[Search results shown to user:\][^\n]*/g, "")
+                    // Strip the entire "[Search results shown to user:]" block and everything after it
+                    .replace(/\n?\[Search results shown to user:\][\s\S]*/g, "")
                     .replace(/\[End of Conversation\]/g, "")
                     .trim(),
                 })),

@@ -26,64 +26,40 @@ export function SourceCard({ source, index }: SourceCardProps) {
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.2, delay: index * 0.07 }}
       className="rounded-lg overflow-hidden"
-      style={{
-        backgroundColor: "rgba(30, 45, 74, 0.35)",
-        border: "1px solid #1e2d4a",
-      }}
+      style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}
     >
       {/* Header row */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-3 py-2 text-left group"
+        className="w-full flex items-center justify-between px-3 py-2 text-left"
       >
         <div className="flex items-center gap-2 min-w-0">
-          {/* Collection badge */}
           <span
             className="text-[11px] font-medium px-2 py-0.5 rounded shrink-0"
-            style={{
-              backgroundColor: "rgba(108, 99, 255, 0.12)",
-              color: "#6c63ff",
-            }}
+            style={{ backgroundColor: "rgba(108,99,255,0.12)", color: "var(--step-analyze)" }}
           >
             {source.collection}
           </span>
-          {/* Doc ID */}
           <span
             className="text-[11px] truncate"
-            style={{ color: "#64748b", fontFamily: "JetBrains Mono, monospace" }}
+            style={{ color: "var(--text-muted)", fontFamily: "IBM Plex Mono, monospace" }}
           >
             {source.id}
           </span>
         </div>
 
         <div className="flex items-center gap-2 shrink-0 ml-2">
-          {/* Similarity score */}
           <div className="flex items-center gap-1">
-            <div
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ backgroundColor: color }}
-            />
-            <span
-              className="text-[11px] font-semibold"
-              style={{ color }}
-            >
-              {source.similarity.toFixed(2)}
-            </span>
+            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+            <span className="text-[11px] font-semibold" style={{ color }}>{source.similarity.toFixed(2)}</span>
           </div>
-
-          <motion.div
-            animate={{ rotate: expanded ? 180 : 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <ChevronDown
-              size={12}
-              style={{ color: "#64748b" }}
-            />
+          <motion.div animate={{ rotate: expanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
+            <ChevronDown size={12} style={{ color: "var(--text-muted)" }} />
           </motion.div>
         </div>
       </button>
 
-      {/* Expandable JSON preview */}
+      {/* Expandable preview */}
       <AnimatePresence>
         {expanded && (
           <motion.div
@@ -93,23 +69,13 @@ export function SourceCard({ source, index }: SourceCardProps) {
             transition={{ duration: 0.2, ease: "easeInOut" }}
             className="overflow-hidden"
           >
-            <div
-              className="px-3 pb-3 pt-1"
-              style={{ borderTop: "1px solid #1e2d4a" }}
-            >
-              <p
-                className="text-[10px] font-medium uppercase tracking-wider mb-1.5"
-                style={{ color: "#64748b" }}
-              >
+            <div className="px-3 pb-3 pt-1" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+              <p className="text-[10px] font-medium uppercase tracking-wider mb-1.5" style={{ color: "var(--text-muted)" }}>
                 Document Preview
               </p>
               <pre
                 className="text-[11px] leading-relaxed rounded-md p-2 overflow-x-auto"
-                style={{
-                  backgroundColor: "rgba(11, 15, 26, 0.6)",
-                  color: "#7dd3fc",
-                  fontFamily: "JetBrains Mono, monospace",
-                }}
+                style={{ backgroundColor: "var(--bg-primary)", color: "var(--interactive)", fontFamily: "IBM Plex Mono, monospace" }}
               >
                 {JSON.stringify(source.preview, null, 2)}
               </pre>
