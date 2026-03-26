@@ -51,12 +51,8 @@ interface RemoteConversation {
   messageCount: number;
 }
 
-function astraHeaders(token: string, endpoint: string): Record<string, string> {
-  return { "x-astra-token": token, "x-astra-endpoint": endpoint };
-}
-
-async function fetchConversationsFromApi(token: string, endpoint: string): Promise<Conversation[]> {
-  const res = await fetch("/api/conversations", { headers: astraHeaders(token, endpoint) });
+async function fetchConversationsFromApi(): Promise<Conversation[]> {
+  const res = await fetch("/api/conversations");
   if (!res.ok) return [];
   const data = await res.json() as { conversations?: RemoteConversation[] };
   return (data.conversations ?? []).map((c) => ({
@@ -69,10 +65,10 @@ async function fetchConversationsFromApi(token: string, endpoint: string): Promi
   }));
 }
 
-async function createConversationInApi(token: string, endpoint: string, name?: string): Promise<Conversation> {
+async function createConversationInApi(name?: string): Promise<Conversation> {
   const res = await fetch("/api/conversations", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...astraHeaders(token, endpoint) },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
   });
   const data = await res.json() as { conversation: RemoteConversation };
@@ -119,7 +115,7 @@ function makeBlankConversation(): Conversation {
   const now = new Date();
   return {
     id: `conv-${Date.now()}`,
-    name: "New Conversation",
+    name: "Untitled",
     messages: [],
     createdAt: now,
     updatedAt: now,
@@ -162,7 +158,7 @@ export function usePlaygroundState() {
 
   // Conversations
   const [conversations, setConversations] = useState<Conversation[]>([makeBlankConversation()]);
-  const [activeConversationId, setActiveConversationId] = useState(conversations[0].id);
+  const [activeConversationId, setActiveConversationId] = useState(conversations[0]?.id ?? "");
 
   // Refs for persistence tracking
   const persistedMessageIds = useRef(new Set<string>());
@@ -199,10 +195,7 @@ export function usePlaygroundState() {
     if (loadedConvIds.current.has(convId)) return;
     loadedConvIds.current.add(convId);
     try {
-      const res = await fetch(
-        `/api/conversations/${convId}/messages`,
-        { headers: astraHeaders(token, endpoint) }
-      );
+      const res = await fetch(`/api/conversations/${convId}/messages`);
       if (!res.ok) return;
       const data = await res.json() as { messages: Record<string, unknown>[] };
       const messages: Message[] = (data.messages ?? []).map((m) => ({
@@ -224,24 +217,20 @@ export function usePlaygroundState() {
     }
   };
 
-  const bootstrapConversations = async (token: string, endpoint: string) => {
-    const convs = await fetchConversationsFromApi(token, endpoint);
+  const bootstrapConversations = async (): Promise<string> => {
+    const convs = await fetchConversationsFromApi();
     if (convs.length > 0) {
       setConversations(convs);
       setActiveConversationId(convs[0].id);
-      await loadConversationMessages(convs[0].id, token, endpoint);
+      // Messages live in local SQLite — no Astra connection needed
+      await loadConversationMessages(convs[0].id, "", "");
+      return convs[0].id;
     } else {
-      try {
-        const newConv = await createConversationInApi(token, endpoint);
-        loadedConvIds.current.add(newConv.id);
-        setConversations([newConv]);
-        setActiveConversationId(newConv.id);
-      } catch {
-        const blank = makeBlankConversation();
-        loadedConvIds.current.add(blank.id);
-        setConversations([blank]);
-        setActiveConversationId(blank.id);
-      }
+      const newConv = await createConversationInApi();
+      loadedConvIds.current.add(newConv.id);
+      setConversations([newConv]);
+      setActiveConversationId(newConv.id);
+      return newConv.id;
     }
   };
 
@@ -264,7 +253,7 @@ export function usePlaygroundState() {
     setIbmApiKey(ibmKey);
     setWatsonxProjectId(wxProjectId);
 
-    const applyConnectionResult = async (r: Awaited<ReturnType<typeof fetchCollectionsFromApi>>, fromEnv: boolean) => {
+    const applyConnectionResult = (r: Awaited<ReturnType<typeof fetchCollectionsFromApi>>, fromEnv: boolean) => {
       setAstraToken(r.token);
       setAstraEndpoint(r.endpoint);
       setAstraFromEnv(fromEnv);
@@ -274,10 +263,12 @@ export function usePlaygroundState() {
       setActiveCollection(firstUserCollection);
       setKeyspaces(r.keyspaces);
       if (r.keyspaces.length > 0) setSelectedKeyspace(r.keyspaces[0]);
-      await bootstrapConversations(r.token, r.endpoint);
     };
 
     const restorePromise = (async () => {
+      // Always load conversations + messages from local SQLite first
+      await bootstrapConversations();
+
       if (token && endpoint) {
         await fetchCollectionsFromApi(token, endpoint)
           .then((r) => applyConnectionResult(r, false))
@@ -327,7 +318,7 @@ export function usePlaygroundState() {
       }
       persistedMessageIds.current = new Set();
       loadedConvIds.current = new Set();
-      await bootstrapConversations(result.token, result.endpoint);
+      await bootstrapConversations();
     } catch (err) {
       setConnectError(err instanceof Error ? err.message : "Connection failed");
       throw err;
@@ -347,11 +338,8 @@ export function usePlaygroundState() {
     sessionStorage.removeItem("astra_endpoint");
     persistedMessageIds.current = new Set();
     loadedConvIds.current = new Set();
-    const blank = makeBlankConversation();
-    loadedConvIds.current.add(blank.id);
-    setConversations([blank]);
-    setActiveConversationId(blank.id);
-    // Return to landing
+    // Re-bootstrap from DB so conversations are always persisted
+    void bootstrapConversations();
   };
 
   // ── Conversation management ───────────────────────────────────────────────
@@ -370,40 +358,26 @@ export function usePlaygroundState() {
     if (creatingConversation) return;
     const token = astraTokenRef.current;
     const endpoint = astraEndpointRef.current;
-    const names = new Set(conversations.map((c) => c.name));
-    const base = "New Conversation";
-    let name = base;
-    let i = 1;
-    while (names.has(name)) name = `${base} (${i++})`;
+    const name = "Untitled";
 
-    if (token && endpoint) {
-      setCreatingConversation(true);
-      try {
-        const newConv = await createConversationInApi(token, endpoint, name);
-        loadedConvIds.current.add(newConv.id);
-        setConversations((prev) => [{ ...newConv, name }, ...prev]);
-        setActiveConversationId(newConv.id);
-        return;
-      } catch { /* fall through to in-memory */ }
-      finally { setCreatingConversation(false); }
+    setCreatingConversation(true);
+    try {
+      const newConv = await createConversationInApi(name);
+      loadedConvIds.current.add(newConv.id);
+      setConversations((prev) => [{ ...newConv, name }, ...prev]);
+      setActiveConversationId(newConv.id);
+    } finally {
+      setCreatingConversation(false);
     }
-    const blank = { ...makeBlankConversation(), name };
-    loadedConvIds.current.add(blank.id);
-    setConversations((prev) => [blank, ...prev]);
-    setActiveConversationId(blank.id);
   };
 
   const handleRenameConversation = async (id: string, name: string) => {
     setConversations((prev) => prev.map((c) => c.id === id ? { ...c, name } : c));
-    const token = astraTokenRef.current;
-    const endpoint = astraEndpointRef.current;
-    if (token && endpoint) {
-      await fetch(`/api/conversations/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...astraHeaders(token, endpoint) },
-        body: JSON.stringify({ name }),
-      }).catch(console.error);
-    }
+    await fetch(`/api/conversations/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).catch(console.error);
   };
 
   const handleDeleteConversation = async (id: string) => {
@@ -413,29 +387,24 @@ export function usePlaygroundState() {
         const next = remaining[0];
         if (next) {
           setActiveConversationId(next.id);
-          const token = astraTokenRef.current;
-          const endpoint = astraEndpointRef.current;
-          if (token && endpoint) {
-            void loadConversationMessages(next.id, token, endpoint);
-          }
+          void loadConversationMessages(next.id, "", "");
         } else {
-          const blank = makeBlankConversation();
-          loadedConvIds.current.add(blank.id);
-          setActiveConversationId(blank.id);
-          return [blank];
+          // All deleted — create a new persisted conversation
+          void createConversationInApi("Untitled").then((newConv) => {
+            loadedConvIds.current.add(newConv.id);
+            setConversations([newConv]);
+            setActiveConversationId(newConv.id);
+          });
+          return [];
         }
       }
       return remaining;
     });
-    const token = astraTokenRef.current;
-    const endpoint = astraEndpointRef.current;
-    if (token && endpoint) {
-      await fetch(`/api/conversations/${id}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json", ...astraHeaders(token, endpoint) },
-        body: JSON.stringify({}),
-      }).catch(console.error);
-    }
+    await fetch(`/api/conversations/${id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    }).catch(console.error);
   };
 
   // ── Messages ──────────────────────────────────────────────────────────────
@@ -445,20 +414,43 @@ export function usePlaygroundState() {
     setConversations((prev) =>
       prev.map((c) => c.id === convId ? { ...c, messages: updated, messageCount: updated.length, updatedAt: new Date() } : c)
     );
-    const token = astraTokenRef.current;
-    const endpoint = astraEndpointRef.current;
-    if (token && endpoint) {
-      const unpersisted = updated.filter((m) => !persistedMessageIds.current.has(m.id));
-      for (const msg of unpersisted) {
-        persistedMessageIds.current.add(msg.id);
-        void fetch(`/api/conversations/${convId}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...astraHeaders(token, endpoint) },
-          body: JSON.stringify({ message: serializeMessage(msg) }),
-        }).catch(() => {
-          persistedMessageIds.current.delete(msg.id);
-        });
-      }
+    const unpersisted = updated.filter((m) => !persistedMessageIds.current.has(m.id));
+    for (const msg of unpersisted) {
+      persistedMessageIds.current.add(msg.id);
+      void fetch(`/api/conversations/${convId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: serializeMessage(msg) }),
+      }).catch(() => {
+        persistedMessageIds.current.delete(msg.id);
+      });
+    }
+
+    // Auto-title: fire once when the first user message arrives and name is still "Untitled"
+    const conv = conversations.find((c) => c.id === convId);
+    const firstUserMsg = updated.find((m) => m.role === "user");
+    if (conv?.name === "Untitled" && firstUserMsg && updated.filter((m) => m.role === "user").length === 1) {
+      void fetch("/api/conversations/title", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstMessage: firstUserMsg.content,
+          ibmApiKey,
+          watsonxProjectId,
+        }),
+      })
+        .then((r) => r.json() as Promise<{ title: string | null }>)
+        .then(({ title }) => {
+          if (title) {
+            setConversations((prev) => prev.map((c) => c.id === convId ? { ...c, name: title } : c));
+            void fetch(`/api/conversations/${convId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: title }),
+            });
+          }
+        })
+        .catch(() => { /* silently ignore */ });
     }
   };
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { MessageSquare, Terminal } from "lucide-react";
+import { MessageSquare, Terminal, Upload } from "lucide-react";
 import { Header } from "@/components/shell/Header";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { AstraConnectDialog } from "@/components/connection/AstraConnectDialog";
@@ -11,6 +11,7 @@ import { ChatArea } from "@/components/chat/ChatArea";
 import { NewCollectionDialog } from "@/components/collection/NewCollectionDialog";
 import { IngestDialog } from "@/components/collection/IngestDialog";
 import { ApiExplorer } from "@/components/api/ApiExplorer";
+import { IngestTab } from "@/components/ingest/IngestTab";
 import { usePlaygroundState } from "@/lib/hooks/usePlaygroundState";
 
 export default function PlaygroundPage() {
@@ -79,15 +80,15 @@ export default function PlaygroundPage() {
         <Sidebar
           collections={collections}
           activeCollection={activeCollection}
-          onSelectCollection={handleSelectCollection}
+          viewMode={viewMode}
+          onSelectCollection={(name) => { handleSelectCollection(name); setViewMode("ingest"); }}
           onNewCollection={() => setNewCollectionOpen(true)}
-          onIngestCollection={(name) => setIngestTarget(name)}
           keyspaces={keyspaces}
           selectedKeyspace={selectedKeyspace}
           onKeyspaceChange={(ks) => void handleKeyspaceChange(ks)}
           conversations={conversations}
           activeConversationId={activeConversationId}
-          onConversationChange={(id) => void handleConversationChange(id)}
+          onConversationChange={(id) => { void handleConversationChange(id); setViewMode("chat"); }}
           onNewConversation={() => void handleNewConversation()}
           creatingConversation={creatingConversation}
           onRenameConversation={(id, name) => void handleRenameConversation(id, name)}
@@ -118,6 +119,19 @@ export default function PlaygroundPage() {
               >
                 <MessageSquare size={12} />
                 Chat
+              </motion.button>
+              <motion.button
+                onClick={() => setViewMode("ingest")}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-md text-xs font-medium"
+                style={{
+                  backgroundColor: viewMode === "ingest" ? "var(--bg-panel)" : "transparent",
+                  color: viewMode === "ingest" ? "var(--text-primary)" : "var(--text-muted)",
+                  boxShadow: viewMode === "ingest" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                }}
+                whileTap={{ scale: 0.97 }}
+              >
+                <Upload size={12} />
+                Ingest
               </motion.button>
               <motion.button
                 onClick={() => setViewMode("api")}
@@ -154,6 +168,15 @@ export default function PlaygroundPage() {
               astraToken={astraToken}
               astraEndpoint={astraEndpoint}
               keyspace={selectedKeyspace}
+            />
+          ) : viewMode === "ingest" ? (
+            <IngestTab
+              astraToken={astraToken}
+              astraEndpoint={astraEndpoint}
+              keyspace={selectedKeyspace}
+              collections={collections}
+              activeCollection={activeCollection}
+              isConnected={isConnected}
             />
           ) : (
             <ChatArea

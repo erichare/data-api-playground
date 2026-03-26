@@ -1,71 +1,40 @@
 import { NextResponse } from "next/server";
-import { getAstraDb } from "@/lib/astra";
+import { getDb } from "@/lib/db";
 
-const CONV_COLLECTION = "dap_conversations";
+export const runtime = "nodejs";
+
+type ConvRow = { id: string; name: string; created_at: string; updated_at: string; message_count: number };
 
 // GET /api/conversations
-export async function GET(req: Request) {
-  const token = req.headers.get("x-astra-token") ?? process.env.ASTRA_DB_APPLICATION_TOKEN ?? "";
-  const endpoint = req.headers.get("x-astra-endpoint") ?? process.env.ASTRA_DB_API_ENDPOINT ?? "";
+export async function GET() {
+  const db = getDb();
+  const rows = db
+    .prepare("SELECT id, name, created_at, updated_at, message_count FROM conversations ORDER BY updated_at DESC LIMIT 100")
+    .all() as ConvRow[];
 
-  if (!token || !endpoint) {
-    return NextResponse.json({ error: "Missing credentials" }, { status: 400 });
-  }
+  const conversations = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    messageCount: r.message_count,
+  }));
 
-  try {
-    const db = getAstraDb(token, endpoint);
-    const coll = await db.createCollection(CONV_COLLECTION);
-    const docs = await coll.find({}, { sort: { updatedAt: -1 }, limit: 100 }).toArray();
-
-    const conversations = docs.map((d) => ({
-      id: d._id as string,
-      name: (d.name as string) ?? "Conversation",
-      createdAt: (d.createdAt as string) ?? new Date().toISOString(),
-      updatedAt: (d.updatedAt as string) ?? new Date().toISOString(),
-      messageCount: (d.messageCount as number) ?? 0,
-    }));
-
-    return NextResponse.json({ conversations });
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to list conversations" },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json({ conversations });
 }
 
 // POST /api/conversations
 export async function POST(req: Request) {
   const body = await req.json() as { name?: string };
-  const token = req.headers.get("x-astra-token") ?? process.env.ASTRA_DB_APPLICATION_TOKEN ?? "";
-  const endpoint = req.headers.get("x-astra-endpoint") ?? process.env.ASTRA_DB_API_ENDPOINT ?? "";
+  const db = getDb();
 
-  if (!token || !endpoint) {
-    return NextResponse.json({ error: "Missing credentials" }, { status: 400 });
-  }
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const name = body.name ?? "New Conversation";
 
-  try {
-    const db = getAstraDb(token, endpoint);
-    const coll = await db.createCollection(CONV_COLLECTION);
+  db.prepare(
+    "INSERT INTO conversations (id, name, created_at, updated_at, message_count) VALUES (?, ?, ?, ?, 0)"
+  ).run(id, name, now, now);
 
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-
-    await coll.insertOne({
-      _id: id,
-      name: body.name ?? "New Conversation",
-      createdAt: now,
-      updatedAt: now,
-      messageCount: 0,
-    });
-
-    return NextResponse.json({
-      conversation: { id, name: body.name ?? "New Conversation", createdAt: now, updatedAt: now, messageCount: 0 },
-    });
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to create conversation" },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json({ conversation: { id, name, createdAt: now, updatedAt: now, messageCount: 0 } });
 }

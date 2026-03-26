@@ -39,7 +39,21 @@ export interface Conversation {
   messageCount: number;
 }
 
-export type ViewMode = "chat" | "api";
+export type ViewMode = "chat" | "ingest" | "api";
+
+export type IngestFileType = "pdf" | "txt" | "md" | "csv" | "json" | "docx";
+
+// Grouped summary for the document library (one per source file, stored in SQLite)
+export interface IngestedDocumentSummary {
+  source_doc_id: string;
+  source_filename: string;
+  file_type: IngestFileType;
+  file_size: number;
+  md5_hash: string;
+  chunk_total: number;
+  ingested_at: string;
+  collection: string;
+}
 
 export type PipelineStepId = "analyze" | "embed" | "search" | "respond";
 export type PipelineStepStatus = "pending" | "running" | "complete" | "error" | "skipped";

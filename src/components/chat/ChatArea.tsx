@@ -105,9 +105,7 @@ export function ChatArea({
           activeCollection: activeCollection ?? "",
           ibmApiKey: ibmApiKey || undefined,
           watsonxProjectId: watsonxProjectId || undefined,
-          collectionFields: activeCollection && collectionFields?.[activeCollection]
-            ? collectionFields[activeCollection]
-            : undefined,
+          allCollectionFields: collectionFields ?? {},
           history: messages
             .filter((m) => m.role === "user" || m.role === "assistant")
             .map((m) => ({
@@ -169,10 +167,10 @@ export function ChatArea({
 
     const completedSteps = [...liveSteps];
     const searchStep = completedSteps.find((s) => s.id === "search");
-    const rawResults = searchStep?.data?.results as Array<{ id: string; similarity: number; preview: Record<string, string | number> }> | undefined;
+    const rawResults = searchStep?.data?.results as Array<{ id: string; similarity: number; preview: Record<string, string | number>; collection?: string }> | undefined;
     const searchCollection = String(searchStep?.data?.collection ?? "documents");
     const sources = rawResults?.map((r) => ({
-      collection: searchCollection,
+      collection: r.collection ?? searchCollection,
       id: r.id,
       similarity: r.similarity,
       preview: r.preview,
@@ -223,7 +221,8 @@ export function ChatArea({
             onHintClick={(hint) => { setInput(hint); inputRef.current?.focus(); }}
             isConnected={!!astraToken}
             initializing={initializing}
-            fields={activeCollection && collectionFields?.[activeCollection] ? collectionFields[activeCollection] : []}
+            collectionFields={collectionFields ?? {}}
+            collections={collections?.map((c) => c.name).filter((n) => !n.startsWith("dap_")) ?? []}
             activeCollection={activeCollection}
           />
         ) : (
@@ -345,19 +344,77 @@ export function ChatArea({
   );
 }
 
+function buildSuggestions(
+  collections: string[],
+  collectionFields: Record<string, string[]>,
+  activeCollection?: string,
+): string[] {
+  const suggestions: string[] = [];
+  const activeFields = activeCollection ? (collectionFields[activeCollection] ?? []) : [];
+
+  // Cross-collection exploration (only when multiple collections exist)
+  if (collections.length > 1) {
+    suggestions.push("Tell me about my data");
+    suggestions.push(`What collections do I have and what's in each?`);
+  }
+
+  // Active collection overview
+  if (activeCollection) {
+    suggestions.push(`Show me 5 records from ${activeCollection}`);
+    suggestions.push(`What fields are available in ${activeCollection}?`);
+  }
+
+  // Field-based suggestions for active collection
+  for (const field of activeFields.slice(0, 6)) {
+    const lower = field.toLowerCase();
+    if (/price|cost|amount|total|salary|revenue|score|rating|count|num|qty|quantity/.test(lower)) {
+      suggestions.push(`What are the top 5 records by ${field}?`);
+      suggestions.push(`Show me records with the lowest ${field}`);
+    } else if (/date|time|created|updated|at$/.test(lower)) {
+      suggestions.push(`Show me the most recent records by ${field}`);
+    } else if (/name|title|label|description|text|content/.test(lower)) {
+      suggestions.push(`Find records where ${field} mentions `);
+    } else if (/status|type|category|kind|tag/.test(lower)) {
+      suggestions.push(`What are the distinct values of ${field}?`);
+    } else {
+      suggestions.push(`Filter by ${field}`);
+    }
+    if (suggestions.length >= 8) break;
+  }
+
+  // Other collections (one suggestion each, up to 2)
+  const others = collections.filter((c) => c !== activeCollection).slice(0, 2);
+  for (const col of others) {
+    if (suggestions.length >= 8) break;
+    const fields = collectionFields[col] ?? [];
+    if (fields.length > 0) {
+      suggestions.push(`Show me records from ${col} with high ${fields[0]}`);
+    } else {
+      suggestions.push(`Show me 5 records from ${col}`);
+    }
+  }
+
+  // Deduplicate and cap at 8
+  return [...new Set(suggestions)].slice(0, 8);
+}
+
 function EmptyState({
   onHintClick,
   isConnected,
   initializing,
-  fields = [],
+  collectionFields = {},
+  collections = [],
   activeCollection,
 }: {
   onHintClick: (hint: string) => void;
   isConnected: boolean;
   initializing?: boolean;
-  fields?: string[];
+  collectionFields?: Record<string, string[]>;
+  collections?: string[];
   activeCollection?: string;
 }) {
+  const suggestions = buildSuggestions(collections, collectionFields, activeCollection);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -400,24 +457,23 @@ function EmptyState({
         </p>
       </div>
 
-      {fields.length > 0 && (
+      {suggestions.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1, duration: 0.3 }}
-          className="w-full max-w-md rounded-xl px-4 py-3.5"
-          style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}
+          className="w-full max-w-xl"
         >
-          <p className="text-[10px] uppercase tracking-widest font-semibold mb-2.5" style={{ color: "var(--text-muted)" }}>
-            {activeCollection ? `Fields in ${activeCollection}` : "Available fields"}
+          <p className="text-[10px] uppercase tracking-widest font-semibold mb-2.5 text-center" style={{ color: "var(--text-muted)" }}>
+            Suggested queries
           </p>
-          <div className="flex flex-wrap gap-1.5">
-            {fields.map((f) => (
+          <div className="flex flex-wrap justify-center gap-2">
+            {suggestions.map((s) => (
               <button
-                key={f}
-                onClick={() => onHintClick(f)}
-                className="px-2.5 py-1 rounded-lg text-xs transition-all"
-                style={{ backgroundColor: "var(--bg-hover)", color: "var(--text-muted)", border: "1px solid var(--border-subtle)", fontFamily: "IBM Plex Mono, monospace" }}
+                key={s}
+                onClick={() => onHintClick(s)}
+                className="px-3 py-1.5 rounded-lg text-xs transition-all text-left"
+                style={{ backgroundColor: "var(--bg-card)", color: "var(--text-secondary)", border: "1px solid var(--border-subtle)" }}
                 onMouseEnter={(e) => {
                   const el = e.currentTarget as HTMLElement;
                   el.style.color = "var(--interactive)";
@@ -426,12 +482,12 @@ function EmptyState({
                 }}
                 onMouseLeave={(e) => {
                   const el = e.currentTarget as HTMLElement;
-                  el.style.color = "var(--text-muted)";
+                  el.style.color = "var(--text-secondary)";
                   el.style.borderColor = "var(--border-subtle)";
-                  el.style.backgroundColor = "var(--bg-hover)";
+                  el.style.backgroundColor = "var(--bg-card)";
                 }}
               >
-                {f}
+                {s}
               </button>
             ))}
           </div>

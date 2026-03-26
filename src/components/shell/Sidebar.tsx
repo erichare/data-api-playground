@@ -12,7 +12,6 @@ import {
   Check,
   X,
   Loader2,
-  UploadCloud,
 } from "lucide-react";
 import type { Collection, Conversation } from "@/lib/types";
 
@@ -21,7 +20,6 @@ interface SidebarProps {
   activeCollection: string;
   onSelectCollection: (name: string) => void;
   onNewCollection: () => void;
-  onIngestCollection: (name: string) => void;
   keyspaces?: string[];
   selectedKeyspace?: string;
   onKeyspaceChange?: (keyspace: string) => void;
@@ -32,6 +30,7 @@ interface SidebarProps {
   creatingConversation?: boolean;
   onRenameConversation: (id: string, name: string) => void;
   onDeleteConversation: (id: string) => void;
+  viewMode?: string;
 }
 
 export function Sidebar({
@@ -39,7 +38,6 @@ export function Sidebar({
   activeCollection,
   onSelectCollection,
   onNewCollection,
-  onIngestCollection,
   keyspaces = [],
   selectedKeyspace = "default_keyspace",
   onKeyspaceChange,
@@ -50,14 +48,13 @@ export function Sidebar({
   creatingConversation = false,
   onRenameConversation,
   onDeleteConversation,
+  viewMode = "chat",
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const [showInternal, setShowInternal] = useState(false);
-  const sortedCollections = [
-    ...collections.filter((c) => !c.name.startsWith("dap_")),
-    ...collections.filter((c) => c.name.startsWith("dap_")),
-  ];
-  const visibleCollections = showInternal ? sortedCollections : sortedCollections.filter((c) => !c.name.startsWith("dap_"));
+  const visibleCollections = collections.filter((c) => !c.name.startsWith("dap_"));
+
+  const convActive = viewMode === "chat";
+  const collActive = viewMode === "ingest" || viewMode === "api";
 
   return (
     <motion.aside
@@ -94,40 +91,35 @@ export function Sidebar({
                 <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
                   Conversations
                 </p>
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
-                    style={{ backgroundColor: "var(--interactive-light)", color: "var(--interactive)" }}
-                  >
-                    {conversations.length}
-                  </span>
-                  <motion.button
-                    onClick={() => void onNewConversation()}
-                    disabled={creatingConversation}
-                    className="w-5 h-5 rounded flex items-center justify-center"
-                    style={{ color: creatingConversation ? "var(--interactive)" : "var(--text-muted)", cursor: creatingConversation ? "default" : "pointer", backgroundColor: "rgba(0,0,0,0)" }}
-                    whileHover={creatingConversation ? {} : { backgroundColor: "var(--interactive-light)", color: "var(--interactive)" }}
-                    whileTap={creatingConversation ? {} : { scale: 0.9 }}
-                    title="New conversation"
-                  >
-                    {creatingConversation
-                      ? <Loader2 size={11} className="animate-spin" />
-                      : <Plus size={11} />
-                    }
-                  </motion.button>
-                </div>
+                <span
+                  className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                  style={{ backgroundColor: "var(--interactive-light)", color: "var(--interactive)" }}
+                >
+                  {conversations.length}
+                </span>
               </div>
               <div className="flex flex-col gap-0.5">
                 {conversations.map((conv) => (
                   <ConversationItem
                     key={conv.id}
                     conversation={conv}
-                    isActive={conv.id === activeConversationId}
+                    isActive={convActive && conv.id === activeConversationId}
                     onClick={() => void onConversationChange(conv.id)}
                     onRename={(name) => void onRenameConversation(conv.id, name)}
                     onDelete={() => void onDeleteConversation(conv.id)}
                   />
                 ))}
+                <motion.button
+                  onClick={() => void onNewConversation()}
+                  disabled={creatingConversation}
+                  className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium mt-0.5"
+                  style={{ color: "var(--text-muted)", border: "1px dashed var(--border-subtle)", backgroundColor: "rgba(0,0,0,0)", cursor: creatingConversation ? "default" : "pointer" }}
+                  whileHover={creatingConversation ? {} : { backgroundColor: "var(--interactive-light)", borderColor: "var(--interactive-border)", color: "var(--interactive)" }}
+                  whileTap={creatingConversation ? {} : { scale: 0.98 }}
+                >
+                  {creatingConversation ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                  <span>New Conversation</span>
+                </motion.button>
               </div>
             </div>
 
@@ -140,35 +132,20 @@ export function Sidebar({
                 <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
                   Collections
                 </p>
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
-                    style={{ backgroundColor: "var(--bg-hover)", color: "var(--text-secondary)" }}
-                  >
-                    {visibleCollections.length}
-                  </span>
-                  <button
-                    onClick={() => setShowInternal((v) => !v)}
-                    className="text-[9px] px-1.5 py-0.5 rounded"
-                    style={{
-                      color: showInternal ? "var(--interactive)" : "var(--text-muted)",
-                      backgroundColor: showInternal ? "var(--interactive-light)" : "rgba(0,0,0,0)",
-                      border: `1px solid ${showInternal ? "var(--interactive-border)" : "transparent"}`,
-                    }}
-                    title={showInternal ? "Hide internal collections" : "Show internal collections"}
-                  >
-                    {showInternal ? "–internal" : "+internal"}
-                  </button>
-                </div>
+                <span
+                  className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                  style={{ backgroundColor: "var(--bg-hover)", color: "var(--text-secondary)" }}
+                >
+                  {visibleCollections.length}
+                </span>
               </div>
               <div className="flex flex-col gap-0.5">
                 {visibleCollections.map((col) => (
                   <CollectionItem
                     key={col.name}
                     collection={col}
-                    isActive={activeCollection === col.name}
+                    isActive={collActive && activeCollection === col.name}
                     onClick={() => onSelectCollection(col.name)}
-                    onIngest={() => onIngestCollection(col.name)}
                   />
                 ))}
                 <motion.button
@@ -197,9 +174,9 @@ export function Sidebar({
               onClick={() => void onConversationChange(conv.id)}
               className="w-8 h-8 rounded-lg flex items-center justify-center"
               style={{
-                backgroundColor: conv.id === activeConversationId ? "var(--interactive-light)" : "rgba(0,0,0,0)",
-                color: conv.id === activeConversationId ? "var(--interactive)" : "var(--text-muted)",
-                borderLeft: conv.id === activeConversationId ? "2px solid var(--interactive)" : "2px solid transparent",
+                backgroundColor: convActive && conv.id === activeConversationId ? "var(--interactive-light)" : "rgba(0,0,0,0)",
+                color: convActive && conv.id === activeConversationId ? "var(--interactive)" : "var(--text-muted)",
+                borderLeft: convActive && conv.id === activeConversationId ? "2px solid var(--interactive)" : "2px solid transparent",
               }}
               whileHover={{ backgroundColor: "var(--bg-hover)" }}
               title={conv.name}
@@ -214,9 +191,9 @@ export function Sidebar({
               onClick={() => onSelectCollection(col.name)}
               className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold uppercase"
               style={{
-                backgroundColor: activeCollection === col.name ? "var(--interactive-light)" : "rgba(0,0,0,0)",
-                color: activeCollection === col.name ? "var(--interactive)" : "var(--text-muted)",
-                borderLeft: activeCollection === col.name ? "2px solid var(--interactive)" : "2px solid transparent",
+                backgroundColor: collActive && activeCollection === col.name ? "var(--interactive-light)" : "rgba(0,0,0,0)",
+                color: collActive && activeCollection === col.name ? "var(--interactive)" : "var(--text-muted)",
+                borderLeft: collActive && activeCollection === col.name ? "2px solid var(--interactive)" : "2px solid transparent",
               }}
               whileHover={{ backgroundColor: "var(--bg-hover)" }}
               title={col.name}
@@ -350,12 +327,10 @@ function CollectionItem({
   collection,
   isActive,
   onClick,
-  onIngest,
 }: {
   collection: Collection;
   isActive: boolean;
   onClick: () => void;
-  onIngest: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -370,39 +345,19 @@ function CollectionItem({
       onMouseLeave={() => setHovered(false)}
     >
       <div
-        className="flex items-center px-2.5 py-2 rounded-lg transition-colors"
+        role="button"
+        tabIndex={0}
+        onClick={onClick}
+        onKeyDown={(e) => { if (e.key === "Enter") onClick(); }}
+        className="flex flex-col px-2.5 py-2 rounded-lg transition-colors cursor-pointer"
         style={{ backgroundColor: hovered && !isActive ? "var(--bg-hover)" : "transparent" }}
       >
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={onClick}
-          onKeyDown={(e) => { if (e.key === "Enter") onClick(); }}
-          className="flex flex-col min-w-0 flex-1 cursor-pointer"
-        >
-          <span className="text-sm font-medium truncate" style={{ color: isActive ? "var(--text-primary)" : "var(--text-secondary)" }}>
-            {collection.name}
-          </span>
-          <span className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-            {collection.count.toLocaleString()} docs
-          </span>
-        </div>
-
-        <div
-          className="shrink-0 ml-1"
-          style={{ opacity: hovered ? 1 : 0, pointerEvents: hovered ? "auto" : "none", transition: "opacity 0.15s" }}
-        >
-          <button
-            onClick={(e) => { e.stopPropagation(); onIngest(); }}
-            className="p-1 rounded"
-            style={{ color: "var(--text-muted)" }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--interactive)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
-            title="Ingest data"
-          >
-            <UploadCloud size={11} />
-          </button>
-        </div>
+        <span className="text-sm font-medium truncate" style={{ color: isActive ? "var(--text-primary)" : "var(--text-secondary)" }}>
+          {collection.name}
+        </span>
+        <span className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+          {collection.count.toLocaleString()} docs
+        </span>
       </div>
     </div>
   );

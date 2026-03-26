@@ -1,105 +1,64 @@
 import { NextResponse } from "next/server";
-import { getAstraDb } from "@/lib/astra";
+import { getDb } from "@/lib/db";
 
-const CONV_COLLECTION = "dap_conversations";
-const MSG_COLLECTION = "dap_messages";
+export const runtime = "nodejs";
 
-// GET /api/conversations/[id]/messages?token=...&endpoint=...
-export async function GET(
-  req: Request,
-  context: { params: Promise<{ id: string }> }
-) {
+type MsgRow = {
+  id: string; conversation_id: string; role: string; content: string;
+  timestamp: string; search_mode: string | null; latency_ms: number | null;
+  pipeline_steps: string | null; sources: string | null;
+};
+
+// GET /api/conversations/[id]/messages
+export async function GET(req: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const token = req.headers.get("x-astra-token") ?? process.env.ASTRA_DB_APPLICATION_TOKEN ?? "";
-  const endpoint = req.headers.get("x-astra-endpoint") ?? process.env.ASTRA_DB_API_ENDPOINT ?? "";
+  const db = getDb();
 
-  if (!token || !endpoint) {
-    return NextResponse.json({ error: "Missing credentials" }, { status: 400 });
-  }
+  const rows = db
+    .prepare("SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC LIMIT 500")
+    .all(id) as MsgRow[];
 
-  try {
-    const db = getAstraDb(token, endpoint);
-    const coll = await db.createCollection(MSG_COLLECTION);
-    const docs = await coll
-      .find({ conversationId: id }, { sort: { timestamp: 1 }, limit: 500 })
-      .toArray();
+  const messages = rows.map((r) => ({
+    id: r.id,
+    role: r.role,
+    content: r.content,
+    timestamp: r.timestamp,
+    searchMode: r.search_mode ?? undefined,
+    latencyMs: r.latency_ms ?? undefined,
+    pipelineSteps: r.pipeline_steps ? JSON.parse(r.pipeline_steps) : undefined,
+    sources: r.sources ? JSON.parse(r.sources) : undefined,
+  }));
 
-    const messages = docs.map((d) => ({
-      id: d._id as string,
-      role: d.role as string,
-      content: d.content as string,
-      timestamp: d.timestamp as string,
-      searchMode: d.searchMode,
-      latencyMs: d.latencyMs,
-      pipelineSteps: d.pipelineSteps,
-      sources: d.sources,
-    }));
-
-    return NextResponse.json({ messages });
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to load messages" },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json({ messages });
 }
 
-// POST /api/conversations/[id]/messages — append a message
-export async function POST(
-  req: Request,
-  context: { params: Promise<{ id: string }> }
-) {
+// POST /api/conversations/[id]/messages — append one message
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const body = await req.json() as {
     message: {
-      id: string;
-      role: string;
-      content: string;
-      timestamp: string;
-      searchMode?: string;
-      latencyMs?: number;
-      pipelineSteps?: unknown[];
-      sources?: unknown[];
+      id: string; role: string; content: string; timestamp: string;
+      searchMode?: string; latencyMs?: number;
+      pipelineSteps?: unknown[]; sources?: unknown[];
     };
   };
-
-  const token = req.headers.get("x-astra-token") ?? process.env.ASTRA_DB_APPLICATION_TOKEN ?? "";
-  const endpoint = req.headers.get("x-astra-endpoint") ?? process.env.ASTRA_DB_API_ENDPOINT ?? "";
-
-  if (!token || !endpoint) {
-    return NextResponse.json({ error: "Missing credentials" }, { status: 400 });
-  }
-
   const { message } = body;
+  const db = getDb();
   const now = new Date().toISOString();
 
-  try {
-    const db = getAstraDb(token, endpoint);
-    const msgColl = await db.createCollection(MSG_COLLECTION);
+  db.prepare(`
+    INSERT INTO messages (id, conversation_id, role, content, timestamp, search_mode, latency_ms, pipeline_steps, sources)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO NOTHING
+  `).run(
+    message.id, id, message.role, message.content, message.timestamp,
+    message.searchMode ?? null,
+    message.latencyMs ?? null,
+    message.pipelineSteps ? JSON.stringify(message.pipelineSteps) : null,
+    message.sources ? JSON.stringify(message.sources) : null,
+  );
 
-    await Promise.all([
-      msgColl.insertOne({
-        _id: message.id,
-        conversationId: id,
-        role: message.role,
-        content: message.content,
-        timestamp: message.timestamp,
-        ...(message.searchMode ? { searchMode: message.searchMode } : {}),
-        ...(message.latencyMs != null ? { latencyMs: message.latencyMs } : {}),
-        ...(message.pipelineSteps ? { pipelineSteps: message.pipelineSteps } : {}),
-        ...(message.sources ? { sources: message.sources } : {}),
-      }),
-      db.collection(CONV_COLLECTION).updateOne(
-        { _id: id },
-        { $set: { updatedAt: now }, $inc: { messageCount: 1 } }
-      ),
-    ]);
+  db.prepare("UPDATE conversations SET updated_at = ?, message_count = message_count + 1 WHERE id = ?").run(now, id);
 
-    return NextResponse.json({ saved: true });
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to save message" },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json({ saved: true });
 }

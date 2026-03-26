@@ -70,14 +70,25 @@ function LangToggle({ lang, onChange }: { lang: CodeLang; onChange: (l: CodeLang
   );
 }
 
-type SearchResult = { id: string; similarity: number; preview: Record<string, string | number> };
+type SearchResult = { id: string; similarity: number; preview: Record<string, string | number>; collection?: string };
 
-function SearchStepPreview({ count, results }: {
-  count?: number;
+function SearchStepPreview({ results, collections }: {
   results?: SearchResult[];
+  collections?: string[];
 }) {
+  const isMulti = collections && collections.length > 1;
   return (
     <div className="flex flex-col gap-1 pt-1">
+      {isMulti && (
+        <div className="flex flex-wrap gap-1 mb-1">
+          <span style={{ color: "var(--text-muted)", fontSize: "10px", marginRight: "2px" }}>Searched:</span>
+          {collections.map((c) => (
+            <span key={c} className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold" style={{ backgroundColor: "rgba(255,107,53,0.12)", color: "var(--step-search)" }}>
+              {c}
+            </span>
+          ))}
+        </div>
+      )}
       {results && results.length > 0 ? results.map((r, i) => (
         <div
           key={r.id}
@@ -92,16 +103,23 @@ function SearchStepPreview({ count, results }: {
             >
               {i + 1}. {r.id}
             </span>
-            {r.similarity > 0 && (
-              <span
-                className="text-[10px] font-semibold shrink-0"
-                style={{
-                  color: r.similarity >= 0.9 ? "#10b981" : r.similarity >= 0.7 ? "#f59e0b" : "var(--step-search)",
-                }}
-              >
-                {r.similarity.toFixed(3)}
-              </span>
-            )}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {isMulti && r.collection && (
+                <span className="text-[9px] px-1 py-0.5 rounded font-mono font-semibold" style={{ backgroundColor: "rgba(255,107,53,0.1)", color: "var(--step-search)" }}>
+                  {r.collection}
+                </span>
+              )}
+              {r.similarity > 0 && (
+                <span
+                  className="text-[10px] font-semibold"
+                  style={{
+                    color: r.similarity >= 0.9 ? "#10b981" : r.similarity >= 0.7 ? "#f59e0b" : "var(--step-search)",
+                  }}
+                >
+                  {r.similarity.toFixed(3)}
+                </span>
+              )}
+            </div>
           </div>
           {Object.entries(r.preview).slice(0, 2).map(([k, v]) => (
             <div key={k} className="flex gap-1.5 items-baseline">
@@ -120,7 +138,9 @@ function SearchStepPreview({ count, results }: {
 function StepDataPreview({ stepId, data }: { stepId: PipelineStepId; data: Record<string, unknown> }) {
   if (stepId === "analyze") {
     const intent = data.intent ? String(data.intent) : null;
-    const collection = data.collection ? String(data.collection) : null;
+    const isAllCollections = data.allCollections === true;
+    const multiCollections = Array.isArray(data.collections) ? (data.collections as string[]) : null;
+    const collection = isAllCollections ? null : (data.collection ? String(data.collection) : null);
     const sm = data.searchMode ? String(data.searchMode) : null;
     const limit = data.limit != null ? Number(data.limit) : null;
     const sortField = data.sortField ? String(data.sortField) : null;
@@ -138,14 +158,23 @@ function StepDataPreview({ stepId, data }: { stepId: PipelineStepId; data: Recor
           </div>
         )}
         <div className="flex flex-wrap gap-3">
-          {collection && (
+          {isAllCollections && multiCollections ? (
+            <div className="flex gap-1.5 items-center flex-wrap">
+              <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>Collections</span>
+              {multiCollections.map((c) => (
+                <span key={c} className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold" style={{ backgroundColor: "rgba(255,107,53,0.12)", color: "var(--step-search)" }}>
+                  {c}
+                </span>
+              ))}
+            </div>
+          ) : collection ? (
             <div className="flex gap-1.5 items-center">
               <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>Collection</span>
               <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold" style={{ backgroundColor: "rgba(255,107,53,0.12)", color: "var(--step-search)" }}>
                 {collection}
               </span>
             </div>
-          )}
+          ) : null}
           {sm && (
             <div className="flex gap-1.5 items-center">
               <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>Mode</span>
@@ -222,9 +251,9 @@ function StepDataPreview({ stepId, data }: { stepId: PipelineStepId; data: Recor
   }
 
   if (stepId === "search") {
-    const count = data.count as number | undefined;
     const results = data.results as SearchResult[] | undefined;
-    return <SearchStepPreview count={count} results={results} />;
+    const collections = data.collections as string[] | undefined;
+    return <SearchStepPreview results={results} collections={collections} />;
   }
 
   if (stepId === "respond") {

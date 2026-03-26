@@ -2,6 +2,9 @@
 .DS_Store
 /node_modules
 
+# Local SQLite database (app-internal data)
+/data
+
 # TypeScript build cache
 tsconfig.tsbuildinfo
 
