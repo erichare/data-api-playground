@@ -22,7 +22,7 @@ interface ProviderModel {
 
 const METRICS = ["cosine", "dot_product", "euclidean"] as const;
 
-type CodeLang = "ts" | "python" | "java";
+type CodeLang = "ts" | "python" | "java" | "curl";
 
 const I = (n: number) => ({ paddingLeft: `${n * 1.2}em` });
 // Syntax-token colours — intentionally kept as fixed palette so code looks
@@ -36,8 +36,8 @@ const T = {
   num:    "#818cf8",                     // numbers — neutral purple, fine on both
 };
 
-const LANG_LABELS: Record<CodeLang, string> = { ts: "TS", python: "Py", java: "Java" };
-const LANG_NAMES: Record<CodeLang, string> = { ts: "astra-db-ts", python: "astrapy · python", java: "astra-db-java" };
+const LANG_LABELS: Record<CodeLang, string> = { ts: "TS", python: "Py", java: "Java", curl: "cURL" };
+const LANG_NAMES: Record<CodeLang, string> = { ts: "astra-db-ts", python: "astrapy · python", java: "astra-db-java", curl: "Data API" };
 
 function CodePreview({ name, dimension, metric, mode, provider, model }: {
   name: string; dimension: number; metric: string;
@@ -46,6 +46,31 @@ function CodePreview({ name, dimension, metric, mode, provider, model }: {
   const [lang, setLang] = useState<CodeLang>("ts");
   const displayName = name || "my_collection";
   const metricUpper = metric.toUpperCase();
+  const curlBody = mode === "vectorize"
+    ? `{
+    "createCollection": {
+      "name": "${displayName}",
+      "options": {
+        "vector": {
+          "service": {
+            "provider": "${provider}",
+            "modelName": "${model}"
+          }
+        }
+      }
+    }
+  }`
+    : `{
+    "createCollection": {
+      "name": "${displayName}",
+      "options": {
+        "vector": {
+          "dimension": ${dimension},
+          "metric": "${metric}"
+        }
+      }
+    }
+  }`;
 
   return (
     <div
@@ -141,6 +166,14 @@ function CodePreview({ name, dimension, metric, mode, provider, model }: {
             <div style={I(2)}><span style={{ color: T.base }}>.build())</span></div>
             <div style={I(1)}><span style={{ color: T.base }}>.build()</span></div>
             <div style={I(0)}><span style={{ color: T.base }}>)</span></div>
+          </>
+        )}
+        {lang === "curl" && (
+          <>
+            <div style={I(0)}><span style={{ color: T.kw }}>curl</span><span style={{ color: T.base }}> -X POST </span><span style={{ color: T.str }}>&quot;$ASTRA_DB_API_ENDPOINT/api/json/v1/$KEYSPACE&quot;</span><span style={{ color: T.base }}> \</span></div>
+            <div style={I(1)}><span style={{ color: T.base }}>-H </span><span style={{ color: T.str }}>&quot;Token: $ASTRA_DB_APPLICATION_TOKEN&quot;</span><span style={{ color: T.base }}> \</span></div>
+            <div style={I(1)}><span style={{ color: T.base }}>-H </span><span style={{ color: T.str }}>&quot;Content-Type: application/json&quot;</span><span style={{ color: T.base }}> \</span></div>
+            <div style={I(1)}><span style={{ color: T.base }}>-d </span><span style={{ color: T.str }}>&apos;{curlBody}&apos;</span></div>
           </>
         )}
       </div>
