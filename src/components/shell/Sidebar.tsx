@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   ChevronLeft,
   ChevronRight,
@@ -38,9 +38,6 @@ export function Sidebar({
   activeCollection,
   onSelectCollection,
   onNewCollection,
-  keyspaces = [],
-  selectedKeyspace = "default_keyspace",
-  onKeyspaceChange,
   conversations,
   activeConversationId,
   onConversationChange,
@@ -112,6 +109,7 @@ export function Sidebar({
                 <motion.button
                   onClick={() => void onNewConversation()}
                   disabled={creatingConversation}
+                  data-testid="new-conversation-button"
                   className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium mt-0.5"
                   style={{ color: "var(--text-muted)", border: "1px dashed var(--border-subtle)", backgroundColor: "rgba(0,0,0,0)", cursor: creatingConversation ? "default" : "pointer" }}
                   whileHover={creatingConversation ? {} : { backgroundColor: "var(--interactive-light)", borderColor: "var(--interactive-border)", color: "var(--interactive)" }}

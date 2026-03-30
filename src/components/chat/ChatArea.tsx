@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, MessageSquare, RefreshCw } from "lucide-react";
+import { Send, MessageSquare, RefreshCw, AlertCircle, X } from "lucide-react";
 import { MessageBubble } from "./MessageBubble";
 import { PipelineTrace } from "./PipelineTrace";
 import { SearchModeToggle } from "./SearchModeToggle";
@@ -44,6 +44,7 @@ export function ChatArea({
   const [streamingSteps, setStreamingSteps] = useState<PipelineStep[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [sendRipple, setSendRipple] = useState(false);
+  const [chatError, setChatError] = useState("");
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -73,6 +74,7 @@ export function ChatArea({
     setInput("");
     setIsStreaming(true);
     setStreamingSteps([]);
+    setChatError("");
 
     const liveSteps: PipelineStep[] = [];
 
@@ -140,7 +142,10 @@ export function ChatArea({
           let event: any;
           try { event = JSON.parse(line); } catch { continue; }
 
-          if (event.error && !event.step) throw new Error(event.error);
+          if (event.error && !event.step) {
+            const requestId = event.requestId ? ` (request ${event.requestId})` : "";
+            throw new Error(`${event.error}${requestId}`);
+          }
 
           if (event.step && event.status) {
             upsertStep({
@@ -163,7 +168,9 @@ export function ChatArea({
         }
       }
     } catch (err) {
-      finalContent = err instanceof Error ? `Error: ${err.message}` : "An error occurred while processing your query.";
+      const message = err instanceof Error ? err.message : "An error occurred while processing your query.";
+      setChatError(message);
+      finalContent = `Error: ${message}`;
     }
 
     setIsStreaming(false);
@@ -272,6 +279,30 @@ export function ChatArea({
         style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--bg-panel)" }}
       >
         <div className="max-w-3xl mx-auto">
+          {chatError && (
+            <div
+              className="mb-3 flex items-start justify-between gap-3 rounded-xl px-3 py-2.5"
+              style={{
+                backgroundColor: "rgba(239,68,68,0.08)",
+                border: "1px solid rgba(239,68,68,0.2)",
+              }}
+              data-testid="chat-error-banner"
+            >
+              <div className="flex items-start gap-2">
+                <AlertCircle size={14} style={{ color: "#ef4444", marginTop: "1px", flexShrink: 0 }} />
+                <span className="text-xs leading-relaxed" style={{ color: "#fca5a5" }}>
+                  {chatError}
+                </span>
+              </div>
+              <button
+                onClick={() => setChatError("")}
+                style={{ color: "#fca5a5" }}
+                aria-label="Dismiss chat error"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
           <div
             className="flex flex-col rounded-xl overflow-hidden"
             style={{ backgroundColor: "var(--bg-input)", border: "1px solid var(--border-subtle)" }}
@@ -283,6 +314,7 @@ export function ChatArea({
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask a question about your data..."
+              data-testid="chat-input"
               rows={1}
               className="w-full resize-none bg-transparent px-4 pt-3 pb-1 text-sm outline-none"
               style={{
@@ -299,6 +331,7 @@ export function ChatArea({
               <motion.button
                 onClick={() => void handleSend()}
                 disabled={!input.trim() || isStreaming}
+                data-testid="chat-send-button"
                 className="relative flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold overflow-hidden transition-colors shrink-0"
                 style={{
                   backgroundColor: input.trim() && !isStreaming ? "var(--interactive)" : "var(--bg-hover)",

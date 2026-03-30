@@ -5,8 +5,10 @@ import {
   resolveAstraConnection,
 } from "@/lib/astra";
 import { requireApiAuth } from "@/lib/auth";
+import { createRequestLogContext, jsonError, logError } from "@/lib/server/log";
 
 export async function POST(req: Request) {
+  const logContext = createRequestLogContext(req, "/api/data-api-proxy");
   const authError = requireApiAuth(req);
   if (authError) return authError;
   const body = await req.json() as {
@@ -22,16 +24,13 @@ export async function POST(req: Request) {
   const { collection, requestBody } = body;
 
   if (!token || !endpoint) {
-    return NextResponse.json({ error: "Missing Astra DB token or endpoint" }, { status: 400 });
+    return jsonError(logContext, 400, "Missing Astra DB token or endpoint");
   }
   if (!collection) {
-    return NextResponse.json({ error: "Missing collection name" }, { status: 400 });
+    return jsonError(logContext, 400, "Missing collection name");
   }
   if (!isAllowedAstraEndpoint(endpoint)) {
-    return NextResponse.json(
-      { error: "Endpoint must be a valid Astra DB API endpoint" },
-      { status: 400 }
-    );
+    return jsonError(logContext, 400, "Endpoint must be a valid Astra DB API endpoint");
   }
 
   const start = Date.now();
@@ -40,7 +39,7 @@ export async function POST(req: Request) {
     const collectionRef = getAstraDb(token, endpoint, keyspace).collection(collection);
     const command = Object.entries(requestBody)[0];
     if (!command) {
-      return NextResponse.json({ error: "Request body must contain an operation" }, { status: 400 });
+      return jsonError(logContext, 400, "Request body must contain an operation");
     }
 
     const [operation, payload] = command as [string, unknown];
@@ -94,7 +93,7 @@ export async function POST(req: Request) {
         result = await collectionRef.estimatedDocumentCount();
         break;
       default:
-        return NextResponse.json({ error: `Unsupported operation: ${operation}` }, { status: 400 });
+        return jsonError(logContext, 400, `Unsupported operation: ${operation}`);
     }
 
     const latencyMs = Date.now() - start;
@@ -103,11 +102,10 @@ export async function POST(req: Request) {
       statusText: "OK",
       latencyMs,
       data: result,
+      requestId: logContext.requestId,
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Request failed" },
-      { status: 500 }
-    );
+    logError(logContext, "astra.proxy.failed", err, { collection });
+    return jsonError(logContext, 500, err instanceof Error ? err.message : "Request failed");
   }
 }

@@ -94,6 +94,7 @@ export function LoginForm({ nextPath = "/" }: LoginFormProps) {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               autoFocus
+              data-testid="login-password"
               style={{
                 backgroundColor: "var(--bg-input)",
                 border: "1px solid var(--border-subtle)",
@@ -124,6 +125,7 @@ export function LoginForm({ nextPath = "/" }: LoginFormProps) {
           <button
             type="submit"
             disabled={submitting || !password.trim()}
+            data-testid="login-submit"
             className="w-full flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium"
             style={{
               backgroundColor:

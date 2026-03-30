@@ -20,6 +20,7 @@ import {
 interface DocumentLibraryPanelProps {
   filteredDocs: IngestedDocumentSummary[];
   loadingDocs: boolean;
+  loadError: string;
   search: string;
   setSearch: (value: string) => void;
   filterType: IngestFileType | "all";
@@ -34,6 +35,7 @@ interface DocumentLibraryPanelProps {
 export function DocumentLibraryPanel({
   filteredDocs,
   loadingDocs,
+  loadError,
   search,
   setSearch,
   filterType,
@@ -133,6 +135,18 @@ export function DocumentLibraryPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto">
+        {loadError && (
+          <div
+            className="mx-6 mt-4 rounded-lg px-3 py-2 text-xs"
+            style={{
+              backgroundColor: "rgba(239,68,68,0.08)",
+              border: "1px solid rgba(239,68,68,0.2)",
+              color: "#fca5a5",
+            }}
+          >
+            {loadError}
+          </div>
+        )}
         {loadingDocs ? (
           <div
             className="flex items-center justify-center h-32 gap-2"

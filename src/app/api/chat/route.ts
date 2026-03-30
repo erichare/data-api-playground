@@ -5,12 +5,14 @@ import { resolveAstraConnection } from "@/lib/astra";
 import { requireApiAuth } from "@/lib/auth";
 import { runChatWorkflow } from "@/lib/chat/service";
 import type { ChatRequestPayload, StepEvent } from "@/lib/chat/types";
+import { createRequestLogContext, logError } from "@/lib/server/log";
 
 export const runtime = "nodejs";
 
 const WATSONX_VERSION = "2024-05-31";
 
 export async function POST(req: NextRequest) {
+  const logContext = createRequestLogContext(req, "/api/chat");
   const authError = requireApiAuth(req);
   if (authError) return authError;
   const {
@@ -69,7 +71,15 @@ export async function POST(req: NextRequest) {
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
-        controller.enqueue(encoder.encode(JSON.stringify({ error: message }) + "\n"));
+        logError(logContext, "chat.workflow.failed", err, {
+          activeCollection: payload.activeCollection,
+          searchMode: payload.searchMode,
+        });
+        controller.enqueue(
+          encoder.encode(
+            JSON.stringify({ error: message, requestId: logContext.requestId }) + "\n"
+          )
+        );
       } finally {
         controller.close();
       }
@@ -81,6 +91,7 @@ export async function POST(req: NextRequest) {
       "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "no-cache",
       "X-Accel-Buffering": "no",
+      "X-Request-Id": logContext.requestId,
     },
   });
 }

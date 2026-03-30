@@ -111,6 +111,7 @@ export function Header({
         {connected ? (
           <motion.button
             onClick={onConnectionClick}
+            data-testid="header-connected-button"
             className="group flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
             style={{
               backgroundColor: "rgba(34,197,94,0.1)",
@@ -138,6 +139,7 @@ export function Header({
         ) : (
           <motion.button
             onClick={onConnectionClick}
+            data-testid="header-connect-button"
             className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
             style={{
               backgroundColor: envReady ? "rgba(251,191,36,0.1)" : "var(--bg-card)",
@@ -175,6 +177,7 @@ export function Header({
         {authEnabled && (
           <motion.button
             onClick={onSignOut}
+            data-testid="header-signout-button"
             className="p-2 rounded-lg"
             style={{ color: "var(--text-muted)", backgroundColor: "rgba(0,0,0,0)" }}
             whileHover={{ backgroundColor: "var(--bg-hover)", color: "#ef4444", scale: 1.05 }}

@@ -10,6 +10,24 @@ export interface RemoteConversation {
   messageCount: number;
 }
 
+interface ApiErrorPayload {
+  error?: string;
+  requestId?: string;
+}
+
+export async function readApiErrorMessage(
+  response: Response,
+  fallback: string
+): Promise<string> {
+  try {
+    const payload = (await response.json()) as ApiErrorPayload;
+    const message = payload.error ?? fallback;
+    return payload.requestId ? `${message} (request ${payload.requestId})` : message;
+  } catch {
+    return fallback;
+  }
+}
+
 export const UNTITLED_CONVERSATION_NAME = "Untitled";
 const UNTITLED_CONVERSATION_PATTERN = /^Untitled(?: \((\d+)\))?$/;
 
@@ -35,8 +53,12 @@ export async function fetchCollectionsFromApi(
     collections?: Collection[];
     fields?: Record<string, string[]>;
     error?: string;
+    requestId?: string;
   };
-  if (!connectRes.ok || data.error) throw new Error(data.error ?? "Connection failed");
+  if (!connectRes.ok || data.error) {
+    const message = data.error ?? "Connection failed";
+    throw new Error(data.requestId ? `${message} (request ${data.requestId})` : message);
+  }
 
   const ksData = ksRes.ok
     ? await ksRes.json() as { keyspaces?: string[]; error?: string }
@@ -69,6 +91,9 @@ export async function createConversationInApi(name?: string): Promise<Conversati
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
   });
+  if (!res.ok) {
+    throw new Error(await readApiErrorMessage(res, "Failed to create conversation"));
+  }
   const data = await res.json() as { conversation: RemoteConversation };
   const c = data.conversation;
   return {

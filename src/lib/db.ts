@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 
 const DATA_DIR = path.join(process.cwd(), "data");
-const DB_PATH = path.join(DATA_DIR, "app.db");
+const DB_PATH = process.env.DATA_API_PLAYGROUND_DB_PATH || path.join(DATA_DIR, "app.db");
 
 let _db: Database.Database | null = null;
 

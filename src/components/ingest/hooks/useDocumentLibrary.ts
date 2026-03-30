@@ -25,9 +25,11 @@ export function useDocumentLibrary({
   const [filterType, setFilterType] = useState<IngestFileType | "all">("all");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [viewingDoc, setViewingDoc] = useState<IngestedDocumentSummary | null>(null);
+  const [loadError, setLoadError] = useState("");
 
   const loadDocuments = useCallback(async () => {
     setLoadingDocs(true);
+    setLoadError("");
     if (!isConnected) {
       setDocuments(getMockDocuments(selectedCollection));
       setLoadingDocs(false);
@@ -36,10 +38,23 @@ export function useDocumentLibrary({
     try {
       const params = new URLSearchParams({ collection: selectedCollection });
       const res = await fetch(`/api/documents?${params}`);
-      const data = await res.json() as { documents?: IngestedDocumentSummary[] };
+      const data = await res.json() as {
+        documents?: IngestedDocumentSummary[];
+        error?: string;
+        requestId?: string;
+      };
+      if (!res.ok || data.error) {
+        const message = data.error ?? "Failed to load documents";
+        throw new Error(
+          data.requestId ? `${message} (request ${data.requestId})` : message
+        );
+      }
       setDocuments(data.documents ?? []);
-    } catch {
+    } catch (err) {
       setDocuments([]);
+      setLoadError(
+        err instanceof Error ? err.message : "Failed to load documents"
+      );
     } finally {
       setLoadingDocs(false);
     }
@@ -91,6 +106,7 @@ export function useDocumentLibrary({
     deletingId,
     viewingDoc,
     setViewingDoc,
+    loadError,
     filteredDocs,
     loadDocuments,
     handleDelete,

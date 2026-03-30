@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAstraDb, resolveAstraConnection, SYSTEM_FIELDS } from "@/lib/astra";
 import { requireApiAuth } from "@/lib/auth";
+import { createRequestLogContext, jsonError, logError } from "@/lib/server/log";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
+  const logContext = createRequestLogContext(req, "/api/connect");
   const authError = requireApiAuth(req);
   if (authError) return authError;
   const body = await req.json() as { token: string; endpoint: string; keyspace?: string };
   const { token, endpoint, keyspace } = resolveAstraConnection(body);
 
   if (!token || !endpoint) {
-    return NextResponse.json({ error: "token and endpoint are required" }, { status: 400 });
+    return jsonError(logContext, 400, "token and endpoint are required");
   }
 
   try {
@@ -53,9 +55,13 @@ export async function POST(req: NextRequest) {
       })
     );
 
-    return NextResponse.json({ collections, fields });
+    return NextResponse.json(
+      { collections, fields },
+      { headers: { "X-Request-Id": logContext.requestId } }
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to connect";
-    return NextResponse.json({ error: message }, { status: 400 });
+    logError(logContext, "astra.connect.failed", err);
+    return jsonError(logContext, 400, message);
   }
 }

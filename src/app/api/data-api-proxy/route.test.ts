@@ -37,8 +37,9 @@ describe("/api/data-api-proxy route", () => {
     const response = await POST(request);
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       error: "Endpoint must be a valid Astra DB API endpoint",
+      requestId: expect.any(String),
     });
     expect(getAstraDbMock).not.toHaveBeenCalled();
   });

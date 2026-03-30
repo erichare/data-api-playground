@@ -1,10 +1,12 @@
 import { NextRequest } from "next/server";
 import { requireApiAuth } from "@/lib/auth";
 import { parseDocumentUpload, streamDocumentIngest } from "@/lib/ingest/service";
+import { createRequestLogContext, logError } from "@/lib/server/log";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
+  const logContext = createRequestLogContext(req, "/api/ingest-document");
   const authError = requireApiAuth(req);
   if (authError) return authError;
   try {
@@ -18,10 +20,21 @@ export async function POST(req: NextRequest) {
       headers: {
         "Content-Type": "application/x-ndjson",
         "Transfer-Encoding": "chunked",
+        "X-Request-Id": logContext.requestId,
       },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "No file provided";
-    return new Response(JSON.stringify({ error: message }), { status: 400 });
+    logError(logContext, "ingest.document.failed", err);
+    return new Response(
+      JSON.stringify({ error: message, requestId: logContext.requestId }),
+      {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-Id": logContext.requestId,
+        },
+      }
+    );
   }
 }

@@ -38,6 +38,7 @@ export function IngestTab({
 
   const {
     loadingDocs,
+    loadError,
     search,
     setSearch,
     filterType,
@@ -92,6 +93,7 @@ export function IngestTab({
         <DocumentLibraryPanel
           filteredDocs={filteredDocs}
           loadingDocs={loadingDocs}
+          loadError={loadError}
           search={search}
           setSearch={setSearch}
           filterType={filterType}

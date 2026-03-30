@@ -215,6 +215,7 @@ export function AstraConnectDialog({
                       type={showToken ? "text" : "password"}
                       value={token}
                       onChange={(e) => setToken(e.target.value)}
+                      data-testid="astra-token-input"
                       placeholder="AstraCS:••••••••••••"
                       style={{ ...inputStyle, paddingRight: "40px" }}
                       onKeyDown={(e) => e.key === "Enter" && void handleConnect()}
@@ -253,6 +254,7 @@ export function AstraConnectDialog({
                     type="text"
                     value={endpoint}
                     onChange={(e) => setEndpoint(e.target.value)}
+                    data-testid="astra-endpoint-input"
                     placeholder="https://xxxx-xxxx.apps.astra.datastax.com"
                     style={inputStyle}
                     autoComplete="off"
@@ -376,6 +378,7 @@ export function AstraConnectDialog({
                   <motion.button
                     onClick={() => void handleConnect()}
                     disabled={!canConnect}
+                    data-testid="astra-connect-submit"
                     className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
                     style={{
                       backgroundColor: canConnect ? "var(--interactive)" : "var(--bg-hover)",
