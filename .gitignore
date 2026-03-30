@@ -12,3 +12,21 @@ tsconfig.tsbuildinfo
 .env
 .env.local
 .env*.local
+
+# Additional local env variants
+.env.*
+!.env.example
+
+# Playwright artifacts
+/test-results
+/playwright-report
+/output/playwright
+
+# Logs
+*.log
+
+# SQLite variants
+*.db
+*.db-shm
+*.db-wal
+*.sqlite

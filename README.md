@@ -46,27 +46,18 @@ npm install
 
 ### Environment Variables
 
-Create a `.env.local` file in the root directory:
+Copy the example environment file and fill in your own values:
 
-```env
-# Required — or enter credentials directly in the UI
-ASTRA_DB_APPLICATION_TOKEN=AstraCS:...
-ASTRA_DB_API_ENDPOINT=https://<db-id>.apps.astra.datastax.com
-
-# Optional — enables real LLM responses and embeddings
-WATSONX_API_KEY=...
-WATSONX_PROJECT_ID=...
-WATSONX_SERVICE_URL=https://us-south.ml.cloud.ibm.com
-WATSONX_IAM_URL=https://iam.cloud.ibm.com/identity/token
-
-# Optional — fallback embedding provider if watsonx is not configured
-HUGGINGFACE_API_KEY=hf_...
-
-# Optional — enables app-level password protection
-PLAYGROUND_AUTH_PASSWORD=choose-a-strong-password
-# Optional — separate secret used to derive the auth session cookie
-PLAYGROUND_AUTH_SECRET=long-random-string
+```bash
+cp .env.example .env.local
 ```
+
+The checked-in [.env.example](/Users/erichare/GitHub/data-api-playground/.env.example) is the source of truth for supported variables, including:
+- Astra DB credentials
+- watsonx settings
+- HuggingFace fallback embeddings
+- optional app-level password protection
+- optional local SQLite path override
 
 All Astra and watsonx credentials can also be entered at runtime via the Connect dialog. They are sent only to this app's server routes so the browser never talks to Astra DB directly. If `PLAYGROUND_AUTH_PASSWORD` is set, the app is protected by a login page and an `httpOnly` session cookie.
 
