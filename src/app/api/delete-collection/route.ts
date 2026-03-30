@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAstraDb } from "@/lib/astra";
+import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
 
 export const runtime = "nodejs";
 
@@ -11,8 +11,7 @@ export async function POST(req: Request) {
     name: string;
   };
 
-  const token = body.token || process.env.ASTRA_DB_APPLICATION_TOKEN || "";
-  const endpoint = body.endpoint || process.env.ASTRA_DB_API_ENDPOINT || "";
+  const { token, endpoint, keyspace } = resolveAstraConnection(body, { includeDefaultKeyspace: true });
 
   if (!token || !endpoint) {
     return NextResponse.json({ error: "Missing credentials" }, { status: 400 });
@@ -22,7 +21,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const db = getAstraDb(token, endpoint, body.keyspace);
+    const db = getAstraDb(token, endpoint, keyspace);
     await db.dropCollection(body.name);
     return NextResponse.json({ dropped: true });
   } catch (err) {

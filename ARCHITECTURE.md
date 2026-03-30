@@ -35,7 +35,8 @@ All application state lives in `lib/hooks/usePlaygroundState.ts`.
 | Astra DB endpoint | `sessionStorage` | Yes |
 | IBM watsonx API key | `sessionStorage` | Yes |
 | watsonx Project ID | `sessionStorage` | Yes |
-| Conversations & messages | Astra DB (`dap_conversations` / `dap_messages`) | **Yes** |
+| Conversations & messages | Local SQLite (`data/app.db`) | **Yes** |
+| Ingested document summaries | Local SQLite (`data/app.db`) | **Yes** |
 | Collections list | React state (re-fetched on load) | Effectively yes |
 | Keyspace selection | React state only | No |
 | UI state (dialogs, view mode) | React state only | No |
@@ -46,7 +47,7 @@ All application state lives in `lib/hooks/usePlaygroundState.ts`.
 
 All routes are Next.js route handlers at `app/api/`.
 
-Credentials are passed as HTTP request headers (`x-astra-token`, `x-astra-endpoint`) rather than in the request body or URL to prevent token exposure in server logs and browser history.
+Runtime credentials are typically sent in JSON request bodies to the app's own server routes, then resolved server-side before talking to Astra DB. They are not sent to Astra from the browser directly, and routes should avoid placing them in query strings.
 
 ### Infrastructure / Status
 
@@ -76,7 +77,7 @@ Credentials are passed as HTTP request headers (`x-astra-token`, `x-astra-endpoi
 
 | Route | Method | Key Inputs | Returns |
 |---|---|---|---|
-| `/api/chat` | POST | `query`, `searchMode`, `collections[]`, `activeCollection`, `history?` (headers: `x-astra-token`, `x-astra-endpoint`, `x-ibm-api-key?`, `x-watsonx-project-id?`) | NDJSON stream of 4-step pipeline events |
+| `/api/chat` | POST | `query`, `searchMode`, `token?`, `endpoint?`, `keyspace?`, `collections[]`, `activeCollection`, `history?`, `ibmApiKey?`, `watsonxProjectId?` | NDJSON stream of 4-step pipeline events |
 
 The chat pipeline steps:
 
@@ -94,7 +95,7 @@ Each step streams two events: `{ step, status: "running" }` then `{ step, status
 
 ### Conversations
 
-Conversations and messages are stored in two internal Astra DB collections (`dap_conversations`, `dap_messages`) created automatically on first use. Credentials are passed via request headers.
+Conversations and messages are stored locally in SQLite via `better-sqlite3`. This makes conversation persistence independent from Astra connection state and available immediately on load.
 
 | Route | Method | Purpose |
 |---|---|---|
@@ -107,14 +108,14 @@ Conversations and messages are stored in two internal Astra DB collections (`dap
 
 #### Data Model
 
-**`dap_conversations`** — one document per thread:
+**`conversations`** — one row per thread:
 ```ts
-{ _id: string; name: string; createdAt: string; updatedAt: string; messageCount: number; }
+{ id: string; name: string; created_at: string; updated_at: string; message_count: number; }
 ```
 
-**`dap_messages`** — one document per message:
+**`messages`** — one row per message:
 ```ts
-{ _id: string; conversationId: string; role: "user" | "assistant"; content: string; timestamp: string; }
+{ id: string; conversation_id: string; role: "user" | "assistant"; content: string; timestamp: string; }
 ```
 
 #### Initialization Flow
@@ -143,7 +144,7 @@ On conversation switch:
 
 ## Internal Collections
 
-Collections prefixed `dap_` are considered internal (used by the app for conversation persistence). They are:
+Collections prefixed `dap_` are considered internal application collections and are excluded from normal user exploration. The chat pipeline also filters them out when choosing collections.
 
 - Hidden from the collection list by default (toggle via "＋internal" in the sidebar)
 - Always sorted to the end of the list when shown

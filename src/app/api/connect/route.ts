@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAstraDb, SYSTEM_FIELDS } from "@/lib/astra";
+import { getAstraDb, resolveAstraConnection, SYSTEM_FIELDS } from "@/lib/astra";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   const body = await req.json() as { token: string; endpoint: string; keyspace?: string };
-  const token = body.token || process.env.ASTRA_DB_APPLICATION_TOKEN || "";
-  const endpoint = body.endpoint || process.env.ASTRA_DB_API_ENDPOINT || "";
-  const keyspace = body.keyspace;
+  const { token, endpoint, keyspace } = resolveAstraConnection(body);
 
   if (!token || !endpoint) {
     return NextResponse.json({ error: "token and endpoint are required" }, { status: 400 });
@@ -25,7 +23,6 @@ export async function POST(req: NextRequest) {
           count = await db.collection(c.name).estimatedDocumentCount();
         } catch { /* leave count at 0 if unsupported */ }
         const vectorDef = c.definition?.vector;
-        console.log(`[connect] collection "${c.name}" vector def:`, JSON.stringify(vectorDef));
         const svc = vectorDef?.service;
         return {
           name: c.name,

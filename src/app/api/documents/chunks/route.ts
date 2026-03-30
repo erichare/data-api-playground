@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DataAPIClient } from "@datastax/astra-db-ts";
+import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
 
 export const runtime = "nodejs";
 
-// GET /api/documents/chunks?source_doc_id=...&collection=...&token=...&endpoint=...&keyspace=...
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const sourceDocId = searchParams.get("source_doc_id") ?? "";
-  const collection = searchParams.get("collection") ?? "";
-  const token = searchParams.get("token") ?? process.env.ASTRA_DB_APPLICATION_TOKEN ?? "";
-  const rawEndpoint = searchParams.get("endpoint") ?? process.env.ASTRA_DB_API_ENDPOINT ?? "";
-  const endpoint = rawEndpoint.replace(/\/$/, "");
-  const keyspace = searchParams.get("keyspace") ?? "default_keyspace";
+// POST /api/documents/chunks
+export async function POST(req: NextRequest) {
+  const body = await req.json() as {
+    source_doc_id?: string;
+    collection?: string;
+    token?: string;
+    endpoint?: string;
+    keyspace?: string;
+  };
+  const sourceDocId = body.source_doc_id ?? "";
+  const collection = body.collection ?? "";
+  const { token, endpoint, keyspace } = resolveAstraConnection(body, { includeDefaultKeyspace: true });
 
   if (!sourceDocId || !collection) {
     return NextResponse.json({ error: "source_doc_id and collection are required" }, { status: 400 });
@@ -22,8 +25,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const client = new DataAPIClient(token);
-    const db = client.db(endpoint, { keyspace });
+    const db = getAstraDb(token, endpoint, keyspace);
     const coll = db.collection(collection);
 
     const cursor = coll.find(

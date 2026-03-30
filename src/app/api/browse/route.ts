@@ -1,24 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DataAPIClient } from "@datastax/astra-db-ts";
+import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
-  const { token, endpoint, collection, pageState, sort } = await req.json() as {
-    token: string;
-    endpoint: string;
+  const body = await req.json() as {
+    token?: string;
+    endpoint?: string;
+    keyspace?: string;
     collection: string;
     pageState?: string;
     sort?: { col: string; dir: 1 | -1 };
   };
+  const { token, endpoint, keyspace } = resolveAstraConnection(body, { includeDefaultKeyspace: true });
+  const { collection, pageState, sort } = body;
 
   if (!token || !endpoint || !collection) {
     return NextResponse.json({ error: "token, endpoint, and collection are required" }, { status: 400 });
   }
 
   try {
-    const client = new DataAPIClient(token);
-    const db = client.db(endpoint);
+    const db = getAstraDb(token, endpoint, keyspace);
     const coll = db.collection(collection);
 
     const sortObj = sort ? { [sort.col]: sort.dir } : undefined;

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DataAPIClient } from "@datastax/astra-db-ts";
+import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
 import { getDb } from "@/lib/db";
 import type { IngestedDocumentSummary } from "@/lib/types";
 
@@ -51,15 +51,11 @@ export async function DELETE(req: NextRequest) {
   db.prepare("DELETE FROM ingested_documents WHERE source_doc_id = ?").run(source_doc_id);
 
   // If connected to Astra, also delete the stored chunks
-  const token = body.token ?? process.env.ASTRA_DB_APPLICATION_TOKEN ?? "";
-  const rawEndpoint = body.endpoint ?? process.env.ASTRA_DB_API_ENDPOINT ?? "";
-  const endpoint = rawEndpoint.replace(/\/$/, "");
-  const keyspace = body.keyspace ?? "default_keyspace";
+  const { token, endpoint, keyspace } = resolveAstraConnection(body, { includeDefaultKeyspace: true });
 
   if (token && endpoint) {
     try {
-      const client = new DataAPIClient(token);
-      const astraDb = client.db(endpoint, { keyspace });
+      const astraDb = getAstraDb(token, endpoint, keyspace);
       await astraDb.collection(collection).deleteMany({ "metadata.source_doc_id": { $eq: source_doc_id } });
     } catch {
       // Chunks may have already been removed or collection gone — local delete still succeeded

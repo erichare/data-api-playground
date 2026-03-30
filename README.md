@@ -8,7 +8,7 @@ An interactive web app for exploring [DataStax Astra DB](https://www.datastax.co
 - **AI-powered chat** — Ask natural language questions about your data. IBM Granite analyzes the query, generates embeddings, searches Astra DB, and synthesizes a concise response.
 - **Output / Code / Trace tabs** — Every AI response has three tabs: **Output** (the natural language answer), **Code** (the exact Data API call in TypeScript, Python, Java, or cURL), and **Trace** (the full pipeline execution with per-step latency).
 - **Pipeline trace** — The Trace tab shows each step in real time (Analyze → Embed → Search → Respond). The Search Astra DB step has its own Output/Code sub-tabs — Output shows retrieved documents, Code shows the API command.
-- **Persistent conversations** — Conversations and messages are stored in Astra DB and survive page refresh. Create, rename, and delete threads from the sidebar.
+- **Persistent conversations** — Conversations and messages are stored locally in SQLite and survive page refresh. Create, rename, and delete threads from the sidebar.
 - **Dark / light mode** — Toggle between dark (IBM Carbon Gray 100) and light (IBM Carbon White) themes. Preference is persisted.
 - **Collection browser** — Browse documents in any collection with pagination, sortable columns, Output/Code tabs, and delete support.
 - **CSV ingestion** — Upload CSV files and ingest them as vector documents with streaming progress.
@@ -63,7 +63,7 @@ WATSONX_IAM_URL=https://iam.cloud.ibm.com/identity/token
 HUGGINGFACE_API_KEY=hf_...
 ```
 
-All credentials can also be entered at runtime via the Connect dialog. They are stored in `sessionStorage` and never sent to any third party.
+All credentials can also be entered at runtime via the Connect dialog. They are stored in `sessionStorage` and sent only to this app's server routes so the browser never talks to Astra DB directly.
 
 ### Run
 
@@ -122,7 +122,7 @@ Open [http://localhost:3000](http://localhost:3000).
 - If no IBM watsonx credentials are provided, the app falls back to a simple template response.
 - If watsonx embedding is unavailable, the app tries HuggingFace as a fallback; if that also fails, random vectors are used (the rest of the pipeline still runs).
 - Collections using Astra's server-side **vectorize** skip client-side embedding entirely — `$vectorize` is passed and Astra handles embedding automatically.
-- Internal collections (prefixed `dap_`) store conversation history and are hidden from the UI.
+- Internal collections (prefixed `dap_`) are hidden from normal exploration and excluded from AI collection selection.
 
 ---
 

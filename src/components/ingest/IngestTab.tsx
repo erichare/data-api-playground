@@ -1,95 +1,33 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload,
   FileText,
-  FileCode,
-  Table,
-  Braces,
   Trash2,
   CheckCircle2,
   AlertCircle,
   Loader2,
   RefreshCw,
   X,
-  Copy,
-  Check,
   ChevronRight,
-  ChevronDown,
-  Database,
 } from "lucide-react";
 import type { Collection, IngestFileType, IngestedDocumentSummary } from "@/lib/types";
-import { mockIngestedDocuments } from "@/lib/mock/data";
-
-// ── Constants ────────────────────────────────────────────────────────────────
-
-const ACCEPTED = ".pdf,.txt,.md,.csv,.json,.docx";
-const ACCEPTED_LABEL = "PDF · TXT · MD · DOCX · CSV · JSON";
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
-function getFileType(filename: string): IngestFileType {
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "txt";
-  return (["pdf", "txt", "md", "csv", "json", "docx"].includes(ext) ? ext : "txt") as IngestFileType;
-}
-
-function FileIcon({ type, size = 14 }: { type: IngestFileType; size?: number }) {
-  const props = { size, strokeWidth: 1.75 };
-  switch (type) {
-    case "pdf":   return <FileText {...props} style={{ color: "#ef4444" }} />;
-    case "docx":  return <FileText {...props} style={{ color: "#3b82f6" }} />;
-    case "md":    return <FileCode {...props} style={{ color: "#22c55e" }} />;
-    case "csv":   return <Table {...props} style={{ color: "#f97316" }} />;
-    case "json":  return <Braces {...props} style={{ color: "#a855f7" }} />;
-    default:      return <FileText {...props} style={{ color: "var(--text-muted)" }} />;
-  }
-}
-
-function TypeBadge({ type }: { type: IngestFileType }) {
-  const colors: Record<IngestFileType, string> = {
-    pdf:  "#ef444420",
-    docx: "#3b82f620",
-    md:   "#22c55e20",
-    csv:  "#f9731620",
-    json: "#a855f720",
-    txt:  "var(--bg-card)",
-  };
-  const text: Record<IngestFileType, string> = {
-    pdf: "#ef4444", docx: "#3b82f6", md: "#22c55e",
-    csv: "#f97316", json: "#a855f7", txt: "var(--text-muted)",
-  };
-  return (
-    <span
-      className="px-1.5 py-0.5 rounded text-xs font-mono font-medium uppercase"
-      style={{ backgroundColor: colors[type], color: text[type] }}
-    >
-      {type}
-    </span>
-  );
-}
-
-// ── Per-file status ───────────────────────────────────────────────────────────
-
-type FileStatus =
-  | { stage: "queued" }
-  | { stage: "extracting" }
-  | { stage: "storing"; processed: number; total: number }
-  | { stage: "done"; chunks: number }
-  | { stage: "error"; message: string };
-
-function fileKey(f: File) { return `${f.name}__${f.size}`; }
+import { DocumentViewer } from "@/components/ingest/DocumentViewer";
+import { RawCollectionBrowser } from "@/components/ingest/RawCollectionBrowser";
+import { useDocumentLibrary } from "@/components/ingest/hooks/useDocumentLibrary";
+import {
+  ACCEPTED,
+  ACCEPTED_LABEL,
+  FileIcon,
+  fileKey,
+  FileStatus,
+  formatBytes,
+  formatDate,
+  getFileType,
+  TypeBadge,
+} from "@/components/ingest/ingestShared";
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -118,85 +56,30 @@ export function IngestTab({ astraToken, astraEndpoint, keyspace, collections, ac
     if (activeCollection && activeCollection !== selectedCollection) {
       setSelectedCollection(activeCollection);
     }
-  }, [activeCollection]);
+  }, [activeCollection, selectedCollection]);
   const [uploading, setUploading] = useState(false);
 
-  // Library state
-  const [documents, setDocuments] = useState<IngestedDocumentSummary[]>([]);
-  const [loadingDocs, setLoadingDocs] = useState(false);
-  const [search, setSearch] = useState("");
-  const [filterType, setFilterType] = useState<IngestFileType | "all">("all");
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [viewingDoc, setViewingDoc] = useState<IngestedDocumentSummary | null>(null);
-
-  // Raw collection state
-  const [rawOpen, setRawOpen] = useState(false);
-  const [rawDocs, setRawDocs] = useState<Record<string, unknown>[]>([]);
-  const [loadingRaw, setLoadingRaw] = useState(false);
-  const [rawError, setRawError] = useState("");
-  const [rawPageState, setRawPageState] = useState<string | null>(null);
-  const [rawPageHistory, setRawPageHistory] = useState<(string | null)[]>([null]);
-  const [rawPageIndex, setRawPageIndex] = useState(0);
-
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // ── Load documents ──────────────────────────────────────────────────────
-
-  const loadDocuments = useCallback(async () => {
-    setLoadingDocs(true);
-    if (!isConnected) {
-      setDocuments(mockIngestedDocuments.filter((d) => d.collection === selectedCollection));
-      setLoadingDocs(false);
-      return;
-    }
-    try {
-      const params = new URLSearchParams({
-        collection: selectedCollection,
-        token: astraToken,
-        endpoint: astraEndpoint,
-        keyspace,
-      });
-      const res = await fetch(`/api/documents?${params}`);
-      const data = await res.json() as { documents?: IngestedDocumentSummary[] };
-      setDocuments(data.documents ?? []);
-    } catch {
-      setDocuments([]);
-    } finally {
-      setLoadingDocs(false);
-    }
-  }, [isConnected, selectedCollection, astraToken, astraEndpoint, keyspace]);
-
-  useEffect(() => { void loadDocuments(); }, [loadDocuments]);
-
-  const loadRawDocs = useCallback(async (pageState: string | null) => {
-    if (!isConnected) return;
-    setLoadingRaw(true);
-    setRawError("");
-    try {
-      const res = await fetch("/api/browse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: astraToken, endpoint: astraEndpoint, collection: selectedCollection, pageState }),
-      });
-      const data = await res.json() as { documents?: Record<string, unknown>[]; nextPageState?: string | null; error?: string };
-      if (data.error) throw new Error(data.error);
-      setRawDocs(data.documents ?? []);
-      setRawPageState(data.nextPageState ?? null);
-    } catch (e) {
-      setRawError(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoadingRaw(false);
-    }
-  }, [isConnected, selectedCollection, astraToken, astraEndpoint]);
-
-  // Load raw docs when panel is opened or collection changes
-  useEffect(() => {
-    if (rawOpen && isConnected) {
-      setRawPageHistory([null]);
-      setRawPageIndex(0);
-      void loadRawDocs(null);
-    }
-  }, [rawOpen, selectedCollection, isConnected]);
+  const {
+    loadingDocs,
+    search,
+    setSearch,
+    filterType,
+    setFilterType,
+    deletingId,
+    viewingDoc,
+    setViewingDoc,
+    filteredDocs,
+    loadDocuments,
+    handleDelete,
+    prependDocument,
+  } = useDocumentLibrary({
+    isConnected,
+    selectedCollection,
+    astraToken,
+    astraEndpoint,
+    keyspace,
+  });
 
   // ── File selection ──────────────────────────────────────────────────────
 
@@ -287,7 +170,7 @@ export function IngestTab({ astraToken, astraEndpoint, keyspace, collections, ac
               ingested_at: new Date().toISOString(),
               collection: selectedCollection,
             };
-            setDocuments((prev) => [newDoc, ...prev]);
+            prependDocument(newDoc);
           }
           if (evt.type === "error") {
             throw new Error(evt.message as string);
@@ -310,39 +193,6 @@ export function IngestTab({ astraToken, astraEndpoint, keyspace, collections, ac
     }
     setUploading(false);
   }
-
-  // ── Delete ──────────────────────────────────────────────────────────────
-
-  async function handleDelete(doc: IngestedDocumentSummary) {
-    setDeletingId(doc.source_doc_id);
-    try {
-      if (isConnected) {
-        await fetch("/api/documents", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            source_doc_id: doc.source_doc_id,
-            collection: doc.collection,
-            token: astraToken,
-            endpoint: astraEndpoint,
-            keyspace,
-          }),
-        });
-      }
-      setDocuments((prev) => prev.filter((d) => d.source_doc_id !== doc.source_doc_id));
-    } finally {
-      setDeletingId(null);
-    }
-  }
-
-  // ── Filtered documents ───────────────────────────────────────────────────
-
-  const filteredDocs = documents.filter((d) => {
-    const matchesSearch = !search || d.source_filename.toLowerCase().includes(search.toLowerCase());
-    const matchesType = filterType === "all" || d.file_type === filterType;
-    return matchesSearch && matchesType;
-  });
-
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -632,126 +482,13 @@ export function IngestTab({ astraToken, astraEndpoint, keyspace, collections, ac
           </div>
         )}
 
-        {/* ── Raw Collection Viewer ── */}
-        <div className="border-t shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
-          {/* Toggle header */}
-          <button
-            className="w-full flex items-center gap-2 px-6 py-3 text-left"
-            style={{ backgroundColor: "var(--bg-panel)" }}
-            onClick={() => setRawOpen((o) => !o)}
-          >
-            <Database size={13} style={{ color: "var(--text-muted)" }} />
-            <span className="text-xs font-semibold flex-1" style={{ color: "var(--text-primary)" }}>
-              Raw Collection
-            </span>
-            <span className="text-xs mr-2" style={{ color: "var(--text-muted)" }}>
-              {selectedCollection}
-            </span>
-            {rawOpen
-              ? <ChevronDown size={13} style={{ color: "var(--text-muted)" }} />
-              : <ChevronRight size={13} style={{ color: "var(--text-muted)" }} />
-            }
-          </button>
-
-          {/* Content */}
-          <AnimatePresence initial={false}>
-            {rawOpen && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 320, opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden flex flex-col border-t"
-                style={{ borderColor: "var(--border-subtle)" }}
-              >
-                {/* Pagination bar */}
-                <div
-                  className="flex items-center gap-2 px-6 py-2 shrink-0 border-b"
-                  style={{ backgroundColor: "var(--bg-panel)", borderColor: "var(--border-subtle)" }}
-                >
-                  <span className="text-xs flex-1" style={{ color: "var(--text-muted)" }}>
-                    {loadingRaw ? "Loading…" : rawError ? "" : `${rawDocs.length} documents (page ${rawPageIndex + 1})`}
-                  </span>
-                  <button
-                    className="text-xs px-2 py-1 rounded"
-                    style={{
-                      backgroundColor: "var(--bg-card)",
-                      border: "1px solid var(--border-subtle)",
-                      color: rawPageIndex === 0 ? "var(--text-muted)" : "var(--text-primary)",
-                      cursor: rawPageIndex === 0 ? "not-allowed" : "pointer",
-                    }}
-                    disabled={rawPageIndex === 0 || loadingRaw}
-                    onClick={() => {
-                      const prevIdx = rawPageIndex - 1;
-                      const prevPage = rawPageHistory[prevIdx] ?? null;
-                      setRawPageIndex(prevIdx);
-                      void loadRawDocs(prevPage);
-                    }}
-                  >
-                    ← Prev
-                  </button>
-                  <button
-                    className="text-xs px-2 py-1 rounded"
-                    style={{
-                      backgroundColor: "var(--bg-card)",
-                      border: "1px solid var(--border-subtle)",
-                      color: rawPageState ? "var(--text-primary)" : "var(--text-muted)",
-                      cursor: rawPageState ? "pointer" : "not-allowed",
-                    }}
-                    disabled={!rawPageState || loadingRaw}
-                    onClick={() => {
-                      const nextIdx = rawPageIndex + 1;
-                      const newHistory = [...rawPageHistory];
-                      if (!newHistory[nextIdx]) newHistory[nextIdx] = rawPageState;
-                      setRawPageHistory(newHistory);
-                      setRawPageIndex(nextIdx);
-                      void loadRawDocs(rawPageState);
-                    }}
-                  >
-                    Next →
-                  </button>
-                  <button
-                    onClick={() => { setRawPageHistory([null]); setRawPageIndex(0); void loadRawDocs(null); }}
-                    disabled={loadingRaw}
-                    style={{ color: "var(--text-muted)" }}
-                    title="Refresh"
-                  >
-                    <RefreshCw size={12} className={loadingRaw ? "animate-spin" : ""} />
-                  </button>
-                </div>
-
-                {/* Document rows */}
-                <div className="flex-1 overflow-y-auto">
-                  {!isConnected ? (
-                    <div className="flex items-center justify-center h-full" style={{ color: "var(--text-muted)" }}>
-                      <span className="text-xs">Connect to Astra DB to browse raw documents</span>
-                    </div>
-                  ) : loadingRaw ? (
-                    <div className="flex items-center justify-center h-full gap-2" style={{ color: "var(--text-muted)" }}>
-                      <Loader2 size={14} className="animate-spin" />
-                      <span className="text-xs">Loading…</span>
-                    </div>
-                  ) : rawError ? (
-                    <div className="flex items-center justify-center h-full gap-2" style={{ color: "#ef4444" }}>
-                      <AlertCircle size={14} />
-                      <span className="text-xs">{rawError}</span>
-                    </div>
-                  ) : rawDocs.length === 0 ? (
-                    <div className="flex items-center justify-center h-full" style={{ color: "var(--text-muted)" }}>
-                      <span className="text-xs">No documents in this collection</span>
-                    </div>
-                  ) : (
-                    <div className="divide-y" style={{ borderColor: "var(--border-subtle)" }}>
-                      {rawDocs.map((doc, i) => (
-                        <RawDocRow key={String(doc._id ?? i)} doc={doc} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        <RawCollectionBrowser
+          isConnected={isConnected}
+          selectedCollection={selectedCollection}
+          astraToken={astraToken}
+          astraEndpoint={astraEndpoint}
+          keyspace={keyspace}
+        />
       </div>
 
       {/* Document viewer modal */}
@@ -862,285 +599,6 @@ function DocumentRow({
           )}
         </AnimatePresence>
       </div>
-    </motion.div>
-  );
-}
-
-// ── RawDocRow ─────────────────────────────────────────────────────────────────
-
-const SYSTEM_KEYS = new Set(["$vector", "$vectorize", "$similarity"]);
-
-function RawDocRow({ doc }: { doc: Record<string, unknown> }) {
-  const [expanded, setExpanded] = useState(false);
-  const id = String(doc._id ?? "—");
-  const entries = Object.entries(doc).filter(([k]) => k !== "_id" && !SYSTEM_KEYS.has(k));
-  const hasVector = "$vector" in doc;
-  const vectorStr = hasVector
-    ? (doc.$vector as string).startsWith("__vector_") ? doc.$vector as string : `__vector_${(doc.$vector as number[]).length}__`
-    : null;
-
-  return (
-    <div
-      className="px-4 py-2.5 hover:bg-opacity-50 transition-colors cursor-pointer select-none"
-      style={{ backgroundColor: expanded ? "var(--bg-card)" : "transparent" }}
-      onClick={() => setExpanded((e) => !e)}
-    >
-      {/* Row summary */}
-      <div className="flex items-start gap-2">
-        <ChevronRight
-          size={11}
-          className="mt-0.5 shrink-0 transition-transform"
-          style={{ color: "var(--text-muted)", transform: expanded ? "rotate(90deg)" : "rotate(0deg)" }}
-        />
-        <span className="text-xs font-mono shrink-0" style={{ color: "var(--interactive)" }}>
-          {id.length > 24 ? id.slice(0, 24) + "…" : id}
-        </span>
-        {!expanded && (
-          <span className="text-xs truncate flex-1" style={{ color: "var(--text-muted)" }}>
-            {entries.slice(0, 3).map(([k, v]) => (
-              <span key={k} className="mr-2">
-                <span style={{ color: "var(--text-muted)" }}>{k}: </span>
-                <span style={{ color: "var(--text-primary)" }}>
-                  {typeof v === "string" ? (v.length > 40 ? v.slice(0, 40) + "…" : v) : JSON.stringify(v)}
-                </span>
-              </span>
-            ))}
-          </span>
-        )}
-        {vectorStr && (
-          <span
-            className="shrink-0 text-xs px-1.5 py-0.5 rounded font-mono"
-            style={{ backgroundColor: "#a855f720", color: "#a855f7" }}
-          >
-            {vectorStr.replace("__vector_", "").replace("__", "")}d
-          </span>
-        )}
-      </div>
-
-      {/* Expanded fields */}
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="overflow-hidden mt-2 ml-5"
-          >
-            <div
-              className="rounded-lg overflow-hidden"
-              style={{ border: "1px solid var(--border-subtle)" }}
-            >
-              {entries.map(([k, v], i) => (
-                <div
-                  key={k}
-                  className="flex gap-3 px-3 py-1.5 text-xs border-b last:border-b-0"
-                  style={{ borderColor: "var(--border-subtle)", backgroundColor: i % 2 === 0 ? "transparent" : "var(--bg-primary)" }}
-                >
-                  <span className="shrink-0 font-mono" style={{ color: "var(--text-muted)", minWidth: 120 }}>{k}</span>
-                  <span
-                    className="flex-1 font-mono break-all"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    {typeof v === "string" ? v : JSON.stringify(v)}
-                  </span>
-                </div>
-              ))}
-              {vectorStr && (
-                <div
-                  className="flex gap-3 px-3 py-1.5 text-xs"
-                  style={{ backgroundColor: "#a855f710" }}
-                >
-                  <span className="shrink-0 font-mono" style={{ color: "#a855f7", minWidth: 120 }}>$vector</span>
-                  <span className="text-xs font-mono" style={{ color: "#a855f7" }}>[{vectorStr.replace("__vector_", "").replace("__", "")} dimensions]</span>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// ── DocumentViewer ────────────────────────────────────────────────────────────
-
-function DocumentViewer({
-  doc,
-  astraToken,
-  astraEndpoint,
-  keyspace,
-  isConnected,
-  onClose,
-}: {
-  doc: IngestedDocumentSummary;
-  astraToken: string;
-  astraEndpoint: string;
-  keyspace: string;
-  isConnected: boolean;
-  onClose: () => void;
-}) {
-  const [chunks, setChunks] = useState<Array<{ chunk_index: number; content: string }>>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (!isConnected) { setLoading(false); return; }
-
-    const params = new URLSearchParams({
-      source_doc_id: doc.source_doc_id,
-      collection: doc.collection,
-      token: astraToken,
-      endpoint: astraEndpoint,
-      keyspace,
-    });
-
-    fetch(`/api/documents/chunks?${params}`)
-      .then((r) => r.json() as Promise<{ chunks?: typeof chunks; error?: string }>)
-      .then((data) => {
-        if (data.error) throw new Error(data.error);
-        setChunks(data.chunks ?? []);
-      })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Failed to load"))
-      .finally(() => setLoading(false));
-  }, [doc, astraToken, astraEndpoint, keyspace, isConnected]);
-
-  const fullText = chunks.map((c) => c.content).join("\n\n");
-
-  function handleCopy() {
-    void navigator.clipboard.writeText(fullText).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }
-
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(2px)" }}
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 12 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 12 }}
-        transition={{ duration: 0.18 }}
-        className="flex flex-col rounded-2xl overflow-hidden"
-        style={{
-          width: "min(860px, 92vw)",
-          height: "min(700px, 88vh)",
-          backgroundColor: "var(--bg-panel)",
-          border: "1px solid var(--border-subtle)",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.4)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div
-          className="flex items-center gap-3 px-6 py-4 border-b shrink-0"
-          style={{ borderColor: "var(--border-subtle)" }}
-        >
-          <FileIcon type={doc.file_type} size={16} />
-          <div className="flex-1 min-w-0">
-            <p
-              className="text-sm font-medium truncate"
-              style={{ color: "var(--text-primary)", fontFamily: "IBM Plex Mono, monospace" }}
-            >
-              {doc.source_filename}
-            </p>
-            <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-              {doc.chunk_total} {doc.chunk_total === 1 ? "chunk" : "chunks"} · {formatBytes(doc.file_size)} · {formatDate(doc.ingested_at)}
-            </p>
-          </div>
-
-          {/* Copy button */}
-          {chunks.length > 0 && (
-            <motion.button
-              onClick={handleCopy}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-              style={{
-                backgroundColor: copied ? "#16a34a20" : "var(--bg-card)",
-                color: copied ? "#16a34a" : "var(--text-muted)",
-                border: "1px solid var(--border-subtle)",
-              }}
-              whileTap={{ scale: 0.97 }}
-            >
-              {copied ? <Check size={12} /> : <Copy size={12} />}
-              {copied ? "Copied" : "Copy all"}
-            </motion.button>
-          )}
-
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg"
-            style={{ color: "var(--text-muted)", backgroundColor: "var(--bg-card)" }}
-          >
-            <X size={14} />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">
-          {loading ? (
-            <div className="flex items-center justify-center h-32 gap-2" style={{ color: "var(--text-muted)" }}>
-              <Loader2 size={16} className="animate-spin" />
-              <span className="text-sm">Loading chunks…</span>
-            </div>
-          ) : !isConnected ? (
-            <div className="flex flex-col items-center justify-center h-40 gap-3" style={{ color: "var(--text-muted)" }}>
-              <AlertCircle size={20} strokeWidth={1.5} />
-              <p className="text-sm">Connect to Astra DB to view document content</p>
-            </div>
-          ) : error ? (
-            <div className="flex flex-col items-center justify-center h-40 gap-3">
-              <AlertCircle size={20} style={{ color: "#ef4444" }} />
-              <p className="text-sm" style={{ color: "#ef4444" }}>{error}</p>
-            </div>
-          ) : chunks.length === 0 ? (
-            <div className="flex items-center justify-center h-32" style={{ color: "var(--text-muted)" }}>
-              <p className="text-sm">No chunks found</p>
-            </div>
-          ) : (
-            <div className="space-y-0">
-              {chunks.map((chunk, i) => (
-                <div key={chunk.chunk_index}>
-                  {/* Chunk label */}
-                  <div className="flex items-center gap-2 mb-2 sticky top-0 py-1" style={{ backgroundColor: "var(--bg-panel)" }}>
-                    <span
-                      className="text-xs font-mono px-2 py-0.5 rounded"
-                      style={{ backgroundColor: "var(--bg-card)", color: "var(--text-muted)", border: "1px solid var(--border-subtle)" }}
-                    >
-                      chunk {chunk.chunk_index + 1} / {doc.chunk_total}
-                    </span>
-                  </div>
-                  {/* Chunk text */}
-                  <pre
-                    className="text-sm leading-relaxed whitespace-pre-wrap font-sans mb-4"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    {chunk.content}
-                  </pre>
-                  {/* Divider between chunks */}
-                  {i < chunks.length - 1 && (
-                    <div className="border-b mb-4" style={{ borderColor: "var(--border-subtle)" }} />
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </motion.div>
     </motion.div>
   );
 }

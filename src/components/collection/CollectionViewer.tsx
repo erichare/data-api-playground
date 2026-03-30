@@ -27,6 +27,7 @@ interface CollectionViewerProps {
   onSwitchToChat: () => void;
   astraToken?: string;
   astraEndpoint?: string;
+  keyspace?: string;
   onCountChange?: (name: string, exactCount: number) => void;
   onOpenIngest?: () => void;
 }
@@ -308,7 +309,7 @@ function ExpandedRow({
   );
 }
 
-export function CollectionViewer({ collection, onSwitchToChat, astraToken, astraEndpoint, onCountChange, onOpenIngest }: CollectionViewerProps) {
+export function CollectionViewer({ collection, onSwitchToChat, astraToken, astraEndpoint, keyspace, onCountChange, onOpenIngest }: CollectionViewerProps) {
   const [activeTab, setActiveTab] = useState<"output" | "code">("output");
   const [page, setPage] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -331,12 +332,12 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
     void fetch("/api/count", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: astraToken, endpoint: astraEndpoint, collection: collection.name }),
+      body: JSON.stringify({ token: astraToken, endpoint: astraEndpoint, keyspace, collection: collection.name }),
     })
       .then((r) => r.json() as Promise<{ count?: number; error?: string }>)
       .then((data) => { if (data.count !== undefined) onCountChange?.(collection.name, data.count); })
       .catch(() => { /* silent — count is best-effort */ });
-  }, [astraToken, astraEndpoint, collection.name, onCountChange]);
+  }, [astraToken, astraEndpoint, keyspace, collection.name, onCountChange]);
 
   const fetchPage = useCallback(async (pageIndex: number, pageStateForIndex: string | null, currentSort: typeof sort) => {
     if (!astraToken || !astraEndpoint) return;
@@ -349,6 +350,7 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
         body: JSON.stringify({
           token: astraToken,
           endpoint: astraEndpoint,
+          keyspace,
           collection: collection.name,
           pageState: pageStateForIndex ?? undefined,
           sort: currentSort ?? undefined,
@@ -377,7 +379,7 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
     } finally {
       setLoading(false);
     }
-  }, [astraToken, astraEndpoint, collection.name]);
+  }, [astraToken, astraEndpoint, keyspace, collection.name]);
 
   // Fetch on mount / collection change
   useEffect(() => {
@@ -425,7 +427,8 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
     e.stopPropagation();
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -450,6 +453,7 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
         body: JSON.stringify({
           token: astraToken,
           endpoint: astraEndpoint,
+          keyspace,
           collection: collection.name,
           ids: Array.from(selectedIds),
         }),

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { DataAPIClient } from "@datastax/astra-db-ts";
+import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
 
 export const runtime = "nodejs";
 
@@ -29,13 +29,16 @@ async function embedBatch(texts: string[], hfKey?: string): Promise<number[][]> 
 }
 
 export async function POST(req: NextRequest) {
-  const { token, endpoint, collection: collectionName, rows, filename } = await req.json() as {
-    token: string;
-    endpoint: string;
+  const body = await req.json() as {
+    token?: string;
+    endpoint?: string;
+    keyspace?: string;
     collection: string;
     rows: Record<string, string>[];
     filename: string;
   };
+  const { token, endpoint, keyspace } = resolveAstraConnection(body, { includeDefaultKeyspace: true });
+  const { collection: collectionName, rows, filename } = body;
 
   if (!token || !endpoint || !collectionName || !rows?.length) {
     return new Response(JSON.stringify({ error: "token, endpoint, collection, and rows are required" }), { status: 400 });
@@ -51,8 +54,7 @@ export async function POST(req: NextRequest) {
       };
 
       try {
-        const client = new DataAPIClient(token);
-        const db = client.db(endpoint);
+        const db = getAstraDb(token, endpoint, keyspace);
         const coll = db.collection(collectionName);
 
         // Detect vectorize server-side — never trust client-passed flag

@@ -1,24 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DataAPIClient } from "@datastax/astra-db-ts";
+import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
 
 export async function POST(req: NextRequest) {
-  const { token, endpoint, name, dimension, metric, provider, model } = await req.json() as {
-    token: string;
-    endpoint: string;
+  const body = await req.json() as {
+    token?: string;
+    endpoint?: string;
+    keyspace?: string;
     name: string;
     dimension: number;
     metric: string;
     provider: string;
     model: string;
   };
+  const { token, endpoint, keyspace } = resolveAstraConnection(body, { includeDefaultKeyspace: true });
+  const { name, dimension, metric, provider, model } = body;
 
   if (!token || !endpoint || !name) {
     return NextResponse.json({ error: "token, endpoint, and name are required" }, { status: 400 });
   }
 
   try {
-    const client = new DataAPIClient(token);
-    const db = client.db(endpoint);
+    const db = getAstraDb(token, endpoint, keyspace);
 
     const hasVectorize = provider !== "none";
 

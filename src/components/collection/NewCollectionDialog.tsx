@@ -11,6 +11,7 @@ interface NewCollectionDialogProps {
   onCreated: (collection: Collection) => void;
   astraToken?: string;
   astraEndpoint?: string;
+  keyspace?: string;
 }
 
 interface ProviderModel {
@@ -181,7 +182,7 @@ function CodePreview({ name, dimension, metric, mode, provider, model }: {
   );
 }
 
-export function NewCollectionDialog({ open, onClose, onCreated, astraToken, astraEndpoint }: NewCollectionDialogProps) {
+export function NewCollectionDialog({ open, onClose, onCreated, astraToken, astraEndpoint, keyspace }: NewCollectionDialogProps) {
   const [name, setName] = useState("");
   const [mode, setMode] = useState<"vectorize" | "client">("vectorize");
 
@@ -233,8 +234,8 @@ export function NewCollectionDialog({ open, onClose, onCreated, astraToken, astr
       setLoading(true);
       try {
         const body = mode === "vectorize"
-          ? { token: astraToken, endpoint: astraEndpoint, name: name.trim(), provider: selectedModel!.provider, model: selectedModel!.modelName, dimension: selectedModel!.vectorDimension ?? 1024, metric: "cosine" }
-          : { token: astraToken, endpoint: astraEndpoint, name: name.trim(), provider: "none", model: "", dimension, metric };
+          ? { token: astraToken, endpoint: astraEndpoint, keyspace, name: name.trim(), provider: selectedModel!.provider, model: selectedModel!.modelName, dimension: selectedModel!.vectorDimension ?? 1024, metric: "cosine" }
+          : { token: astraToken, endpoint: astraEndpoint, keyspace, name: name.trim(), provider: "none", model: "", dimension, metric };
 
         const res = await fetch("/api/create-collection", {
           method: "POST",

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { DataAPIClient } from "@datastax/astra-db-ts";
 import { createHash, randomUUID } from "crypto";
+import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
 import { getDb } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -107,10 +107,11 @@ export async function POST(req: NextRequest) {
   }
 
   const collectionName = (formData.get("collection") as string | null) ?? "";
-  const keyspace = (formData.get("keyspace") as string | null) ?? "default_keyspace";
-  const token = (formData.get("token") as string | null) ?? process.env.ASTRA_DB_APPLICATION_TOKEN ?? "";
-  const rawEndpoint = (formData.get("endpoint") as string | null) ?? process.env.ASTRA_DB_API_ENDPOINT ?? "";
-  const endpoint = rawEndpoint.replace(/\/$/, "");
+  const { token, endpoint, keyspace } = resolveAstraConnection({
+    token: (formData.get("token") as string | null) ?? undefined,
+    endpoint: (formData.get("endpoint") as string | null) ?? undefined,
+    keyspace: (formData.get("keyspace") as string | null) ?? undefined,
+  }, { includeDefaultKeyspace: true });
   const chunkSize = parseInt((formData.get("chunkSize") as string | null) ?? String(DEFAULT_CHUNK_SIZE));
   const metadataRaw = (formData.get("metadata") as string | null) ?? "{}";
 
@@ -164,8 +165,7 @@ export async function POST(req: NextRequest) {
         }
 
         // 3. Connect to Astra
-        const client = new DataAPIClient(token);
-        const db = client.db(endpoint, { keyspace });
+        const db = getAstraDb(token, endpoint, keyspace);
         const coll = db.collection(collectionName);
 
         // Detect vectorize service

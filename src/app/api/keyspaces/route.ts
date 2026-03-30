@@ -1,21 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DataAPIClient } from "@datastax/astra-db-ts";
+import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   const body = await req.json() as { token: string; endpoint: string };
-  const token = body.token || process.env.ASTRA_DB_APPLICATION_TOKEN || "";
-  const endpoint = body.endpoint || process.env.ASTRA_DB_API_ENDPOINT || "";
+  const { token, endpoint } = resolveAstraConnection(body);
 
   if (!token || !endpoint) {
     return NextResponse.json({ error: "token and endpoint are required" }, { status: 400 });
   }
 
   try {
-    const client = new DataAPIClient(token);
-    const db = client.db(endpoint);
-    const admin = db.admin();
+    const admin = getAstraDb(token, endpoint).admin();
     const keyspaces = await admin.listKeyspaces();
     return NextResponse.json({ keyspaces });
   } catch (err) {

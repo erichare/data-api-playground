@@ -188,6 +188,7 @@ export default function PlaygroundPage() {
               astraEndpoint={astraEndpoint}
               collections={collections.map((c) => ({ name: c.name, isVectorize: !!c.vectorizeService }))}
               activeCollection={activeCollection}
+              keyspace={selectedKeyspace}
               ibmApiKey={ibmApiKey}
               watsonxProjectId={watsonxProjectId}
               collectionFields={collectionFields}
@@ -204,6 +205,7 @@ export default function PlaygroundPage() {
         onCreated={handleCollectionCreated}
         astraToken={astraToken}
         astraEndpoint={astraEndpoint}
+        keyspace={selectedKeyspace}
       />
 
       {ingestTarget && (() => {

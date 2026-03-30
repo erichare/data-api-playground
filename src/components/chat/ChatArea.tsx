@@ -15,6 +15,7 @@ interface ChatAreaProps {
   onMessagesUpdate: (messages: Message[]) => void;
   astraToken?: string;
   astraEndpoint?: string;
+  keyspace?: string;
   collections?: { name: string; isVectorize: boolean }[];
   activeCollection?: string;
   ibmApiKey?: string;
@@ -30,6 +31,7 @@ export function ChatArea({
   onMessagesUpdate,
   astraToken,
   astraEndpoint,
+  keyspace,
   collections,
   activeCollection,
   ibmApiKey,
@@ -101,6 +103,7 @@ export function ChatArea({
           searchMode,
           token: astraToken,
           endpoint: astraEndpoint,
+          keyspace: keyspace || undefined,
           collections: collections ?? [],
           activeCollection: activeCollection ?? "",
           ibmApiKey: ibmApiKey || undefined,

@@ -1,21 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DataAPIClient } from "@datastax/astra-db-ts";
+import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
 
 export async function POST(req: NextRequest) {
-  const { token, endpoint, collection: collectionName, ids } = await req.json() as {
-    token: string;
-    endpoint: string;
+  const body = await req.json() as {
+    token?: string;
+    endpoint?: string;
+    keyspace?: string;
     collection: string;
     ids: string[];
   };
+  const { token, endpoint, keyspace } = resolveAstraConnection(body, { includeDefaultKeyspace: true });
+  const { collection: collectionName, ids } = body;
 
   if (!token || !endpoint || !collectionName || !ids?.length) {
     return NextResponse.json({ error: "token, endpoint, collection, and ids are required" }, { status: 400 });
   }
 
   try {
-    const client = new DataAPIClient(token);
-    const db = client.db(endpoint);
+    const db = getAstraDb(token, endpoint, keyspace);
     const coll = db.collection(collectionName);
 
     const result = await coll.deleteMany({ _id: { $in: ids } });

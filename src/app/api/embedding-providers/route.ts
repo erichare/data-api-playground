@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DataAPIClient } from "@datastax/astra-db-ts";
+import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
 
 export interface ProviderModel {
   provider: string;
@@ -9,15 +9,15 @@ export interface ProviderModel {
 }
 
 export async function POST(req: NextRequest) {
-  const { token, endpoint } = await req.json() as { token: string; endpoint: string };
+  const body = await req.json() as { token: string; endpoint: string; keyspace?: string };
+  const { token, endpoint, keyspace } = resolveAstraConnection(body);
 
   if (!token || !endpoint) {
     return NextResponse.json({ error: "token and endpoint are required" }, { status: 400 });
   }
 
   try {
-    const client = new DataAPIClient(token);
-    const db = client.db(endpoint);
+    const db = getAstraDb(token, endpoint, keyspace);
     const { embeddingProviders } = await db.admin().findEmbeddingProviders();
 
     const models: ProviderModel[] = [];
