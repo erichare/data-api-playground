@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronLeft,
@@ -16,11 +16,10 @@ import {
   Loader2,
   Trash2,
   Download,
-  Copy,
-  Check,
 } from "lucide-react";
-import { PAGE_SIZE } from "@/lib/mock/data";
 import type { Collection, CollectionDocument } from "@/lib/types";
+import { BrowseCodePanel } from "@/components/collection/BrowseCodePanel";
+import { useCollectionBrowse } from "@/components/collection/hooks/useCollectionBrowse";
 
 interface CollectionViewerProps {
   collection: Collection;
@@ -30,24 +29,6 @@ interface CollectionViewerProps {
   keyspace?: string;
   onCountChange?: (name: string, exactCount: number) => void;
   onOpenIngest?: () => void;
-}
-
-function getColumns(docs: CollectionDocument[]): string[] {
-  const keys = new Set<string>();
-  for (const doc of docs.slice(0, 5)) {
-    for (const key of Object.keys(doc)) {
-      keys.add(key);
-    }
-  }
-  // Put _id first, $vector last
-  const sorted = Array.from(keys).sort((a, b) => {
-    if (a === "_id") return -1;
-    if (b === "_id") return 1;
-    if (a === "$vector") return 1;
-    if (b === "$vector") return -1;
-    return a.localeCompare(b);
-  });
-  return sorted;
 }
 
 function CellValue({ col, value }: { col: string; value: unknown }) {
@@ -91,173 +72,6 @@ function CellValue({ col, value }: { col: string; value: unknown }) {
       {str}
     </span>
   );
-}
-
-type BrowseCodeLang = "ts" | "python" | "java" | "curl";
-
-const BROWSE_LANG_LABELS: Record<BrowseCodeLang, string> = {
-  ts: "TypeScript",
-  python: "Python",
-  java: "Java",
-  curl: "cURL",
-};
-const BROWSE_LANG_SDK: Record<BrowseCodeLang, string> = {
-  ts: "astra-db-ts",
-  python: "astrapy",
-  java: "astra-db-java",
-  curl: "Data API",
-};
-
-function getBrowseCode(lang: BrowseCodeLang, collectionName: string, sort: { col: string; dir: 1 | -1 } | null): string {
-  switch (lang) {
-    case "ts":
-      return sort
-        ? `await db.collection("${collectionName}")\n  .find({}, { sort: { "${sort.col}": ${sort.dir} } })\n  .toArray()`
-        : `await db.collection("${collectionName}")\n  .find({})\n  .toArray()`;
-    case "python":
-      return sort
-        ? `from astrapy.constants import SortDocuments\ncollection.find(\n    {},\n    sort={"${sort.col}": SortDocuments.${sort.dir === 1 ? "ASCENDING" : "DESCENDING"}}\n)`
-        : `collection.find({})`;
-    case "java":
-      return sort
-        ? `collection.find(\n    Filter.empty(),\n    new FindOptions()\n        .sort(Sorts.${sort.dir === 1 ? "ascending" : "descending"}("${sort.col}"))\n)`
-        : `collection.find(Filter.empty())`;
-    case "curl": {
-      const body = sort
-        ? JSON.stringify({ find: { filter: {}, sort: { [sort.col]: sort.dir } } }, null, 2)
-        : JSON.stringify({ find: { filter: {} } }, null, 2);
-      return `curl -X POST "$ASTRA_DB_API_ENDPOINT/api/json/v1/$KEYSPACE/${collectionName}" \\\n  -H "Token: $ASTRA_DB_APPLICATION_TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '${body}'`;
-    }
-  }
-}
-
-function BrowseCopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  };
-  return (
-    <button
-      onClick={() => void handleCopy()}
-      className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors"
-      style={{
-        color: copied ? "var(--step-respond)" : "var(--text-muted)",
-        backgroundColor: copied ? "rgba(34,197,94,0.08)" : "transparent",
-        border: `1px solid ${copied ? "rgba(34,197,94,0.2)" : "transparent"}`,
-      }}
-      title="Copy to clipboard"
-    >
-      {copied ? <Check size={10} /> : <Copy size={10} />}
-      {copied ? "Copied" : "Copy"}
-    </button>
-  );
-}
-
-function BrowseCodePanel({ collectionName, sort }: {
-  collectionName: string;
-  sort: { col: string; dir: 1 | -1 } | null;
-}) {
-  const [lang, setLang] = useState<BrowseCodeLang>("ts");
-  const code = getBrowseCode(lang, collectionName, sort);
-
-  return (
-    <div
-      className="rounded-xl overflow-hidden"
-      style={{ border: "1px solid var(--border-subtle)" }}
-    >
-      {/* Language selector bar */}
-      <div
-        className="flex items-center justify-between px-3 py-2 border-b"
-        style={{ backgroundColor: "var(--bg-panel)", borderColor: "var(--border-subtle)" }}
-      >
-        <div className="flex gap-0.5">
-          {(Object.keys(BROWSE_LANG_LABELS) as BrowseCodeLang[]).map((l) => (
-            <button
-              key={l}
-              onClick={() => setLang(l)}
-              className="px-2.5 py-1 rounded text-[11px] font-medium transition-colors"
-              style={{
-                backgroundColor: lang === l ? "var(--interactive-light)" : "transparent",
-                color: lang === l ? "var(--interactive)" : "var(--text-muted)",
-                border: lang === l ? "1px solid var(--interactive-border)" : "1px solid transparent",
-              }}
-            >
-              {BROWSE_LANG_LABELS[l]}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px]" style={{ color: "var(--text-muted)", fontFamily: "IBM Plex Mono, monospace" }}>
-            {BROWSE_LANG_SDK[lang]}
-          </span>
-          <BrowseCopyButton text={code} />
-        </div>
-      </div>
-      {/* Code block */}
-      <div style={{ backgroundColor: "var(--bg-card)" }}>
-        <pre
-          className="text-[12px] px-4 py-3 overflow-x-auto leading-relaxed"
-          style={{
-            fontFamily: "IBM Plex Mono, monospace",
-            color: "var(--text-secondary)",
-            whiteSpace: "pre",
-            margin: 0,
-          }}
-        >
-          {renderBrowseCode(lang, code)}
-        </pre>
-      </div>
-    </div>
-  );
-}
-
-function renderBrowseCode(lang: BrowseCodeLang, code: string) {
-  return code.split("\n").map((line, i) => (
-    <span key={i}>
-      {lang === "ts" && line
-        .replace(/^(await )/, "⟨await⟩")
-        .split(/(⟨await⟩|"[^"]*"|\$[a-zA-Z]+|\.find\b|\b(?:db|collection)\b)/g)
-        .map((part, j) => {
-          if (part === "⟨await⟩") return <span key={j} style={{ color: "var(--interactive)" }}>await </span>;
-          if (part.startsWith('"')) return <span key={j} style={{ color: "var(--step-respond)" }}>{part}</span>;
-          if (part.startsWith("$")) return <span key={j} style={{ color: "var(--step-embed)" }}>{part}</span>;
-          if (part === ".find") return <span key={j} style={{ color: "var(--interactive)" }}>{part}</span>;
-          if (part === "db" || part === "collection") return <span key={j} style={{ color: "var(--text-primary)" }}>{part}</span>;
-          return <span key={j}>{part}</span>;
-        })}
-      {lang === "python" && line
-        .split(/(from\s+\w+|import\s+\w+|"[^"]*"|\bSortDocuments\b|\bcollection\b)/g)
-        .map((part, j) => {
-          if (part.startsWith("from ") || part.startsWith("import ")) return <span key={j} style={{ color: "var(--interactive)" }}>{part}</span>;
-          if (part.startsWith('"')) return <span key={j} style={{ color: "var(--step-respond)" }}>{part}</span>;
-          if (part === "SortDocuments") return <span key={j} style={{ color: "var(--step-embed)" }}>{part}</span>;
-          if (part === "collection") return <span key={j} style={{ color: "var(--text-primary)" }}>{part}</span>;
-          return <span key={j}>{part}</span>;
-        })}
-      {lang === "java" && line
-        .split(/(new\s+\w+|Filter\.empty\(\)|Sorts\.\w+|"[^"]*"|\bcollection\b)/g)
-        .map((part, j) => {
-          if (part.startsWith("new ")) return <span key={j} style={{ color: "var(--interactive)" }}>{part}</span>;
-          if (part === "Filter.empty()") return <span key={j} style={{ color: "var(--text-muted)" }}>{part}</span>;
-          if (part.startsWith("Sorts.")) return <span key={j} style={{ color: "var(--step-embed)" }}>{part}</span>;
-          if (part.startsWith('"')) return <span key={j} style={{ color: "var(--step-respond)" }}>{part}</span>;
-          if (part === "collection") return <span key={j} style={{ color: "var(--text-primary)" }}>{part}</span>;
-          return <span key={j}>{part}</span>;
-        })}
-      {lang === "curl" && line
-        .split(/(curl|-[XHd]|"[^"]*"|\$[A-Z_]+)/g)
-        .map((part, j) => {
-          if (part === "curl") return <span key={j} style={{ color: "var(--interactive)" }}>{part}</span>;
-          if (part === "-X" || part === "-H" || part === "-d") return <span key={j} style={{ color: "var(--text-muted)" }}>{part}</span>;
-          if (part.startsWith('"')) return <span key={j} style={{ color: "var(--step-respond)" }}>{part}</span>;
-          if (part.startsWith("$")) return <span key={j} style={{ color: "var(--step-embed)" }}>{part}</span>;
-          return <span key={j}>{part}</span>;
-        })}
-      {"\n"}
-    </span>
-  ));
 }
 
 function ExpandedRow({
@@ -311,164 +125,39 @@ function ExpandedRow({
 
 export function CollectionViewer({ collection, onSwitchToChat, astraToken, astraEndpoint, keyspace, onCountChange, onOpenIngest }: CollectionViewerProps) {
   const [activeTab, setActiveTab] = useState<"output" | "code">("output");
-  const [page, setPage] = useState(0);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [sort, setSort] = useState<{ col: string; dir: 1 | -1 } | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
-
-  // Real data state
-  const isConnected = !!(astraToken && astraEndpoint);
-  const [realDocs, setRealDocs] = useState<CollectionDocument[]>([]);
-  const [pageStates, setPageStates] = useState<(string | null)[]>([null]); // index = page, value = pageState to fetch it
-  const [nextPageState, setNextPageState] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [fetchError, setFetchError] = useState("");
-
-  const fetchCount = useCallback(() => {
-    if (!astraToken || !astraEndpoint) return;
-    void fetch("/api/count", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: astraToken, endpoint: astraEndpoint, keyspace, collection: collection.name }),
-    })
-      .then((r) => r.json() as Promise<{ count?: number; error?: string }>)
-      .then((data) => { if (data.count !== undefined) onCountChange?.(collection.name, data.count); })
-      .catch(() => { /* silent — count is best-effort */ });
-  }, [astraToken, astraEndpoint, keyspace, collection.name, onCountChange]);
-
-  const fetchPage = useCallback(async (pageIndex: number, pageStateForIndex: string | null, currentSort: typeof sort) => {
-    if (!astraToken || !astraEndpoint) return;
-    setLoading(true);
-    setFetchError("");
-    try {
-      const res = await fetch("/api/browse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token: astraToken,
-          endpoint: astraEndpoint,
-          keyspace,
-          collection: collection.name,
-          pageState: pageStateForIndex ?? undefined,
-          sort: currentSort ?? undefined,
-        }),
-      });
-      const data = await res.json() as { documents?: CollectionDocument[]; nextPageState?: string | null; error?: string };
-      if (!res.ok || data.error) throw new Error(data.error ?? "Failed to fetch");
-      const docs = (data.documents ?? []).map((d) => {
-        // Restore $vector placeholder into a typed array stub
-        if (typeof d.$vector === "string" && (d.$vector as string).startsWith("__vector_")) {
-          const dims = parseInt((d.$vector as string).replace("__vector_", "").replace("__", ""), 10);
-          return { ...d, $vector: new Array(dims).fill(0) };
-        }
-        return d;
-      });
-      setRealDocs(docs);
-      setNextPageState(data.nextPageState ?? null);
-      // Store the next page's state so we can navigate forward
-      setPageStates((prev) => {
-        const updated = [...prev];
-        updated[pageIndex + 1] = data.nextPageState ?? null;
-        return updated;
-      });
-    } catch (err) {
-      setFetchError(err instanceof Error ? err.message : "Error fetching documents");
-    } finally {
-      setLoading(false);
-    }
-  }, [astraToken, astraEndpoint, keyspace, collection.name]);
-
-  // Fetch on mount / collection change
-  useEffect(() => {
-    if (!isConnected) return;
-    setPage(0);
-    setPageStates([null]);
-    setNextPageState(null);
-    setSelectedIds(new Set());
-    setRealDocs([]);
-    setLoading(true);
-    void fetchPage(0, null, sort);
-    fetchCount();
-  }, [collection.name, isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleSortColumn = (col: string) => {
-    if (col === "$vector") return;
-    const newSort = (() => {
-      if (sort?.col !== col) return { col, dir: 1 as const };
-      if (sort.dir === 1) return { col, dir: -1 as const };
-      return null;
-    })();
-    setSort(newSort);
-    setPage(0);
-    setPageStates([null]);
-    setNextPageState(null);
-    setExpandedId(null);
-    void fetchPage(0, null, newSort);
-  };
-
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    void fetchPage(page, pageStates[page] ?? null, sort).finally(() => setIsRefreshing(false));
-  };
-
-  const handlePageChange = (newPage: number) => {
-    setExpandedId(null);
-    setSelectedIds(new Set());
-    setPage(newPage);
-    void fetchPage(newPage, pageStates[newPage] ?? null, sort);
-  };
-
-  const displayDocs = realDocs;
-
-  const handleToggleSelect = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const handleSelectAll = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (selectedIds.size === displayDocs.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(displayDocs.map((d) => d._id)));
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!isConnected || selectedIds.size === 0 || deleting) return;
-    setDeleting(true);
-    setDeleteError("");
-    try {
-      const res = await fetch("/api/delete-documents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token: astraToken,
-          endpoint: astraEndpoint,
-          keyspace,
-          collection: collection.name,
-          ids: Array.from(selectedIds),
-        }),
-      });
-      const data = await res.json() as { deletedCount?: number; error?: string };
-      if (!res.ok || data.error) throw new Error(data.error ?? "Delete failed");
-      setSelectedIds(new Set());
-      await fetchPage(page, pageStates[page] ?? null, sort);
-      fetchCount();
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Delete failed");
-    } finally {
-      setDeleting(false);
-    }
-  };
+  const {
+    displayDocs,
+    expandedId,
+    setExpandedId,
+    isRefreshing,
+    sort,
+    selectedIds,
+    deleting,
+    deleteError,
+    loading,
+    fetchError,
+    columns,
+    availablePages,
+    inferredTotal,
+    isLastKnownPage,
+    knownTotal,
+    startRow,
+    endRow,
+    handleSortColumn,
+    handleRefresh,
+    handlePageChange,
+    handleToggleSelect,
+    handleSelectAll,
+    handleClearSelection,
+    handleDelete,
+    page,
+  } = useCollectionBrowse({
+    collection,
+    astraToken,
+    astraEndpoint,
+    keyspace,
+    onCountChange,
+  });
 
   const handleExport = () => {
     if (displayDocs.length === 0) return;
@@ -493,15 +182,6 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
     a.click();
     URL.revokeObjectURL(url);
   };
-
-  const availablePages = nextPageState ? page + 2 : page + 1;
-  const columns = useMemo(() => getColumns(realDocs), [realDocs]);
-  const startRow = page * PAGE_SIZE + 1;
-  const endRow = page * PAGE_SIZE + displayDocs.length;
-
-  const isLastKnownPage = !nextPageState;
-  const knownTotal = collection.count > 0 ? collection.count : null;
-  const inferredTotal = isLastKnownPage ? endRow : knownTotal;
   const totalPages = availablePages;
 
   return (
@@ -669,7 +349,7 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
                   <span className="text-xs" style={{ color: "#f87171" }}>{deleteError}</span>
                 )}
                 <motion.button
-                  onClick={() => setSelectedIds(new Set())}
+                  onClick={handleClearSelection}
                   className="px-3 py-1 rounded-lg text-xs font-medium"
                   style={{ color: "var(--text-muted)", border: "1px solid var(--border-subtle)", backgroundColor: "rgba(0,0,0,0)" }}
                   whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" }}
