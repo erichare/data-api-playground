@@ -1,6 +1,6 @@
 # Data API Playground
 
-An interactive web app for exploring [DataStax Astra DB](https://www.datastax.com/products/datastax-astra) via the Data API. Connect to your database, chat with your data using AI, browse collections, and ingest CSV files — all from a browser.
+An interactive web app for exploring [DataStax Astra DB](https://www.datastax.com/products/datastax-astra) via the Data API. Connect to your database, chat with your data using AI, browse collections, and ingest documents or tabular data — all from a browser.
 
 ## Features
 
@@ -11,11 +11,12 @@ An interactive web app for exploring [DataStax Astra DB](https://www.datastax.co
 - **Persistent conversations** — Conversations and messages are stored locally in SQLite and survive page refresh. Create, rename, and delete threads from the sidebar.
 - **Dark / light mode** — Toggle between dark (IBM Carbon Gray 100) and light (IBM Carbon White) themes. Preference is persisted.
 - **Collection browser** — Browse documents in any collection with pagination, sortable columns, Output/Code tabs, and delete support.
-- **CSV ingestion** — Upload CSV files and ingest them as vector documents with streaming progress.
+- **Document and data ingestion** — Upload PDF, DOCX, Markdown, text, CSV, or JSON files and ingest them with streaming progress.
 - **Collection management** — Create new collections with configurable vector dimensions, similarity metrics, and server-side vectorize providers. Delete with confirmation.
 - **Multiple search modes** — Hybrid (vector + keyword reranking), vector-only, or lexical.
 - **Internal collections hidden** — `dap_*` collections used by the app are filtered from all user-facing dropdowns and never queried by AI.
 - **Quick Start Guide** — Inline code examples for Python, TypeScript, Java, and cURL.
+- **Optional app auth** — Protect the entire UI and API with a shared app password and `httpOnly` session cookie.
 
 ## Tech Stack
 
@@ -74,7 +75,7 @@ Open [http://localhost:3000](http://localhost:3000).
 1. **Connect** — Click the connection button and enter your Astra DB token and endpoint. Optionally add IBM watsonx credentials to enable AI-generated responses.
 2. **Chat** — Type a question in the chat panel. Use the **Output**, **Code**, and **Trace** tabs on each response to see the answer, the exact API call, and the full pipeline execution.
 3. **Browse** — Click any collection in the sidebar to browse its documents. Use **Output** for the table view and **Code** for the equivalent API call.
-4. **Ingest** — Expand the Ingest panel (right side) to upload a CSV file and stream it into a collection with automatic embedding.
+4. **Ingest** — Expand the Ingest panel (right side) to upload a supported file type and stream it into a collection with automatic embedding or Astra vectorize.
 5. **New Collection** — Click "New Collection" in the sidebar to create a vector or vectorize-enabled collection.
 
 ## Project Structure
@@ -85,16 +86,21 @@ Open [http://localhost:3000](http://localhost:3000).
 │   ├── app/
 │   │   ├── api/                    # Next.js route handlers
 │   │   │   ├── chat/               # Streaming RAG pipeline (4 steps)
-│   │   │   ├── ingest/             # CSV ingestion with embedding
+│   │   │   ├── ingest/             # Tabular ingestion with embedding
+│   │   │   ├── ingest-document/    # Document extraction + chunk ingestion
 │   │   │   ├── connect/            # Astra DB connection + collection list
 │   │   │   ├── browse/             # Document pagination
+│   │   │   ├── auth/               # Login/logout/status endpoints
 │   │   │   ├── conversations/      # Conversation CRUD
 │   │   │   │   └── [id]/
 │   │   │   │       └── messages/   # Per-conversation message persistence
 │   │   │   └── ...
 │   │   ├── globals.css             # IBM Carbon-inspired CSS variable theme system
+│   │   ├── login/                  # Password gate page
 │   │   └── page.tsx                # Main app shell
+│   ├── proxy.ts                    # Auth gate for page + API requests
 │   ├── components/
+│   │   ├── auth/                   # Login form
 │   │   ├── chat/                   # ChatArea, MessageBubble, PipelineTrace, SearchModeToggle
 │   │   ├── collection/             # CollectionViewer, NewCollectionDialog, browse/create helpers
 │   │   ├── connection/             # AstraConnectDialog
@@ -103,16 +109,21 @@ Open [http://localhost:3000](http://localhost:3000).
 │   │   ├── shell/                  # Header, Sidebar, main panel, dialogs, mode switcher
 │   │   └── ui/                     # shadcn/ui base components
 │   └── lib/
+│       ├── auth.ts                 # Session cookie helpers + auth guards
 │       ├── astra.ts                # Shared Astra DB client factory
 │       ├── chat/                   # Chat workflow service + types
 │       ├── collections/            # Collection/document service logic
 │       ├── ingest/                 # Ingest service logic
+│       ├── server/
+│       │   └── log.ts              # Structured server logging + request IDs
 │       ├── types.ts                # Shared TypeScript types
 │       ├── hooks/
 │       │   ├── usePlaygroundState.ts      # Top-level composition hook
 │       │   ├── usePlaygroundConnection.ts # Connection/session state
 │       │   └── useConversationState.ts    # Conversation state + persistence
 │       └── mock/                   # Demo data and query hints
+├── tests/
+│   └── e2e/                        # Playwright browser coverage
 └── docs/
     ├── architecture-simple.md
     ├── architecture-detailed.md
@@ -209,7 +220,8 @@ Each request to `POST /api/chat` streams a sequence of NDJSON events, one per st
 | `/api/chat` | `POST` | Main AI pipeline (streaming NDJSON) |
 | `/api/connect` | `POST` | Validate token + endpoint, return collection metadata |
 | `/api/browse` | `POST` | Paginated document fetch for Browse view |
-| `/api/ingest` | `POST` | Bulk insert CSV into a collection with embedding |
+| `/api/ingest` | `POST` | Bulk insert tabular rows into a collection with embedding |
+| `/api/ingest-document` | `POST` | Extract, chunk, and ingest uploaded documents |
 | `/api/create-collection` | `POST` | Create collection with optional vector config |
 | `/api/delete-collection` | `POST` | Drop a collection |
 | `/api/delete-documents` | `POST` | Delete documents by filter |
@@ -219,8 +231,13 @@ Each request to `POST /api/chat` streams a sequence of NDJSON events, one per st
 | `/api/conversations` | `GET/POST` | Conversation list + create |
 | `/api/conversations/[id]` | `PATCH/DELETE` | Rename or delete a conversation |
 | `/api/conversations/[id]/messages` | `GET/POST` | Load or append messages |
+| `/api/auth/login` | `POST` | Create an authenticated app session |
+| `/api/auth/logout` | `POST` | Clear the authenticated app session |
+| `/api/auth/status` | `GET` | Report whether auth is enabled and current session state |
 | `/api/astra-status` | `GET` | Whether Astra env vars are set |
 | `/api/watsonx-status` | `GET` | Whether WatsonX env vars are set |
+
+If `PLAYGROUND_AUTH_PASSWORD` is configured, the app redirects unauthenticated browser requests to `/login` and returns `401` JSON responses for protected API routes. Important server routes also emit structured logs and include request IDs on error responses to help with debugging.
 
 ---
 
@@ -252,23 +269,38 @@ Each request to `POST /api/chat` streams a sequence of NDJSON events, one per st
 | `ASTRA_DB_API_ENDPOINT` | Astra DB | Yes (or set in UI) |
 | `WATSONX_API_KEY` | IBM WatsonX | For AI features |
 | `WATSONX_PROJECT_ID` | IBM WatsonX | For AI features |
-| `WATSONX_SERVICE_URL` | IBM WatsonX | For AI features |
+| `WATSONX_URL` | IBM WatsonX | For AI features |
 | `WATSONX_IAM_URL` | IBM WatsonX | For AI features |
 | `HUGGINGFACE_API_KEY` | HuggingFace | Optional embed fallback |
+| `PLAYGROUND_AUTH_PASSWORD` | App auth | Optional app password |
+| `PLAYGROUND_AUTH_SECRET` | App auth | Recommended when app auth is enabled |
+| `DATA_API_PLAYGROUND_DB_PATH` | Local storage | Optional SQLite path override |
+| `NEXT_PUBLIC_API_URL` | Demo/mock config | Optional mock API base URL |
 
-> All env vars can be overridden at runtime via the Connect Dialog — values are stored in `sessionStorage` and passed per-request.
+> Use [.env.example](/Users/erichare/GitHub/data-api-playground/.env.example) as the source of truth. Astra and watsonx credentials can also be entered at runtime via the Connect dialog, but raw secrets are not persisted in browser storage.
 
 ---
 
 ## Client State
 
-```
-sessionStorage
-├── astra_token          ← resolved token (env or user-entered)
-├── astra_endpoint       ← resolved endpoint
-├── ibm_api_key          ← WatsonX API key
-└── watsonx_project_id   ← WatsonX project ID
+```text
+cookies
+└── data-api-playground-session   ← httpOnly auth session cookie (optional)
 
 localStorage
-└── theme                ← "dark" | "light"
+└── theme                         ← "dark" | "light"
 ```
+
+Runtime credentials entered through the Connect dialog are kept in React state and sent only to this app's server routes; they are not written to `localStorage` or `sessionStorage`.
+
+## Testing
+
+```bash
+npm test
+npm run test:e2e
+npm run build
+```
+
+- `npm test` runs the Vitest unit, hook, service, and route suite.
+- `npm run test:e2e` runs the Playwright browser flow coverage.
+- `npm run build` is the full production build check.
