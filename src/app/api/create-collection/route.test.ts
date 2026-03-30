@@ -1,14 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const createCollectionMock = vi.fn();
-const getAstraDbMock = vi.fn(() => ({
-  createCollection: createCollectionMock,
-}));
-const resolveAstraConnectionMock = vi.fn();
+const createCollectionInAstraMock = vi.fn();
 
-vi.mock("@/lib/astra", () => ({
-  getAstraDb: getAstraDbMock,
-  resolveAstraConnection: resolveAstraConnectionMock,
+vi.mock("@/lib/collections/service", () => ({
+  createCollectionInAstra: createCollectionInAstraMock,
 }));
 
 describe("/api/create-collection route", () => {
@@ -17,12 +12,10 @@ describe("/api/create-collection route", () => {
     vi.clearAllMocks();
   });
 
-  it("returns 400 when required connection fields are missing", async () => {
-    resolveAstraConnectionMock.mockReturnValue({
-      token: "",
-      endpoint: "",
-      keyspace: "default_keyspace",
-    });
+  it("returns 400 when the collection service rejects missing credentials", async () => {
+    createCollectionInAstraMock.mockRejectedValue(
+      new Error("token, endpoint, and name are required")
+    );
 
     const { POST } = await import("./route");
     const request = new Request("http://localhost/api/create-collection", {
@@ -45,11 +38,15 @@ describe("/api/create-collection route", () => {
     });
   });
 
-  it("creates a vectorize collection and returns the new collection metadata", async () => {
-    resolveAstraConnectionMock.mockReturnValue({
-      token: "token",
-      endpoint: "endpoint",
-      keyspace: "ks1",
+  it("returns the collection created by the service", async () => {
+    createCollectionInAstraMock.mockResolvedValue({
+      name: "docs",
+      count: 0,
+      vectorDim: 1024,
+      vectorizeService: {
+        provider: "nvidia",
+        modelName: "NV-Embed-QA",
+      },
     });
 
     const { POST } = await import("./route");
@@ -66,19 +63,8 @@ describe("/api/create-collection route", () => {
     });
 
     const response = await POST(request as never);
-    const body = await response.json();
 
-    expect(createCollectionMock).toHaveBeenCalledWith("docs", {
-      vector: {
-        dimension: 1024,
-        metric: "cosine",
-        service: {
-          provider: "nvidia",
-          modelName: "NV-Embed-QA",
-        },
-      },
-    });
-    expect(body).toEqual({
+    expect(await response.json()).toEqual({
       collection: {
         name: "docs",
         count: 0,

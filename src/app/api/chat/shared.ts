@@ -1,31 +1,12 @@
 import { WatsonXAI } from "@ibm-cloud/watsonx-ai";
 import { getAstraDb, SYSTEM_FIELDS } from "@/lib/astra";
+import type { ChatCollectionInfo, SearchResult } from "@/lib/chat/types";
 
 export const GRANITE_CHAT_MODEL = "ibm/granite-3-8b-instruct";
 export const GRANITE_EMBED_MODEL = "ibm/slate-125m-english-rtrvr-v2";
 export const ANALYZE_MAX_TOKENS = 300;
 export const RESPOND_MAX_TOKENS = 1500;
 export const MAX_LIMIT = 1000;
-
-export type SearchResult = { id: string; similarity: number; preview: Record<string, string | number>; collection?: string };
-
-export type StepEvent =
-  | { step: "analyze"; status: "running" }
-  | { step: "analyze"; status: "complete"; latencyMs: number; data: { collection: string; collections?: string[]; allCollections?: boolean; searchMode: string; intent: string; limit: number; sortField?: string; sortDir?: string; filterField?: string; filterOp?: string; filterValue?: unknown; fields?: string[]; skipSearch?: boolean; _raw?: string } }
-  | { step: "embed"; status: "running" }
-  | { step: "embed"; status: "complete"; latencyMs: number; data: { preview: number[]; dims: number; real: boolean; error?: string } }
-  | { step: "embed"; status: "skipped" }
-  | { step: "search"; status: "running" }
-  | { step: "search"; status: "complete"; latencyMs: number; data: { command: string; count: number; collection: string; collections?: string[]; results: SearchResult[] } }
-  | { step: "search"; status: "skipped" }
-  | { step: "respond"; status: "running" }
-  | { step: "respond"; status: "complete"; latencyMs: number; data: { content: string } }
-  | { step: "respond"; status: "error"; latencyMs: number; data: { error: string } };
-
-export interface ChatCollectionInfo {
-  name: string;
-  isVectorize: boolean;
-}
 
 export interface EmbedResult {
   embeddingVector: number[];

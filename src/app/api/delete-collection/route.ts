@@ -1,33 +1,26 @@
 import { NextResponse } from "next/server";
-import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
+import { deleteCollectionInAstra } from "@/lib/collections/service";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
-  const body = await req.json() as {
+  const body = (await req.json()) as {
     token?: string;
     endpoint?: string;
     keyspace?: string;
     name: string;
   };
 
-  const { token, endpoint, keyspace } = resolveAstraConnection(body, { includeDefaultKeyspace: true });
-
-  if (!token || !endpoint) {
-    return NextResponse.json({ error: "Missing credentials" }, { status: 400 });
-  }
-  if (!body.name) {
-    return NextResponse.json({ error: "Missing collection name" }, { status: 400 });
-  }
-
   try {
-    const db = getAstraDb(token, endpoint, keyspace);
-    await db.dropCollection(body.name);
-    return NextResponse.json({ dropped: true });
+    const result = await deleteCollectionInAstra(body);
+    return NextResponse.json(result);
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to delete collection" },
-      { status: 500 }
-    );
+    const message =
+      err instanceof Error ? err.message : "Failed to delete collection";
+    const status =
+      message === "Missing credentials" || message === "Missing collection name"
+        ? 400
+        : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
