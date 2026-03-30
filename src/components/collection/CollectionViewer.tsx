@@ -27,6 +27,7 @@ interface CollectionViewerProps {
   astraToken?: string;
   astraEndpoint?: string;
   keyspace?: string;
+  isConnected?: boolean;
   onCountChange?: (name: string, exactCount: number) => void;
   onOpenIngest?: () => void;
 }
@@ -123,7 +124,7 @@ function ExpandedRow({
   );
 }
 
-export function CollectionViewer({ collection, onSwitchToChat, astraToken, astraEndpoint, keyspace, onCountChange, onOpenIngest }: CollectionViewerProps) {
+export function CollectionViewer({ collection, onSwitchToChat, astraToken, astraEndpoint, keyspace, isConnected, onCountChange, onOpenIngest }: CollectionViewerProps) {
   const [activeTab, setActiveTab] = useState<"output" | "code">("output");
   const {
     displayDocs,
@@ -156,6 +157,7 @@ export function CollectionViewer({ collection, onSwitchToChat, astraToken, astra
     astraToken,
     astraEndpoint,
     keyspace,
+    isConnected,
     onCountChange,
   });
 

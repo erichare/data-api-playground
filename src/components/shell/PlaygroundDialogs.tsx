@@ -28,6 +28,7 @@ interface PlaygroundDialogsProps {
   onIbmApiKeyChange: (value: string) => void;
   onWatsonxProjectIdChange: (value: string) => void;
   connectError: string;
+  isConnected: boolean;
 }
 
 export function PlaygroundDialogs({
@@ -52,6 +53,7 @@ export function PlaygroundDialogs({
   onIbmApiKeyChange,
   onWatsonxProjectIdChange,
   connectError,
+  isConnected,
 }: PlaygroundDialogsProps) {
   const ingestCollection = ingestTarget
     ? collections.find((collection) => collection.name === ingestTarget) ?? null
@@ -66,6 +68,7 @@ export function PlaygroundDialogs({
         astraToken={astraToken}
         astraEndpoint={astraEndpoint}
         keyspace={selectedKeyspace}
+        isConnected={isConnected}
       />
 
       {ingestCollection && (
@@ -73,6 +76,7 @@ export function PlaygroundDialogs({
           collection={ingestCollection}
           astraToken={astraToken}
           astraEndpoint={astraEndpoint}
+          isConnected={isConnected}
           onClose={onCloseIngestDialog}
         />
       )}
@@ -84,6 +88,7 @@ export function PlaygroundDialogs({
         onClose={onCloseConnect}
         onConnect={onConnect}
         onDisconnect={onDisconnect}
+        connected={isConnected}
         currentToken={astraFromEnv ? "" : astraToken}
         currentEndpoint={astraFromEnv ? "" : astraEndpoint}
         currentIbmApiKey={ibmApiKey}

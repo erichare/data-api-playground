@@ -15,15 +15,16 @@ The app is a single page (`app/page.tsx`) composed of:
 | Component | Location | Responsibility |
 |---|---|---|
 | `Header` | `components/shell/` | Connection status, settings button |
-| `Sidebar` | `components/shell/` | Keyspace selector, collection list, conversation list, mode toggle |
+| `Sidebar` | `components/shell/` | Keyspace selector, collection list, conversation list |
+| `PlaygroundMainPanel` | `components/shell/` | View composition for Chat, Ingest, and API modes |
+| `ViewModeSwitcher` | `components/shell/` | Chat / Ingest / API mode switching |
 | `ChatArea` | `components/chat/` | Conversation UI, query input, search mode toggle |
-| `CollectionViewer` | `components/collection/` | Paginated document browser with sort/delete/export |
-| `IngestPanel` | `components/collection/` | CSV drag-and-drop upload with streaming progress |
+| `IngestTab` | `components/ingest/` | Upload flow, document library, raw browser |
 | `AstraConnectDialog` | `components/connection/` | Token/endpoint/watsonx key input |
 | `NewCollectionDialog` | `components/collection/` | Create vector or vectorize-enabled collections |
 | `QuickStartGuide` | `components/onboarding/` | SDK code examples in Python, TypeScript, Java, cURL |
 
-All application state lives in `lib/hooks/usePlaygroundState.ts`.
+Application state is composed in `lib/hooks/usePlaygroundState.ts`, with conversation logic in `lib/hooks/useConversationState.ts` and connection/session logic in `lib/hooks/usePlaygroundConnection.ts`.
 
 ---
 
@@ -63,6 +64,7 @@ Runtime credentials are typically sent in JSON request bodies to the app's own s
 | `/api/keyspaces` | POST | `token`, `endpoint` | List of keyspace names |
 | `/api/embedding-providers` | POST | `token`, `endpoint` | All vectorize provider/model options available on the DB |
 | `/api/create-collection` | POST | `token`, `endpoint`, `name`, `dimension`, `metric`, `provider`, `model` | The created collection object |
+| `/api/delete-collection` | POST | `token`, `endpoint`, `name` | Drop a collection |
 
 ### Data
 
@@ -71,7 +73,9 @@ Runtime credentials are typically sent in JSON request bodies to the app's own s
 | `/api/browse` | POST | `token`, `endpoint`, `collection`, `pageState?`, `sort?` | 20 documents + next page cursor |
 | `/api/count` | POST | `token`, `endpoint`, `collection` | Estimated document count |
 | `/api/delete-documents` | POST | `token`, `endpoint`, `collection`, `ids[]` | Deleted count |
+| `/api/documents` | `GET/DELETE` | `collection?` or `source_doc_id`, `collection`, connection fields | SQLite document summaries or delete summary + Astra chunks |
 | `/api/ingest` | POST | `token`, `endpoint`, `collection`, `rows[]`, `filename` | NDJSON stream of progress events |
+| `/api/ingest-document` | POST | `FormData(file, collection, token?, endpoint?, keyspace?, metadata?)` | NDJSON stream of extraction/chunk/store progress |
 
 ### Chat / RAG
 
@@ -146,10 +150,24 @@ On conversation switch:
 
 Collections prefixed `dap_` are considered internal application collections and are excluded from normal user exploration. The chat pipeline also filters them out when choosing collections.
 
-- Hidden from the collection list by default (toggle via "＋internal" in the sidebar)
-- Always sorted to the end of the list when shown
+- Hidden from the normal collection list
 - Never selected as the default active collection
 - Never queried by the AI pipeline unless explicitly instructed
+
+---
+
+## Service Layer
+
+The backend/domain logic is now organized into service modules instead of living only in route handlers.
+
+| Module | Responsibility |
+|---|---|
+| `lib/chat/service.ts` | Analyze/embed/search/respond workflow orchestration |
+| `lib/chat/types.ts` | Shared chat workflow event/request/result types |
+| `lib/collections/service.ts` | Collection CRUD and ingested-document metadata operations |
+| `lib/ingest/service.ts` | CSV ingest, document ingest, extraction, chunking, embedding |
+
+This keeps route files focused on request parsing, response shaping, and streaming boundaries.
 
 ---
 

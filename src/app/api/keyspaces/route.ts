@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
+import { requireApiAuth } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
+  const authError = requireApiAuth(req);
+  if (authError) return authError;
   const body = await req.json() as { token: string; endpoint: string };
   const { token, endpoint } = resolveAstraConnection(body);
 

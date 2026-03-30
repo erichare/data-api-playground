@@ -187,11 +187,11 @@ interface IngestDialogProps {
   collection: Collection;
   astraToken?: string;
   astraEndpoint?: string;
+  isConnected?: boolean;
   onClose: () => void;
 }
 
-export function IngestDialog({ collection, astraToken, astraEndpoint, onClose }: IngestDialogProps) {
-  const isConnected = !!astraToken && !!astraEndpoint;
+export function IngestDialog({ collection, astraToken, astraEndpoint, isConnected = false, onClose }: IngestDialogProps) {
   const useVectorize = !!collection.vectorizeService;
 
   const [isDragOver, setIsDragOver] = useState(false);

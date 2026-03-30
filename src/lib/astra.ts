@@ -23,6 +23,25 @@ export function normalizeAstraEndpoint(endpoint: string) {
   return endpoint.replace(/\/$/, "");
 }
 
+const ALLOWED_ASTRA_HOST_SUFFIXES = [
+  ".astra.datastax.com",
+  ".apps.astra.datastax.com",
+  ".astra-dev.datastax.com",
+  ".apps.astra-dev.datastax.com",
+];
+
+export function isAllowedAstraEndpoint(endpoint: string) {
+  try {
+    const url = new URL(normalizeAstraEndpoint(endpoint));
+    if (url.protocol !== "https:") return false;
+    return ALLOWED_ASTRA_HOST_SUFFIXES.some(
+      (suffix) => url.hostname === suffix.slice(1) || url.hostname.endsWith(suffix)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function resolveAstraConnection(
   input: AstraConnectionInput,
   options?: { includeDefaultKeyspace?: boolean }
@@ -39,7 +58,10 @@ export function resolveAstraConnection(
  * Pass an optional keyspace to target a non-default namespace.
  */
 export function getAstraDb(token: string, endpoint: string, keyspace?: string) {
-  const client = new DataAPIClient(token);
   const normalizedEndpoint = normalizeAstraEndpoint(endpoint);
+  if (!isAllowedAstraEndpoint(normalizedEndpoint)) {
+    throw new Error("Invalid Astra DB endpoint");
+  }
+  const client = new DataAPIClient(token);
   return keyspace ? client.db(normalizedEndpoint, { keyspace }) : client.db(normalizedEndpoint);
 }

@@ -61,9 +61,14 @@ WATSONX_IAM_URL=https://iam.cloud.ibm.com/identity/token
 
 # Optional — fallback embedding provider if watsonx is not configured
 HUGGINGFACE_API_KEY=hf_...
+
+# Optional — enables app-level password protection
+PLAYGROUND_AUTH_PASSWORD=choose-a-strong-password
+# Optional — separate secret used to derive the auth session cookie
+PLAYGROUND_AUTH_SECRET=long-random-string
 ```
 
-All credentials can also be entered at runtime via the Connect dialog. They are stored in `sessionStorage` and sent only to this app's server routes so the browser never talks to Astra DB directly.
+All Astra and watsonx credentials can also be entered at runtime via the Connect dialog. They are sent only to this app's server routes so the browser never talks to Astra DB directly. If `PLAYGROUND_AUTH_PASSWORD` is set, the app is protected by a login page and an `httpOnly` session cookie.
 
 ### Run
 
@@ -100,16 +105,22 @@ Open [http://localhost:3000](http://localhost:3000).
 │   │   └── page.tsx                # Main app shell
 │   ├── components/
 │   │   ├── chat/                   # ChatArea, MessageBubble, PipelineTrace, SearchModeToggle
-│   │   ├── collection/             # CollectionViewer, NewCollectionDialog, IngestPanel
+│   │   ├── collection/             # CollectionViewer, NewCollectionDialog, browse/create helpers
 │   │   ├── connection/             # AstraConnectDialog
+│   │   ├── ingest/                 # IngestTab, upload/library panels, document viewer
 │   │   ├── onboarding/             # QuickStartGuide
-│   │   ├── shell/                  # Header, Sidebar
+│   │   ├── shell/                  # Header, Sidebar, main panel, dialogs, mode switcher
 │   │   └── ui/                     # shadcn/ui base components
 │   └── lib/
 │       ├── astra.ts                # Shared Astra DB client factory
+│       ├── chat/                   # Chat workflow service + types
+│       ├── collections/            # Collection/document service logic
+│       ├── ingest/                 # Ingest service logic
 │       ├── types.ts                # Shared TypeScript types
 │       ├── hooks/
-│       │   └── usePlaygroundState.ts  # All app-level state and handlers
+│       │   ├── usePlaygroundState.ts      # Top-level composition hook
+│       │   ├── usePlaygroundConnection.ts # Connection/session state
+│       │   └── useConversationState.ts    # Conversation state + persistence
 │       └── mock/                   # Demo data and query hints
 └── docs/
     ├── architecture-simple.md
@@ -135,7 +146,7 @@ Open [http://localhost:3000](http://localhost:3000).
 │  ChatArea           │                             └──────────────────────────────────────┘
 │  CollectionViewer   │                                    │            │           │
 │  PipelineTrace      │       REST calls                   │            │           │
-│  IngestPanel        │ ──── other /api/* routes ──►       ▼            ▼           ▼
+│  IngestTab          │ ──── other /api/* routes ──►       ▼            ▼           ▼
 │  AstraConnectDialog │                             Astra DB     IBM WatsonX   HuggingFace
 └─────────────────────┘                             (search)     (LLM+embed)   (embed fallback)
 ```
@@ -205,7 +216,7 @@ Each request to `POST /api/chat` streams a sequence of NDJSON events, one per st
 | Route | Method | Purpose |
 |---|---|---|
 | `/api/chat` | `POST` | Main AI pipeline (streaming NDJSON) |
-| `/api/connect` | `POST` | Validate token + endpoint, return resolved credentials |
+| `/api/connect` | `POST` | Validate token + endpoint, return collection metadata |
 | `/api/browse` | `POST` | Paginated document fetch for Browse view |
 | `/api/ingest` | `POST` | Bulk insert CSV into a collection with embedding |
 | `/api/create-collection` | `POST` | Create collection with optional vector config |

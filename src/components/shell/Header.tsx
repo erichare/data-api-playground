@@ -8,6 +8,8 @@ interface HeaderProps {
   envReady?: boolean;
   onConnectionClick?: () => void;
   onSettingsClick?: () => void;
+  authEnabled?: boolean;
+  onSignOut?: () => void;
   theme?: "dark" | "light";
   onToggleTheme?: () => void;
 }
@@ -17,6 +19,8 @@ export function Header({
   envReady = false,
   onConnectionClick,
   onSettingsClick,
+  authEnabled = false,
+  onSignOut,
   theme = "dark",
   onToggleTheme,
 }: HeaderProps) {
@@ -167,6 +171,19 @@ export function Header({
         >
           {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
         </motion.button>
+
+        {authEnabled && (
+          <motion.button
+            onClick={onSignOut}
+            className="p-2 rounded-lg"
+            style={{ color: "var(--text-muted)", backgroundColor: "rgba(0,0,0,0)" }}
+            whileHover={{ backgroundColor: "var(--bg-hover)", color: "#ef4444", scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            title="Sign out"
+          >
+            <LogOut size={15} />
+          </motion.button>
+        )}
 
         {/* Settings */}
         <motion.button

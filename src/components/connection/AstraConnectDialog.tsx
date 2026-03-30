@@ -9,6 +9,7 @@ interface AstraConnectDialogProps {
   onClose: () => void;
   onConnect: (token: string, endpoint: string) => Promise<void>;
   onDisconnect: () => void;
+  connected: boolean;
   currentToken: string;
   currentEndpoint: string;
   currentIbmApiKey: string;
@@ -23,6 +24,7 @@ export function AstraConnectDialog({
   onClose,
   onConnect,
   onDisconnect,
+  connected,
   currentToken,
   currentEndpoint,
   currentIbmApiKey,
@@ -41,7 +43,7 @@ export function AstraConnectDialog({
   const [envHasKey, setEnvHasKey] = useState<boolean | null>(null);
   const [envHasProjectId, setEnvHasProjectId] = useState<boolean | null>(null);
   const [envAstra, setEnvAstra] = useState<{ hasToken: boolean; hasEndpoint: boolean } | null>(null);
-  const isConnected = !!currentToken;
+  const isConnected = connected;
 
   useEffect(() => {
     if (open) {
@@ -92,7 +94,7 @@ export function AstraConnectDialog({
 
   const maskedToken = currentToken
     ? currentToken.slice(0, 8) + "••••••••••••••••" + currentToken.slice(-4)
-    : "";
+    : "Managed by server environment";
 
   const inputStyle: React.CSSProperties = {
     backgroundColor: "var(--bg-input)",

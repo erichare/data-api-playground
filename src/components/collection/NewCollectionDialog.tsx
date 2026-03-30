@@ -17,6 +17,7 @@ interface NewCollectionDialogProps {
   astraToken?: string;
   astraEndpoint?: string;
   keyspace?: string;
+  isConnected?: boolean;
 }
 
 const MODES: CollectionMode[] = ["vectorize", "client"];
@@ -28,6 +29,7 @@ export function NewCollectionDialog({
   astraToken,
   astraEndpoint,
   keyspace,
+  isConnected: connected = false,
 }: NewCollectionDialogProps) {
   const {
     name,
@@ -54,6 +56,7 @@ export function NewCollectionDialog({
     astraToken,
     astraEndpoint,
     keyspace,
+    isConnected: connected,
     onCreated,
     onClose,
   });

@@ -17,7 +17,7 @@ export async function fetchCollectionsFromApi(
   token: string,
   endpoint: string,
   keyspace?: string
-): Promise<{ collections: Collection[]; fields: Record<string, string[]>; token: string; endpoint: string; keyspaces: string[] }> {
+): Promise<{ collections: Collection[]; fields: Record<string, string[]>; keyspaces: string[] }> {
   const [connectRes, ksRes] = await Promise.all([
     fetch("/api/connect", {
       method: "POST",
@@ -35,8 +35,6 @@ export async function fetchCollectionsFromApi(
     collections?: Collection[];
     fields?: Record<string, string[]>;
     error?: string;
-    token?: string;
-    endpoint?: string;
   };
   if (!connectRes.ok || data.error) throw new Error(data.error ?? "Connection failed");
 
@@ -47,8 +45,6 @@ export async function fetchCollectionsFromApi(
   return {
     collections: data.collections!,
     fields: data.fields ?? {},
-    token: data.token ?? token,
-    endpoint: data.endpoint ?? endpoint,
     keyspaces: ksData.keyspaces ?? [],
   };
 }

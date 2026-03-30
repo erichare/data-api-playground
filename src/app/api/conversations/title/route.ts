@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { WatsonXAI } from "@ibm-cloud/watsonx-ai";
 import { IamAuthenticator } from "ibm-cloud-sdk-core";
+import { requireApiAuth } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -8,6 +9,8 @@ const WATSONX_VERSION = "2024-05-31";
 const GRANITE_CHAT_MODEL = "ibm/granite-3-8b-instruct";
 
 export async function POST(req: NextRequest) {
+  const authError = requireApiAuth(req);
+  if (authError) return authError;
   const { firstMessage, ibmApiKey: bodyKey, watsonxProjectId: bodyProject } = await req.json() as {
     firstMessage: string;
     ibmApiKey?: string;

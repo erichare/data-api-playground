@@ -7,6 +7,13 @@ const CSV_BATCH_SIZE = 20;
 const DOCUMENT_BATCH_SIZE = 10;
 const DEFAULT_CHUNK_SIZE = 1200;
 const DEFAULT_CHUNK_OVERLAP = 150;
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const MAX_EXTRACTED_TEXT_CHARS = 1_000_000;
+const MAX_DOCUMENT_CHUNKS = 500;
+const MIN_CHUNK_SIZE = 200;
+const MAX_CHUNK_SIZE = 4_000;
+const MAX_CSV_ROWS = 5_000;
+const MAX_METADATA_BYTES = 16 * 1024;
 
 export function chunkText(
   text: string,
@@ -137,6 +144,13 @@ export function streamCsvIngest(args: {
           });
           return;
         }
+        if (rows.length > MAX_CSV_ROWS) {
+          send({
+            type: "error",
+            message: `CSV ingest supports at most ${MAX_CSV_ROWS.toLocaleString()} rows per request`,
+          });
+          return;
+        }
 
         const db = getAstraDb(token, endpoint, keyspace);
         const collectionRef = db.collection(collection);
@@ -218,10 +232,13 @@ export async function parseDocumentUpload(formData: FormData) {
     },
     { includeDefaultKeyspace: true }
   );
-  const chunkSize = parseInt(
+  const requestedChunkSize = parseInt(
     (formData.get("chunkSize") as string | null) ?? String(DEFAULT_CHUNK_SIZE)
   );
   const metadataRaw = (formData.get("metadata") as string | null) ?? "{}";
+  const chunkSize = Number.isFinite(requestedChunkSize)
+    ? Math.min(Math.max(requestedChunkSize, MIN_CHUNK_SIZE), MAX_CHUNK_SIZE)
+    : DEFAULT_CHUNK_SIZE;
 
   let metadata: Record<string, unknown> = {};
   try {
@@ -229,12 +246,22 @@ export async function parseDocumentUpload(formData: FormData) {
   } catch {
     // Ignore malformed optional metadata payloads.
   }
+  if (metadataRaw.length > MAX_METADATA_BYTES) {
+    throw new Error(
+      `Metadata payload exceeds ${MAX_METADATA_BYTES.toLocaleString()} bytes`
+    );
+  }
 
   const filename = file.name;
   const ext = filename.split(".").pop()?.toLowerCase() ?? "txt";
   const fileType = ["pdf", "txt", "md", "csv", "json", "docx"].includes(ext)
     ? ext
     : "txt";
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error(
+      `File exceeds ${(MAX_UPLOAD_BYTES / (1024 * 1024)).toFixed(0)} MB upload limit`
+    );
+  }
   const buffer = Buffer.from(await file.arrayBuffer());
 
   return {
@@ -291,8 +318,18 @@ export function streamDocumentIngest(args: {
       try {
         send({ type: "extracting", filename });
         const text = await extractText(buffer, fileType);
+        if (text.length > MAX_EXTRACTED_TEXT_CHARS) {
+          throw new Error(
+            `Extracted text exceeds ${MAX_EXTRACTED_TEXT_CHARS.toLocaleString()} characters`
+          );
+        }
         const chunks = chunkText(text, chunkSize);
         const chunkTotal = chunks.length;
+        if (chunkTotal > MAX_DOCUMENT_CHUNKS) {
+          throw new Error(
+            `Document exceeds ${MAX_DOCUMENT_CHUNKS.toLocaleString()} chunks`
+          );
+        }
 
         send({ type: "chunked", filename, chunks: chunkTotal, chars: text.length });
 

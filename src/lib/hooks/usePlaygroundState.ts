@@ -8,14 +8,8 @@ import { usePlaygroundConnection } from "@/lib/hooks/usePlaygroundConnection";
 // ── Hook ────────────────────────────────────────────────────────────────────
 
 export function usePlaygroundState() {
-  const [ibmApiKey, setIbmApiKey] = useState(() => {
-    if (typeof window === "undefined") return "";
-    return sessionStorage.getItem("ibm_api_key") ?? "";
-  });
-  const [watsonxProjectId, setWatsonxProjectId] = useState(() => {
-    if (typeof window === "undefined") return "";
-    return sessionStorage.getItem("watsonx_project_id") ?? "";
-  });
+  const [ibmApiKey, setIbmApiKey] = useState("");
+  const [watsonxProjectId, setWatsonxProjectId] = useState("");
 
   // UI state
   const [viewMode, setViewMode] = useState<ViewMode>("chat");
@@ -23,14 +17,10 @@ export function usePlaygroundState() {
   const [quickStartOpen, setQuickStartOpen] = useState(false);
   const handleIbmApiKeyChange = (key: string) => {
     setIbmApiKey(key);
-    if (key) sessionStorage.setItem("ibm_api_key", key);
-    else sessionStorage.removeItem("ibm_api_key");
   };
 
   const handleWatsonxProjectIdChange = (id: string) => {
     setWatsonxProjectId(id);
-    if (id) sessionStorage.setItem("watsonx_project_id", id);
-    else sessionStorage.removeItem("watsonx_project_id");
   };
 
   const conversationState = useConversationState({

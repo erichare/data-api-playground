@@ -8,15 +8,17 @@ interface UsePlaygroundConnectionArgs {
   bootstrapConversations: () => Promise<string>;
   resetConversationTracking: () => void;
   onDisconnectViewReset?: () => void;
+  initialAstraEndpoint?: string;
 }
 
 export function usePlaygroundConnection({
   bootstrapConversations,
   resetConversationTracking,
   onDisconnectViewReset,
+  initialAstraEndpoint = "",
 }: UsePlaygroundConnectionArgs) {
   const [astraToken, setAstraToken] = useState("");
-  const [astraEndpoint, setAstraEndpoint] = useState("");
+  const [astraEndpoint, setAstraEndpoint] = useState(initialAstraEndpoint);
   const [astraFromEnv, setAstraFromEnv] = useState(false);
   const [envReady, setEnvReady] = useState(false);
   const [initializing, setInitializing] = useState(true);
@@ -47,10 +49,12 @@ export function usePlaygroundConnection({
 
   const applyConnectionResult = (
     result: Awaited<ReturnType<typeof fetchCollectionsFromApi>>,
-    fromEnv: boolean
+    fromEnv: boolean,
+    token: string,
+    endpoint: string
   ) => {
-    setAstraToken(result.token);
-    setAstraEndpoint(result.endpoint);
+    setAstraToken(fromEnv ? "" : token);
+    setAstraEndpoint(fromEnv ? "" : endpoint.replace(/\/$/, ""));
     setAstraFromEnv(fromEnv);
     setCollections(result.collections);
     setCollectionFields(result.fields);
@@ -71,25 +75,15 @@ export function usePlaygroundConnection({
   useEffect(() => {
     applyTheme(theme);
 
-    const token = sessionStorage.getItem("astra_token") ?? "";
-    const endpoint = sessionStorage.getItem("astra_endpoint") ?? "";
-
     const restorePromise = (async () => {
       await bootstrapConversations();
-
-      if (token && endpoint) {
-        await fetchCollectionsFromApi(token, endpoint)
-          .then((result) => applyConnectionResult(result, false))
-          .catch(() => {});
-        return;
-      }
 
       try {
         const status = await fetch("/api/astra-status").then((r) => r.json() as Promise<{ hasToken: boolean; hasEndpoint: boolean }>);
         setEnvReady(status.hasToken && status.hasEndpoint);
         if (status.hasToken && status.hasEndpoint) {
           await fetchCollectionsFromApi("", "")
-            .then((result) => applyConnectionResult(result, true))
+            .then((result) => applyConnectionResult(result, true, "", ""))
             .catch(() => {});
         }
       } catch { /* ignore */ }
@@ -103,15 +97,11 @@ export function usePlaygroundConnection({
     const fromEnv = !token && !endpoint;
     try {
       const result = await fetchCollections(token, endpoint);
-      setAstraToken(result.token);
-      setAstraEndpoint(result.endpoint);
+      setAstraToken(fromEnv ? "" : token);
+      setAstraEndpoint(fromEnv ? "" : endpoint.replace(/\/$/, ""));
       setAstraFromEnv(fromEnv);
       setKeyspaces(result.keyspaces);
       if (result.keyspaces.length > 0) setSelectedKeyspace(result.keyspaces[0]);
-      if (!fromEnv) {
-        sessionStorage.setItem("astra_token", result.token);
-        sessionStorage.setItem("astra_endpoint", result.endpoint);
-      }
       resetConversationTracking();
       await bootstrapConversations();
     } catch (err) {
@@ -129,8 +119,6 @@ export function usePlaygroundConnection({
     setActiveCollection("");
     setKeyspaces([]);
     setSelectedKeyspace("default_keyspace");
-    sessionStorage.removeItem("astra_token");
-    sessionStorage.removeItem("astra_endpoint");
     resetConversationTracking();
     onDisconnectViewReset?.();
     void bootstrapConversations();
@@ -142,9 +130,13 @@ export function usePlaygroundConnection({
 
   const handleKeyspaceChange = async (keyspace: string) => {
     setSelectedKeyspace(keyspace);
-    if (!astraToken || !astraEndpoint) return;
+    if (!astraFromEnv && (!astraToken || !astraEndpoint)) return;
     try {
-      await fetchCollections(astraToken, astraEndpoint, keyspace);
+      await fetchCollections(
+        astraFromEnv ? "" : astraToken,
+        astraFromEnv ? "" : astraEndpoint,
+        keyspace
+      );
     } catch { /* ignore */ }
   };
 
@@ -153,7 +145,7 @@ export function usePlaygroundConnection({
     setActiveCollection(collection.name);
   };
 
-  const isConnected = !!astraToken;
+  const isConnected = astraFromEnv || !!astraToken;
   const activeCollectionObj = collections.find((c) => c.name === activeCollection) ?? collections[0];
 
   return {

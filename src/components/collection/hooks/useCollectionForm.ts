@@ -15,6 +15,7 @@ interface UseCollectionFormArgs {
   astraToken?: string;
   astraEndpoint?: string;
   keyspace?: string;
+  isConnected?: boolean;
   onCreated: (collection: Collection) => void;
   onClose: () => void;
 }
@@ -24,6 +25,7 @@ export function useCollectionForm({
   astraToken,
   astraEndpoint,
   keyspace,
+  isConnected = false,
   onCreated,
   onClose,
 }: UseCollectionFormArgs) {
@@ -38,7 +40,6 @@ export function useCollectionForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const isConnected = !!(astraToken && astraEndpoint);
   const selectedModel = providerModels[selectedModelIdx] ?? null;
   const canSubmit =
     !!name.trim() &&
@@ -46,7 +47,7 @@ export function useCollectionForm({
     !(mode === "vectorize" && isConnected && !selectedModel);
 
   const loadProviderModels = useCallback(async () => {
-    if (!astraToken || !astraEndpoint) return;
+    if (!isConnected) return;
     setLoadingProviders(true);
     setProvidersError("");
     try {
@@ -60,7 +61,7 @@ export function useCollectionForm({
     } finally {
       setLoadingProviders(false);
     }
-  }, [astraToken, astraEndpoint]);
+  }, [astraEndpoint, astraToken, isConnected]);
 
   useEffect(() => {
     if (!open || !isConnected || mode !== "vectorize" || providerModels.length > 0) {
@@ -84,6 +85,7 @@ export function useCollectionForm({
         astraToken,
         astraEndpoint,
         keyspace,
+        isConnected,
         name,
         mode,
         dimension,
@@ -105,6 +107,7 @@ export function useCollectionForm({
     astraToken,
     canSubmit,
     dimension,
+    isConnected,
     keyspace,
     metric,
     mode,

@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireApiAuth } from "@/lib/auth";
 import { createCollectionInAstra } from "@/lib/collections/service";
 
 export async function POST(req: NextRequest) {
+  const authError = requireApiAuth(req);
+  if (authError) return authError;
   const body = (await req.json()) as {
     token?: string;
     endpoint?: string;

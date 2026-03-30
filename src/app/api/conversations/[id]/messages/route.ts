@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -11,6 +12,8 @@ type MsgRow = {
 
 // GET /api/conversations/[id]/messages
 export async function GET(req: Request, context: { params: Promise<{ id: string }> }) {
+  const authError = requireApiAuth(req);
+  if (authError) return authError;
   const { id } = await context.params;
   const db = getDb();
 
@@ -34,6 +37,8 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
 
 // POST /api/conversations/[id]/messages — append one message
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const authError = requireApiAuth(req);
+  if (authError) return authError;
   const { id } = await context.params;
   const body = await req.json() as {
     message: {

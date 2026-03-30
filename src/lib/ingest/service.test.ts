@@ -90,4 +90,48 @@ describe("ingest service", () => {
       }),
     ]);
   });
+
+  it("rejects oversized document uploads before reading them into Astra", async () => {
+    const { parseDocumentUpload } = await import("./service");
+    const formData = new FormData();
+    const oversized = new File(
+      [new Uint8Array(10 * 1024 * 1024 + 1)],
+      "too-large.txt",
+      { type: "text/plain" }
+    );
+
+    formData.set("file", oversized);
+    formData.set("collection", "docs");
+
+    await expect(parseDocumentUpload(formData)).rejects.toThrow(
+      "File exceeds 10 MB upload limit"
+    );
+  });
+
+  it("emits an error when CSV ingest exceeds the row safety limit", async () => {
+    resolveAstraConnectionMock.mockReturnValue({
+      token: "token",
+      endpoint: "endpoint",
+      keyspace: "ks1",
+    });
+
+    const { streamCsvIngest } = await import("./service");
+    const response = new Response(
+      streamCsvIngest({
+        token: "token",
+        endpoint: "endpoint",
+        keyspace: "ks1",
+        collection: "docs",
+        filename: "rows.csv",
+        rows: Array.from({ length: 5001 }, (_, index) => ({ row: String(index) })),
+      })
+    );
+
+    const payload = await response.text();
+
+    expect(payload).toContain(
+      "CSV ingest supports at most 5,000 rows per request"
+    );
+    expect(getAstraDbMock).not.toHaveBeenCalled();
+  });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Header } from "@/components/shell/Header";
 import { PlaygroundDialogs } from "@/components/shell/PlaygroundDialogs";
 import { PlaygroundMainPanel } from "@/components/shell/PlaygroundMainPanel";
@@ -9,6 +9,7 @@ import { usePlaygroundState } from "@/lib/hooks/usePlaygroundState";
 
 export default function PlaygroundPage() {
   const [ingestTarget, setIngestTarget] = useState<string | null>(null);
+  const [authEnabled, setAuthEnabled] = useState(false);
 
   const {
     astraToken,
@@ -55,6 +56,20 @@ export default function PlaygroundPage() {
     toggleTheme,
   } = usePlaygroundState();
 
+  useEffect(() => {
+    void fetch("/api/auth/status")
+      .then((response) =>
+        response.json() as Promise<{ enabled?: boolean }>
+      )
+      .then((payload) => setAuthEnabled(!!payload.enabled))
+      .catch(() => {});
+  }, []);
+
+  const handleSignOut = async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => null);
+    window.location.href = "/login";
+  };
+
   return (
     <div
       className="flex flex-col h-full overflow-hidden"
@@ -67,6 +82,8 @@ export default function PlaygroundPage() {
           isConnected ? handleDisconnect() : setConnectDialogOpen(true)
         }
         onSettingsClick={() => setQuickStartOpen(true)}
+        authEnabled={authEnabled}
+        onSignOut={() => void handleSignOut()}
         theme={theme}
         onToggleTheme={toggleTheme}
       />
@@ -144,6 +161,7 @@ export default function PlaygroundPage() {
         onIbmApiKeyChange={handleIbmApiKeyChange}
         onWatsonxProjectIdChange={handleWatsonxProjectIdChange}
         connectError={connectError}
+        isConnected={isConnected}
       />
     </div>
   );

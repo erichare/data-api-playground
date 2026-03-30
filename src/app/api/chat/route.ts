@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { WatsonXAI } from "@ibm-cloud/watsonx-ai";
 import { IamAuthenticator } from "ibm-cloud-sdk-core";
 import { resolveAstraConnection } from "@/lib/astra";
+import { requireApiAuth } from "@/lib/auth";
 import { runChatWorkflow } from "@/lib/chat/service";
 import type { ChatRequestPayload, StepEvent } from "@/lib/chat/types";
 
@@ -10,6 +11,8 @@ export const runtime = "nodejs";
 const WATSONX_VERSION = "2024-05-31";
 
 export async function POST(req: NextRequest) {
+  const authError = requireApiAuth(req);
+  if (authError) return authError;
   const {
     token: bodyToken,
     endpoint: bodyEndpoint,

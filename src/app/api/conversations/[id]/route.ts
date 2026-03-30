@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
+import { requireApiAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
 export const runtime = "nodejs";
 
 // PATCH /api/conversations/[id] — rename
 export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
+  const authError = requireApiAuth(req);
+  if (authError) return authError;
   const { id } = await context.params;
   const body = await req.json() as { name: string };
   const db = getDb();
@@ -15,6 +18,8 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
 
 // DELETE /api/conversations/[id] — cascades to messages via FK
 export async function DELETE(req: Request, context: { params: Promise<{ id: string }> }) {
+  const authError = requireApiAuth(req);
+  if (authError) return authError;
   const { id } = await context.params;
   await req.json().catch(() => null); // consume body if present
   const db = getDb();

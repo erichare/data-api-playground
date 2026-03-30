@@ -80,6 +80,7 @@ describe("collection form helpers", () => {
         astraToken: "token",
         astraEndpoint: "endpoint",
         keyspace: "ks1",
+        isConnected: true,
         name: "customer_docs",
         mode: "client",
         dimension: 1536,

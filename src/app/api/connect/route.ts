@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAstraDb, resolveAstraConnection, SYSTEM_FIELDS } from "@/lib/astra";
+import { requireApiAuth } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
+  const authError = requireApiAuth(req);
+  if (authError) return authError;
   const body = await req.json() as { token: string; endpoint: string; keyspace?: string };
   const { token, endpoint, keyspace } = resolveAstraConnection(body);
 
@@ -50,7 +53,7 @@ export async function POST(req: NextRequest) {
       })
     );
 
-    return NextResponse.json({ collections, fields, token, endpoint });
+    return NextResponse.json({ collections, fields });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to connect";
     return NextResponse.json({ error: message }, { status: 400 });

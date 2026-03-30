@@ -10,6 +10,7 @@ interface UseCollectionBrowseArgs {
   astraToken?: string;
   astraEndpoint?: string;
   keyspace?: string;
+  isConnected?: boolean;
   onCountChange?: (name: string, exactCount: number) => void;
 }
 
@@ -18,6 +19,7 @@ export function useCollectionBrowse({
   astraToken,
   astraEndpoint,
   keyspace,
+  isConnected = false,
   onCountChange,
 }: UseCollectionBrowseArgs) {
   const [page, setPage] = useState(0);
@@ -33,10 +35,8 @@ export function useCollectionBrowse({
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState("");
 
-  const isConnected = !!(astraToken && astraEndpoint);
-
   const fetchCount = useCallback(() => {
-    if (!astraToken || !astraEndpoint) return;
+    if (!isConnected) return;
     void fetch("/api/count", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -45,10 +45,10 @@ export function useCollectionBrowse({
       .then((r) => r.json() as Promise<{ count?: number; error?: string }>)
       .then((data) => { if (data.count !== undefined) onCountChange?.(collection.name, data.count); })
       .catch(() => { /* best effort */ });
-  }, [astraToken, astraEndpoint, keyspace, collection.name, onCountChange]);
+  }, [astraToken, astraEndpoint, collection.name, isConnected, keyspace, onCountChange]);
 
   const fetchPage = useCallback(async (pageIndex: number, pageStateForIndex: string | null, currentSort: typeof sort) => {
-    if (!astraToken || !astraEndpoint) return;
+    if (!isConnected) return;
     setLoading(true);
     setFetchError("");
     try {
@@ -85,7 +85,7 @@ export function useCollectionBrowse({
     } finally {
       setLoading(false);
     }
-  }, [astraToken, astraEndpoint, keyspace, collection.name]);
+  }, [astraEndpoint, astraToken, collection.name, isConnected, keyspace]);
 
   useEffect(() => {
     if (!isConnected) return;

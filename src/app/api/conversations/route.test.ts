@@ -29,7 +29,7 @@ describe("/api/conversations route", () => {
     });
 
     const { GET } = await import("./route");
-    const response = await GET();
+    const response = await GET(new Request("http://localhost/api/conversations"));
 
     expect(await response.json()).toEqual({
       conversations: [

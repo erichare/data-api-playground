@@ -17,6 +17,7 @@ interface CreateCollectionArgs {
   astraToken?: string;
   astraEndpoint?: string;
   keyspace?: string;
+  isConnected?: boolean;
   name: string;
   mode: CollectionMode;
   dimension: number;
@@ -25,13 +26,13 @@ interface CreateCollectionArgs {
 }
 
 export async function fetchProviderModels(
-  astraToken: string,
-  astraEndpoint: string
+  astraToken?: string,
+  astraEndpoint?: string
 ): Promise<ProviderModel[]> {
   const response = await fetch("/api/embedding-providers", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: astraToken, endpoint: astraEndpoint }),
+    body: JSON.stringify({ token: astraToken ?? "", endpoint: astraEndpoint ?? "" }),
   });
   const data = (await response.json()) as { models?: ProviderModel[]; error?: string };
   if (!response.ok || data.error) {
@@ -44,6 +45,7 @@ export async function createCollection({
   astraToken,
   astraEndpoint,
   keyspace,
+  isConnected = false,
   name,
   mode,
   dimension,
@@ -51,7 +53,6 @@ export async function createCollection({
   selectedModel,
 }: CreateCollectionArgs): Promise<Collection> {
   const trimmedName = name.trim();
-  const isConnected = !!(astraToken && astraEndpoint);
 
   if (!trimmedName) {
     throw new Error("Collection name is required");
@@ -81,8 +82,8 @@ export async function createCollection({
   const body =
     mode === "vectorize"
       ? {
-          token: astraToken,
-          endpoint: astraEndpoint,
+          token: astraToken ?? "",
+          endpoint: astraEndpoint ?? "",
           keyspace,
           name: trimmedName,
           provider: resolvedModel!.provider,
@@ -91,8 +92,8 @@ export async function createCollection({
           metric: "cosine",
         }
       : {
-          token: astraToken,
-          endpoint: astraEndpoint,
+          token: astraToken ?? "",
+          endpoint: astraEndpoint ?? "",
           keyspace,
           name: trimmedName,
           provider: "none",
