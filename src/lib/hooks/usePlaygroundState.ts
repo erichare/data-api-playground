@@ -51,6 +51,9 @@ interface RemoteConversation {
   messageCount: number;
 }
 
+const UNTITLED_CONVERSATION_NAME = "Untitled";
+const UNTITLED_CONVERSATION_PATTERN = /^Untitled(?: \((\d+)\))?$/;
+
 async function fetchConversationsFromApi(): Promise<Conversation[]> {
   const res = await fetch("/api/conversations");
   if (!res.ok) return [];
@@ -115,7 +118,7 @@ function makeBlankConversation(): Conversation {
   const now = new Date();
   return {
     id: `conv-${Date.now()}`,
-    name: "Untitled",
+    name: UNTITLED_CONVERSATION_NAME,
     messages: [],
     createdAt: now,
     updatedAt: now,
@@ -136,9 +139,6 @@ export function usePlaygroundState() {
   const [initializing, setInitializing] = useState(true);
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [connectError, setConnectError] = useState("");
-
-  // Always start in demo/playground mode — no landing gate
-  const [demoModeAccepted] = useState(true);
 
   // Theme — persisted to localStorage, defaulting to dark
   const [theme, setThemeState] = useState<"dark" | "light">("dark");
@@ -191,7 +191,22 @@ export function usePlaygroundState() {
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  const loadConversationMessages = async (convId: string, token: string, endpoint: string) => {
+  const getNextUntitledConversationName = (existing: Conversation[]) => {
+    const usedIndices = new Set<number>();
+    for (const conversation of existing) {
+      const match = conversation.name.match(UNTITLED_CONVERSATION_PATTERN);
+      if (!match) continue;
+      usedIndices.add(match[1] ? Number(match[1]) : 0);
+    }
+
+    let nextIndex = 0;
+    while (usedIndices.has(nextIndex)) nextIndex += 1;
+    return nextIndex === 0 ? UNTITLED_CONVERSATION_NAME : `${UNTITLED_CONVERSATION_NAME} (${nextIndex})`;
+  };
+
+  const isUntitledConversationName = (name: string) => UNTITLED_CONVERSATION_PATTERN.test(name);
+
+  const loadConversationMessages = async (convId: string) => {
     if (loadedConvIds.current.has(convId)) return;
     loadedConvIds.current.add(convId);
     try {
@@ -223,10 +238,10 @@ export function usePlaygroundState() {
       setConversations(convs);
       setActiveConversationId(convs[0].id);
       // Messages live in local SQLite — no Astra connection needed
-      await loadConversationMessages(convs[0].id, "", "");
+      await loadConversationMessages(convs[0].id);
       return convs[0].id;
     } else {
-      const newConv = await createConversationInApi();
+      const newConv = await createConversationInApi(UNTITLED_CONVERSATION_NAME);
       loadedConvIds.current.add(newConv.id);
       setConversations([newConv]);
       setActiveConversationId(newConv.id);
@@ -347,18 +362,12 @@ export function usePlaygroundState() {
   const handleConversationChange = async (id: string) => {
     setActiveConversationId(id);
     setViewMode("chat");
-    const token = astraTokenRef.current;
-    const endpoint = astraEndpointRef.current;
-    if (token && endpoint) {
-      await loadConversationMessages(id, token, endpoint);
-    }
+    await loadConversationMessages(id);
   };
 
   const handleNewConversation = async () => {
     if (creatingConversation) return;
-    const token = astraTokenRef.current;
-    const endpoint = astraEndpointRef.current;
-    const name = "Untitled";
+    const name = getNextUntitledConversationName(conversations);
 
     setCreatingConversation(true);
     try {
@@ -387,10 +396,11 @@ export function usePlaygroundState() {
         const next = remaining[0];
         if (next) {
           setActiveConversationId(next.id);
-          void loadConversationMessages(next.id, "", "");
+          void loadConversationMessages(next.id);
         } else {
           // All deleted — create a new persisted conversation
-          void createConversationInApi("Untitled").then((newConv) => {
+          const name = getNextUntitledConversationName(remaining);
+          void createConversationInApi(name).then((newConv) => {
             loadedConvIds.current.add(newConv.id);
             setConversations([newConv]);
             setActiveConversationId(newConv.id);
@@ -426,10 +436,10 @@ export function usePlaygroundState() {
       });
     }
 
-    // Auto-title: fire once when the first user message arrives and name is still "Untitled"
+    // Auto-title: fire once when the first user message arrives and name is still an untitled placeholder
     const conv = conversations.find((c) => c.id === convId);
     const firstUserMsg = updated.find((m) => m.role === "user");
-    if (conv?.name === "Untitled" && firstUserMsg && updated.filter((m) => m.role === "user").length === 1) {
+    if (conv?.name && isUntitledConversationName(conv.name) && firstUserMsg && updated.filter((m) => m.role === "user").length === 1) {
       void fetch("/api/conversations/title", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
