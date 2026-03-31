@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 
 export const AUTH_COOKIE_NAME = "dap_auth";
@@ -8,12 +8,18 @@ function getAuthPassword() {
   return process.env.PLAYGROUND_AUTH_PASSWORD?.trim() ?? "";
 }
 
-function getAuthSecret() {
-  return process.env.PLAYGROUND_AUTH_SECRET?.trim() || getAuthPassword();
-}
-
-function hashValue(value: string) {
-  return createHash("sha256").update(value).digest("hex");
+function getAuthSecret(): string {
+  const secret = process.env.PLAYGROUND_AUTH_SECRET?.trim() ?? "";
+  if (!secret && getAuthPassword()) {
+    // Auth secret is required when password auth is enabled.
+    // Without a separate secret, session tokens would be derived from
+    // the password alone, weakening the security model.
+    console.warn(
+      "PLAYGROUND_AUTH_SECRET is required when PLAYGROUND_AUTH_PASSWORD is set. " +
+        "Auth is disabled until PLAYGROUND_AUTH_SECRET is configured."
+    );
+  }
+  return secret;
 }
 
 function safeEqual(left: string, right: string) {
@@ -41,12 +47,29 @@ function parseCookie(header: string, name: string) {
 }
 
 export function isAuthEnabled() {
-  return getAuthPassword().length > 0;
+  return getAuthPassword().length > 0 && getAuthSecret().length > 0;
 }
 
 export function createSessionToken() {
   if (!isAuthEnabled()) return "";
-  return hashValue(`${getAuthSecret()}:${getAuthPassword()}`);
+  const nonce = randomBytes(32).toString("hex");
+  const hmac = createHmac("sha256", getAuthSecret())
+    .update(nonce)
+    .digest("hex");
+  return `${nonce}.${hmac}`;
+}
+
+export function verifySessionToken(token: string): boolean {
+  if (!isAuthEnabled()) return true;
+  const dotIndex = token.indexOf(".");
+  if (dotIndex === -1) return false;
+  const nonce = token.slice(0, dotIndex);
+  const hmac = token.slice(dotIndex + 1);
+  if (!nonce || !hmac) return false;
+  const expected = createHmac("sha256", getAuthSecret())
+    .update(nonce)
+    .digest("hex");
+  return safeEqual(hmac, expected);
 }
 
 export function verifyPassword(candidate: string) {
@@ -57,7 +80,7 @@ export function verifyPassword(candidate: string) {
 export function isAuthenticatedCookieValue(value?: string | null) {
   if (!isAuthEnabled()) return true;
   if (!value) return false;
-  return safeEqual(value, createSessionToken());
+  return verifySessionToken(value);
 }
 
 export function isAuthenticatedRequest(req: Pick<Request, "headers">) {

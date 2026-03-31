@@ -6,22 +6,19 @@ import {
 } from "@/lib/astra";
 import { requireApiAuth } from "@/lib/auth";
 import { createRequestLogContext, jsonError, logError } from "@/lib/server/log";
+import { dataApiProxyBodySchema } from "@/lib/validation/schemas";
+import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
 export async function POST(req: Request) {
   const logContext = createRequestLogContext(req, "/api/data-api-proxy");
   const authError = requireApiAuth(req);
   if (authError) return authError;
-  const body = await req.json() as {
-    token?: string;
-    endpoint?: string;
-    keyspace?: string;
-    collection: string;
-    requestBody: Record<string, unknown>;
-  };
-  const { token, endpoint, keyspace } = resolveAstraConnection(body, {
+  const result = await parseJsonBody(req, dataApiProxyBodySchema);
+  if (isErrorResponse(result)) return result;
+  const { token, endpoint, keyspace } = resolveAstraConnection(result, {
     includeDefaultKeyspace: true,
   });
-  const { collection, requestBody } = body;
+  const { collection, requestBody } = result;
 
   if (!token || !endpoint) {
     return jsonError(logContext, 400, "Missing Astra DB token or endpoint");

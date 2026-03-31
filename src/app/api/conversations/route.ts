@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireApiAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { conversationCreateBodySchema } from "@/lib/validation/schemas";
+import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
 export const runtime = "nodejs";
 
@@ -30,12 +32,13 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const authError = requireApiAuth(req);
   if (authError) return authError;
-  const body = await req.json() as { name?: string };
+  const result = await parseJsonBody(req, conversationCreateBodySchema);
+  if (isErrorResponse(result)) return result;
   const db = getDb();
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  const name = body.name ?? "New Conversation";
+  const name = result.name ?? "New Conversation";
 
   db.prepare(
     "INSERT INTO conversations (id, name, created_at, updated_at, message_count) VALUES (?, ?, ?, ?, 0)"

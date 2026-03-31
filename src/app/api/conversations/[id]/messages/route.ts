@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireApiAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { messageCreateBodySchema } from "@/lib/validation/schemas";
+import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
 export const runtime = "nodejs";
 
@@ -40,14 +42,9 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const authError = requireApiAuth(req);
   if (authError) return authError;
   const { id } = await context.params;
-  const body = await req.json() as {
-    message: {
-      id: string; role: string; content: string; timestamp: string;
-      searchMode?: string; latencyMs?: number;
-      pipelineSteps?: unknown[]; sources?: unknown[];
-    };
-  };
-  const { message } = body;
+  const result = await parseJsonBody(req, messageCreateBodySchema);
+  if (isErrorResponse(result)) return result;
+  const { message } = result;
   const db = getDb();
   const now = new Date().toISOString();
 

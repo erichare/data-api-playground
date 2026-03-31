@@ -30,8 +30,6 @@ describe("/api/delete-collection route", () => {
   });
 
   it("returns 400 for validation-style service errors", async () => {
-    deleteCollectionInAstraMock.mockRejectedValueOnce(new Error("Missing collection name"));
-
     const { POST } = await import("./route");
     const response = await POST(
       new Request("http://localhost/api/delete-collection", {
@@ -42,8 +40,9 @@ describe("/api/delete-collection route", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
-      error: "Missing collection name",
+    expect(await response.json()).toMatchObject({
+      error: "Validation failed",
+      details: expect.any(Array),
     });
   });
 

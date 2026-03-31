@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
 import { requireApiAuth } from "@/lib/auth";
+import { embeddingProvidersBodySchema } from "@/lib/validation/schemas";
+import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
 export interface ProviderModel {
   provider: string;
@@ -12,8 +14,9 @@ export interface ProviderModel {
 export async function POST(req: NextRequest) {
   const authError = requireApiAuth(req);
   if (authError) return authError;
-  const body = await req.json() as { token: string; endpoint: string; keyspace?: string };
-  const { token, endpoint, keyspace } = resolveAstraConnection(body);
+  const result = await parseJsonBody(req, embeddingProvidersBodySchema);
+  if (isErrorResponse(result)) return result;
+  const { token, endpoint, keyspace } = resolveAstraConnection(result);
 
   if (!token || !endpoint) {
     return NextResponse.json({ error: "token and endpoint are required" }, { status: 400 });

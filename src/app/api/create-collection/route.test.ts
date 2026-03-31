@@ -26,7 +26,7 @@ describe("/api/create-collection route", () => {
         dimension: 768,
         metric: "cosine",
         provider: "none",
-        model: "",
+        model: "none",
       }),
     });
 

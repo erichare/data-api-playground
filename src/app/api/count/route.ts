@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
 import { requireApiAuth } from "@/lib/auth";
+import { countBodySchema } from "@/lib/validation/schemas";
+import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
 export async function POST(req: NextRequest) {
   const authError = requireApiAuth(req);
   if (authError) return authError;
-  const body = await req.json() as {
-    token?: string;
-    endpoint?: string;
-    keyspace?: string;
-    collection: string;
-  };
-  const { token, endpoint, keyspace } = resolveAstraConnection(body, { includeDefaultKeyspace: true });
-  const { collection } = body;
+  const result = await parseJsonBody(req, countBodySchema);
+  if (isErrorResponse(result)) return result;
+  const { token, endpoint, keyspace } = resolveAstraConnection(result, { includeDefaultKeyspace: true });
+  const { collection } = result;
 
   if (!token || !endpoint || !collection) {
     return NextResponse.json({ error: "token, endpoint, and collection are required" }, { status: 400 });

@@ -1,18 +1,16 @@
 import { NextResponse } from "next/server";
 import { requireApiAuth } from "@/lib/auth";
 import { deleteCollectionInAstra } from "@/lib/collections/service";
+import { deleteCollectionBodySchema } from "@/lib/validation/schemas";
+import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   const authError = requireApiAuth(req);
   if (authError) return authError;
-  const body = (await req.json()) as {
-    token?: string;
-    endpoint?: string;
-    keyspace?: string;
-    name: string;
-  };
+  const body = await parseJsonBody(req, deleteCollectionBodySchema);
+  if (isErrorResponse(body)) return body;
 
   try {
     const result = await deleteCollectionInAstra(body);

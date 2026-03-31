@@ -1,20 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiAuth } from "@/lib/auth";
 import { createCollectionInAstra } from "@/lib/collections/service";
+import { createCollectionBodySchema } from "@/lib/validation/schemas";
+import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
 export async function POST(req: NextRequest) {
   const authError = requireApiAuth(req);
   if (authError) return authError;
-  const body = (await req.json()) as {
-    token?: string;
-    endpoint?: string;
-    keyspace?: string;
-    name: string;
-    dimension: number;
-    metric: string;
-    provider: string;
-    model: string;
-  };
+  const body = await parseJsonBody(req, createCollectionBodySchema);
+  if (isErrorResponse(body)) return body;
 
   try {
     const collection = await createCollectionInAstra(body);

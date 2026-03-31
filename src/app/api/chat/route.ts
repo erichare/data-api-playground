@@ -4,33 +4,53 @@ import { IamAuthenticator } from "ibm-cloud-sdk-core";
 import { resolveAstraConnection } from "@/lib/astra";
 import { requireApiAuth } from "@/lib/auth";
 import { runChatWorkflow } from "@/lib/chat/service";
-import type { ChatRequestPayload, StepEvent } from "@/lib/chat/types";
+import type { StepEvent } from "@/lib/chat/types";
 import { createRequestLogContext, logError } from "@/lib/server/log";
+import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
+import { chatBodySchema } from "@/lib/validation/schemas";
+import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
 export const runtime = "nodejs";
 
 const WATSONX_VERSION = "2024-05-31";
+const chatLimiter = createRateLimiter({ windowMs: 60_000, max: 20 });
 
 export async function POST(req: NextRequest) {
   const logContext = createRequestLogContext(req, "/api/chat");
   const authError = requireApiAuth(req);
   if (authError) return authError;
+
+  const ip = getClientIp(req);
+  const limit = chatLimiter.check(ip);
+  if (limit.limited) {
+    return new Response(
+      JSON.stringify({ error: "Rate limit exceeded. Try again later.", requestId: logContext.requestId }),
+      {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)),
+          "X-Request-Id": logContext.requestId,
+        },
+      }
+    );
+  }
+  const result = await parseJsonBody(req, chatBodySchema);
+  if (isErrorResponse(result)) return result;
+
   const {
     token: bodyToken,
     endpoint: bodyEndpoint,
     ibmApiKey: bodyIbmApiKey,
     watsonxProjectId: bodyProjectId,
+    keyspace,
     ...payload
-  } = (await req.json()) as ChatRequestPayload & {
-    token?: string;
-    endpoint?: string;
-    ibmApiKey?: string;
-    watsonxProjectId?: string;
-  };
+  } = result;
 
   const { token, endpoint } = resolveAstraConnection({
     token: bodyToken,
     endpoint: bodyEndpoint,
+    keyspace,
   });
 
   const encoder = new TextEncoder();

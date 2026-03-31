@@ -1,0 +1,468 @@
+// @vitest-environment jsdom
+
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useIngestUpload } from "./useIngestUpload";
+
+// Mock ingestShared utilities
+vi.mock("@/components/ingest/ingestShared", () => ({
+  fileKey: (f: File) => `${f.name}__${f.size}`,
+  getFileType: (name: string) => {
+    const ext = name.split(".").pop()?.toLowerCase() ?? "txt";
+    return ["pdf", "txt", "md", "csv", "json", "docx"].includes(ext) ? ext : "txt";
+  },
+}));
+
+function makeFile(name: string, size = 1024): File {
+  return new File(["x".repeat(size)], name, { type: "application/octet-stream" });
+}
+
+const defaultArgs = {
+  astraToken: "test-token",
+  astraEndpoint: "https://test.endpoint.com",
+  keyspace: "test-ks",
+  selectedCollection: "my-col",
+  prependDocument: vi.fn(),
+};
+
+describe("useIngestUpload", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+    defaultArgs.prependDocument = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe("initial state", () => {
+    it("initializes with correct defaults", () => {
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      expect(result.current.isDragOver).toBe(false);
+      expect(result.current.queuedFiles).toEqual([]);
+      expect(result.current.fileStatuses.size).toBe(0);
+      expect(result.current.uploading).toBe(false);
+    });
+  });
+
+  describe("setIsDragOver", () => {
+    it("updates isDragOver state", () => {
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.setIsDragOver(true);
+      });
+
+      expect(result.current.isDragOver).toBe(true);
+
+      act(() => {
+        result.current.setIsDragOver(false);
+      });
+
+      expect(result.current.isDragOver).toBe(false);
+    });
+  });
+
+  describe("addFiles", () => {
+    it("adds new files to the queue with queued status", () => {
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      const file1 = makeFile("doc1.pdf");
+      const file2 = makeFile("doc2.txt");
+
+      act(() => {
+        result.current.addFiles([file1, file2]);
+      });
+
+      expect(result.current.queuedFiles).toHaveLength(2);
+      expect(result.current.fileStatuses.get("doc1.pdf__1024")).toEqual({ stage: "queued" });
+      expect(result.current.fileStatuses.get("doc2.txt__1024")).toEqual({ stage: "queued" });
+    });
+
+    it("deduplicates files with same name and size", () => {
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      const file = makeFile("doc.pdf");
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      expect(result.current.queuedFiles).toHaveLength(1);
+    });
+
+    it("does not overwrite existing status when re-adding same file", () => {
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      const file = makeFile("doc.pdf");
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      // Manually verify status remains queued (not reset) after second add attempt
+      const statusBefore = result.current.fileStatuses.get("doc.pdf__1024");
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      expect(result.current.fileStatuses.get("doc.pdf__1024")).toEqual(statusBefore);
+    });
+
+    it("can add multiple batches of distinct files", () => {
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([makeFile("a.pdf")]);
+      });
+      act(() => {
+        result.current.addFiles([makeFile("b.txt", 2048)]);
+      });
+
+      expect(result.current.queuedFiles).toHaveLength(2);
+    });
+  });
+
+  describe("removeFile", () => {
+    it("removes a file from the queue and clears its status", () => {
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      const file = makeFile("doc.pdf");
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      act(() => {
+        result.current.removeFile(file);
+      });
+
+      expect(result.current.queuedFiles).toHaveLength(0);
+      expect(result.current.fileStatuses.has("doc.pdf__1024")).toBe(false);
+    });
+
+    it("only removes the targeted file, leaving others intact", () => {
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      const file1 = makeFile("a.pdf");
+      const file2 = makeFile("b.pdf", 2048);
+
+      act(() => {
+        result.current.addFiles([file1, file2]);
+      });
+
+      act(() => {
+        result.current.removeFile(file1);
+      });
+
+      expect(result.current.queuedFiles).toHaveLength(1);
+      expect(result.current.queuedFiles[0].name).toBe("b.pdf");
+    });
+  });
+
+  describe("handleIngest", () => {
+    it("does nothing when queue is empty", async () => {
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(fetch).not.toHaveBeenCalled();
+      expect(result.current.uploading).toBe(false);
+    });
+
+    it("does nothing when already uploading", async () => {
+      const file = makeFile("doc.pdf");
+      let resolveStream!: () => void;
+      const neverEndingStream = new ReadableStream({
+        start(controller) {
+          resolveStream = () => controller.close();
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        body: neverEndingStream,
+      } as unknown as Response);
+
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      // Start first upload (don't await)
+      act(() => {
+        void result.current.handleIngest();
+      });
+
+      expect(result.current.uploading).toBe(true);
+
+      // Second call should be a no-op
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      // fetch should only have been called once
+      expect(fetch).toHaveBeenCalledTimes(1);
+
+      resolveStream();
+    });
+
+    it("skips files with stage=done", async () => {
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      const file = makeFile("done.pdf");
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      // Manually force status to done by processing once
+      const encoder = new TextEncoder();
+      const doneEvent = JSON.stringify({
+        type: "complete",
+        chunks: 2,
+        source_doc_id: "doc-done",
+      });
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(doneEvent + "\n"));
+          controller.close();
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        body: stream,
+      } as unknown as Response);
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(result.current.fileStatuses.get("done.pdf__1024")).toEqual({
+        stage: "done",
+        chunks: 2,
+      });
+
+      // Now call handleIngest again — file with stage=done should be skipped
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      // fetch should only have been called once (for the first ingest)
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("processes chunked and chunk_progress stream events", async () => {
+      const file = makeFile("report.pdf");
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      const encoder = new TextEncoder();
+      const events = [
+        JSON.stringify({ type: "chunked", chunks: 5 }),
+        JSON.stringify({ type: "chunk_progress", processed: 2, total: 5 }),
+        JSON.stringify({ type: "complete", chunks: 5, source_doc_id: "doc-xyz" }),
+      ].join("\n") + "\n";
+
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(events));
+          controller.close();
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        body: stream,
+      } as unknown as Response);
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(result.current.fileStatuses.get("report.pdf__1024")).toEqual({
+        stage: "done",
+        chunks: 5,
+      });
+      expect(defaultArgs.prependDocument).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source_doc_id: "doc-xyz",
+          source_filename: "report.pdf",
+          collection: "my-col",
+          chunk_total: 5,
+        })
+      );
+    });
+
+    it("sets error status when stream contains an error event", async () => {
+      const file = makeFile("bad.pdf");
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      const encoder = new TextEncoder();
+      const errorEvent = JSON.stringify({ type: "error", message: "Parse failed" }) + "\n";
+
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(errorEvent));
+          controller.close();
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        body: stream,
+      } as unknown as Response);
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(result.current.fileStatuses.get("bad.pdf__1024")).toEqual({
+        stage: "error",
+        message: "Parse failed",
+      });
+    });
+
+    it("sets error status when response has no body", async () => {
+      const file = makeFile("empty.pdf");
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        body: null,
+      } as unknown as Response);
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(result.current.fileStatuses.get("empty.pdf__1024")).toEqual({
+        stage: "error",
+        message: "No response stream",
+      });
+    });
+
+    it("sets error status when fetch throws", async () => {
+      const file = makeFile("network.pdf");
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      vi.mocked(fetch).mockRejectedValueOnce(new Error("Network error"));
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(result.current.fileStatuses.get("network.pdf__1024")).toEqual({
+        stage: "error",
+        message: "Network error",
+      });
+    });
+
+    it("sets generic error message for non-Error throws", async () => {
+      const file = makeFile("strange.pdf");
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      vi.mocked(fetch).mockRejectedValueOnce("something weird");
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(result.current.fileStatuses.get("strange.pdf__1024")).toEqual({
+        stage: "error",
+        message: "Ingestion failed",
+      });
+    });
+
+    it("posts correct form data to /api/ingest-document", async () => {
+      const file = makeFile("upload.txt", 512);
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              JSON.stringify({ type: "complete", chunks: 1, source_doc_id: "id-1" }) + "\n"
+            )
+          );
+          controller.close();
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        body: stream,
+      } as unknown as Response);
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      const [url, options] = vi.mocked(fetch).mock.calls[0];
+      expect(url).toBe("/api/ingest-document");
+      expect(options?.method).toBe("POST");
+
+      const body = options?.body as FormData;
+      expect(body.get("collection")).toBe("my-col");
+      expect(body.get("keyspace")).toBe("test-ks");
+      expect(body.get("token")).toBe("test-token");
+      expect(body.get("endpoint")).toBe("https://test.endpoint.com");
+    });
+
+    it("sets uploading=false after completing all files", async () => {
+      const file = makeFile("final.pdf");
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              JSON.stringify({ type: "complete", chunks: 1, source_doc_id: "doc-fin" }) + "\n"
+            )
+          );
+          controller.close();
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({ body: stream } as unknown as Response);
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(result.current.uploading).toBe(false);
+    });
+  });
+});

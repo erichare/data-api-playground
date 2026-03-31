@@ -5,6 +5,8 @@ import {
   listIngestedDocuments,
 } from "@/lib/collections/service";
 import { createRequestLogContext, jsonError, logError } from "@/lib/server/log";
+import { documentsDeleteBodySchema } from "@/lib/validation/schemas";
+import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
 export const runtime = "nodejs";
 
@@ -28,13 +30,8 @@ export async function DELETE(req: NextRequest) {
   const logContext = createRequestLogContext(req, "/api/documents");
   const authError = requireApiAuth(req);
   if (authError) return authError;
-  const body = (await req.json()) as {
-    source_doc_id: string;
-    collection: string;
-    token?: string;
-    endpoint?: string;
-    keyspace?: string;
-  };
+  const body = await parseJsonBody(req, documentsDeleteBodySchema);
+  if (isErrorResponse(body)) return body;
 
   try {
     const result = await deleteIngestedDocument(body);

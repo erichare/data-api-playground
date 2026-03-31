@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
 import { requireApiAuth } from "@/lib/auth";
+import { documentsChunksBodySchema } from "@/lib/validation/schemas";
+import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
 export const runtime = "nodejs";
 
@@ -8,20 +10,10 @@ export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   const authError = requireApiAuth(req);
   if (authError) return authError;
-  const body = await req.json() as {
-    source_doc_id?: string;
-    collection?: string;
-    token?: string;
-    endpoint?: string;
-    keyspace?: string;
-  };
-  const sourceDocId = body.source_doc_id ?? "";
-  const collection = body.collection ?? "";
-  const { token, endpoint, keyspace } = resolveAstraConnection(body, { includeDefaultKeyspace: true });
-
-  if (!sourceDocId || !collection) {
-    return NextResponse.json({ error: "source_doc_id and collection are required" }, { status: 400 });
-  }
+  const result = await parseJsonBody(req, documentsChunksBodySchema);
+  if (isErrorResponse(result)) return result;
+  const { source_doc_id: sourceDocId, collection } = result;
+  const { token, endpoint, keyspace } = resolveAstraConnection(result, { includeDefaultKeyspace: true });
 
   if (!token || !endpoint) {
     return NextResponse.json({ error: "not_connected" }, { status: 401 });

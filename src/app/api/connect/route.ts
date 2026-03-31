@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAstraDb, resolveAstraConnection, SYSTEM_FIELDS } from "@/lib/astra";
 import { requireApiAuth } from "@/lib/auth";
 import { createRequestLogContext, jsonError, logError } from "@/lib/server/log";
+import { connectBodySchema } from "@/lib/validation/schemas";
+import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
 export const runtime = "nodejs";
 
@@ -9,8 +11,9 @@ export async function POST(req: NextRequest) {
   const logContext = createRequestLogContext(req, "/api/connect");
   const authError = requireApiAuth(req);
   if (authError) return authError;
-  const body = await req.json() as { token: string; endpoint: string; keyspace?: string };
-  const { token, endpoint, keyspace } = resolveAstraConnection(body);
+  const result = await parseJsonBody(req, connectBodySchema);
+  if (isErrorResponse(result)) return result;
+  const { token, endpoint, keyspace } = resolveAstraConnection(result);
 
   if (!token || !endpoint) {
     return jsonError(logContext, 400, "token and endpoint are required");

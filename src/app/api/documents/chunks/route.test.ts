@@ -37,8 +37,9 @@ describe("/api/documents/chunks route", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
-      error: "source_doc_id and collection are required",
+    expect(await response.json()).toMatchObject({
+      error: "Validation failed",
+      details: expect.any(Array),
     });
   });
 

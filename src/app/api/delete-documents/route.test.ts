@@ -26,13 +26,7 @@ describe("/api/delete-documents route", () => {
     });
   });
 
-  it("validates the required Astra connection, collection, and ids", async () => {
-    resolveAstraConnectionMock.mockReturnValueOnce({
-      token: "",
-      endpoint: "",
-      keyspace: "default_keyspace",
-    });
-
+  it("returns a validation error when ids is empty", async () => {
     const { POST } = await import("./route");
     const response = await POST(
       new Request("http://localhost/api/delete-documents", {
@@ -46,8 +40,33 @@ describe("/api/delete-documents route", () => {
     );
 
     expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.error).toBe("Validation failed");
+    expect(json.details).toBeDefined();
+  });
+
+  it("returns an error when token or endpoint is missing", async () => {
+    resolveAstraConnectionMock.mockReturnValueOnce({
+      token: "",
+      endpoint: "",
+      keyspace: "default_keyspace",
+    });
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      new Request("http://localhost/api/delete-documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          collection: "docs",
+          ids: ["1"],
+        }),
+      }) as never
+    );
+
+    expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
-      error: "token, endpoint, collection, and ids are required",
+      error: "token and endpoint are required",
     });
   });
 

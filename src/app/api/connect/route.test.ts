@@ -11,11 +11,13 @@ vi.mock("@/lib/astra", () => ({
 
 describe("/api/connect route", () => {
   const originalPassword = process.env.PLAYGROUND_AUTH_PASSWORD;
+  const originalSecret = process.env.PLAYGROUND_AUTH_SECRET;
 
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
     delete process.env.PLAYGROUND_AUTH_PASSWORD;
+    delete process.env.PLAYGROUND_AUTH_SECRET;
     resolveAstraConnectionMock.mockReturnValue({
       token: "AstraCS:secret-token",
       endpoint: "https://db-id-us-east1.apps.astra.datastax.com",
@@ -40,10 +42,14 @@ describe("/api/connect route", () => {
   afterEach(() => {
     if (originalPassword === undefined) delete process.env.PLAYGROUND_AUTH_PASSWORD;
     else process.env.PLAYGROUND_AUTH_PASSWORD = originalPassword;
+
+    if (originalSecret === undefined) delete process.env.PLAYGROUND_AUTH_SECRET;
+    else process.env.PLAYGROUND_AUTH_SECRET = originalSecret;
   });
 
   it("returns 401 when auth is enabled and no session cookie is present", async () => {
     process.env.PLAYGROUND_AUTH_PASSWORD = "letmein";
+    process.env.PLAYGROUND_AUTH_SECRET = "connect-secret";
 
     const { POST } = await import("./route");
     const request = new Request("http://localhost/api/connect", {

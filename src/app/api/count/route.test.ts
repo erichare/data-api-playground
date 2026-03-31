@@ -27,12 +27,6 @@ describe("/api/count route", () => {
   });
 
   it("validates the required Astra connection and collection", async () => {
-    resolveAstraConnectionMock.mockReturnValueOnce({
-      token: "",
-      endpoint: "",
-      keyspace: "default_keyspace",
-    });
-
     const { POST } = await import("./route");
     const response = await POST(
       new Request("http://localhost/api/count", {
@@ -44,7 +38,8 @@ describe("/api/count route", () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
-      error: "token, endpoint, and collection are required",
+      error: "Validation failed",
+      details: [{ path: "collection", message: "Too small: expected string to have >=1 characters" }],
     });
   });
 
