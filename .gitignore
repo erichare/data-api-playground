@@ -21,6 +21,7 @@ tsconfig.tsbuildinfo
 /test-results
 /playwright-report
 /output/playwright
+/coverage
 
 # Logs
 *.log
