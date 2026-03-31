@@ -183,7 +183,7 @@ export function Sidebar({
             </motion.button>
           ))}
           <div className="w-4 h-px my-1" style={{ backgroundColor: "var(--border-subtle)" }} />
-          {collections.map((col) => (
+          {visibleCollections.map((col) => (
             <motion.button
               key={col.name}
               onClick={() => onSelectCollection(col.name)}

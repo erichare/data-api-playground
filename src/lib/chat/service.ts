@@ -192,7 +192,6 @@ async function analyzeChatRequest({
   let targetedCollections: string[] | null = null;
 
   const allCollectionFields = payload.allCollectionFields ?? {};
-  const collectionFields = allCollectionFields[defaultCollection] ?? [];
   const perCollectionFieldsLines = userCollections
     .map((name) => {
       const fields = allCollectionFields[name];
@@ -305,6 +304,7 @@ async function analyzeChatRequest({
     intent = `${intent} [searching: ${targetedCollections.join(", ")}]`;
   }
 
+  const collectionFields = allCollectionFields[collection] ?? [];
   const analyzeCollections = allCollections
     ? userCollections
     : targetedCollections ?? undefined;

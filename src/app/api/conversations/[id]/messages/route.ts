@@ -51,7 +51,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const db = getDb();
   const now = new Date().toISOString();
 
-  db.prepare(`
+  const insertResult = db.prepare(`
     INSERT INTO messages (id, conversation_id, role, content, timestamp, search_mode, latency_ms, pipeline_steps, sources)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO NOTHING
@@ -63,7 +63,10 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     message.sources ? JSON.stringify(message.sources) : null,
   );
 
-  db.prepare("UPDATE conversations SET updated_at = ?, message_count = message_count + 1 WHERE id = ?").run(now, id);
+  // Avoid inflating counts when the client retries a message with the same ID.
+  if (insertResult.changes > 0) {
+    db.prepare("UPDATE conversations SET updated_at = ?, message_count = message_count + 1 WHERE id = ?").run(now, id);
+  }
 
   return NextResponse.json({ saved: true });
 }

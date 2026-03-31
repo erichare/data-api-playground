@@ -254,7 +254,9 @@ export async function searchCollections(args: {
         isVec: collections?.find((c) => c.name === n)?.isVectorize ?? false,
       }));
       const fanResults = await Promise.allSettled(
-        fanTargets.map(({ name, isVec }) => executeSearch(name, isVec, {}, "{}"))
+        fanTargets.map(({ name, isVec }) =>
+          executeSearch(name, isVec, hasFilter ? filterClause : {}, hasFilter ? filterStr : "{}")
+        )
       );
       const fanBest = fanResults
         .flatMap((r) => r.status === "fulfilled" ? r.value.results : [])
@@ -268,7 +270,9 @@ export async function searchCollections(args: {
     }
   } else {
     const fanResults = await Promise.allSettled(
-      collectionsToSearch.map(({ name, isVec }) => executeSearch(name, isVec, {}, "{}"))
+      collectionsToSearch.map(({ name, isVec }) =>
+        executeSearch(name, isVec, hasFilter ? filterClause : {}, hasFilter ? filterStr : "{}")
+      )
     );
     searchResults = fanResults
       .flatMap((r) => r.status === "fulfilled" ? r.value.results : [])

@@ -74,7 +74,9 @@ export function usePlaygroundConnection({
 
   useEffect(() => {
     applyTheme(theme);
+  }, [theme]);
 
+  useEffect(() => {
     const restorePromise = (async () => {
       await bootstrapConversations();
 
@@ -90,7 +92,7 @@ export function usePlaygroundConnection({
     })();
 
     void restorePromise.finally(() => setInitializing(false));
-  }, [bootstrapConversations, theme]);
+  }, [bootstrapConversations]);
 
   const handleConnect = async (token: string, endpoint: string) => {
     setConnectError("");
