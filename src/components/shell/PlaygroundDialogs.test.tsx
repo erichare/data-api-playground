@@ -41,17 +41,25 @@ vi.mock("@/components/collection/IngestDialog", () => ({
     collection,
     astraToken,
     astraEndpoint,
+    huggingfaceApiKey,
     isConnected,
     onClose,
   }: {
     collection: { name: string };
     astraToken: string;
     astraEndpoint: string;
+    huggingfaceApiKey?: string;
     isConnected: boolean;
     onClose: () => void;
   }) => (
     <div data-testid="ingest-dialog">
-      {JSON.stringify({ collection: collection.name, astraToken, astraEndpoint, isConnected })}
+      {JSON.stringify({
+        collection: collection.name,
+        astraToken,
+        astraEndpoint,
+        huggingfaceApiKey,
+        isConnected,
+      })}
       <button onClick={onClose}>Close Ingest</button>
     </div>
   ),
@@ -77,44 +85,40 @@ vi.mock("@/components/connection/AstraConnectDialog", () => ({
     open,
     currentToken,
     currentEndpoint,
-    currentIbmApiKey,
-    currentWatsonxProjectId,
+    currentHuggingfaceApiKey,
     error,
     connected,
     onClose,
     onDisconnect,
     onConnect,
-    onIbmApiKeyChange,
-    onWatsonxProjectIdChange,
+    onHuggingfaceApiKeyChange,
   }: {
     open: boolean;
     currentToken: string;
     currentEndpoint: string;
-    currentIbmApiKey: string;
-    currentWatsonxProjectId: string;
+    currentHuggingfaceApiKey?: string;
     error?: string;
     connected: boolean;
     onClose: () => void;
     onDisconnect: () => void;
     onConnect: (token: string, endpoint: string) => Promise<void>;
-    onIbmApiKeyChange: (value: string) => void;
-    onWatsonxProjectIdChange: (value: string) => void;
+    onHuggingfaceApiKeyChange: (value: string) => void;
   }) => (
     <div data-testid="connect-dialog">
       {JSON.stringify({
         open,
         currentToken,
         currentEndpoint,
-        currentIbmApiKey,
-        currentWatsonxProjectId,
+        currentHuggingfaceApiKey,
         error,
         connected,
       })}
       <button onClick={onClose}>Close Connect</button>
       <button onClick={onDisconnect}>Disconnect</button>
       <button onClick={() => void onConnect("token", "endpoint")}>Connect</button>
-      <button onClick={() => onIbmApiKeyChange("ibm-next")}>Update IBM</button>
-      <button onClick={() => onWatsonxProjectIdChange("project-next")}>Update Project</button>
+      <button onClick={() => onHuggingfaceApiKeyChange("hf-next")}>
+        Update Hugging Face
+      </button>
     </div>
   ),
 }));
@@ -140,10 +144,8 @@ function makeProps(overrides: Partial<Parameters<typeof PlaygroundDialogs>[0]> =
     onConnect: vi.fn(async () => undefined),
     onDisconnect: vi.fn(),
     astraFromEnv: false,
-    ibmApiKey: "ibm-key",
-    watsonxProjectId: "project-1",
-    onIbmApiKeyChange: vi.fn(),
-    onWatsonxProjectIdChange: vi.fn(),
+    huggingfaceApiKey: "hf-key",
+    onHuggingfaceApiKeyChange: vi.fn(),
     connectError: "Connection failed",
     isConnected: true,
     ...overrides,
@@ -173,6 +175,7 @@ describe("PlaygroundDialogs", () => {
         collection: "orders",
         astraToken: "AstraCS:secret",
         astraEndpoint: "https://db.apps.astra.datastax.com",
+        huggingfaceApiKey: "hf-key",
         isConnected: true,
       })
     );
@@ -182,8 +185,7 @@ describe("PlaygroundDialogs", () => {
         open: true,
         currentToken: "AstraCS:secret",
         currentEndpoint: "https://db.apps.astra.datastax.com",
-        currentIbmApiKey: "ibm-key",
-        currentWatsonxProjectId: "project-1",
+        currentHuggingfaceApiKey: "hf-key",
         error: "Connection failed",
         connected: true,
       })
@@ -196,8 +198,7 @@ describe("PlaygroundDialogs", () => {
     fireEvent.click(screen.getByText("Close Connect"));
     fireEvent.click(screen.getByText("Disconnect"));
     fireEvent.click(screen.getByText("Connect"));
-    fireEvent.click(screen.getByText("Update IBM"));
-    fireEvent.click(screen.getByText("Update Project"));
+    fireEvent.click(screen.getByText("Update Hugging Face"));
 
     expect(props.onCloseNewCollection).toHaveBeenCalled();
     expect(props.onCollectionCreated).toHaveBeenCalledWith({
@@ -210,8 +211,7 @@ describe("PlaygroundDialogs", () => {
     expect(props.onCloseConnect).toHaveBeenCalled();
     expect(props.onDisconnect).toHaveBeenCalled();
     expect(props.onConnect).toHaveBeenCalledWith("token", "endpoint");
-    expect(props.onIbmApiKeyChange).toHaveBeenCalledWith("ibm-next");
-    expect(props.onWatsonxProjectIdChange).toHaveBeenCalledWith("project-next");
+    expect(props.onHuggingfaceApiKeyChange).toHaveBeenCalledWith("hf-next");
   });
 
   it("hides the ingest dialog for unknown targets and blanks Astra credentials when env-backed", () => {
@@ -233,8 +233,7 @@ describe("PlaygroundDialogs", () => {
         open: true,
         currentToken: "",
         currentEndpoint: "",
-        currentIbmApiKey: "ibm-key",
-        currentWatsonxProjectId: "project-1",
+        currentHuggingfaceApiKey: "hf-key",
         error: "",
         connected: true,
       })

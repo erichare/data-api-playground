@@ -63,25 +63,22 @@ describe("usePlaygroundState", () => {
     }));
   });
 
-  it("passes the current IBM credentials into useConversationState", async () => {
+  it("passes the current Hugging Face key into useConversationState", async () => {
     const { result } = renderHook(() => usePlaygroundState());
 
     act(() => {
-      result.current.handleIbmApiKeyChange("ibm-key");
-      result.current.handleWatsonxProjectIdChange("project-1");
+      result.current.handleHuggingfaceApiKeyChange("hf-key");
     });
 
     await waitFor(() => {
       expect(useConversationStateMock).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          ibmApiKey: "ibm-key",
-          watsonxProjectId: "project-1",
+          huggingfaceApiKey: "hf-key",
         })
       );
     });
 
-    expect(result.current.ibmApiKey).toBe("ibm-key");
-    expect(result.current.watsonxProjectId).toBe("project-1");
+    expect(result.current.huggingfaceApiKey).toBe("hf-key");
   });
 
   it("returns to chat mode when the conversation hook activates a conversation", () => {

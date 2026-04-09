@@ -13,14 +13,12 @@ import {
 } from "@/lib/playground/client";
 
 interface UseConversationStateArgs {
-  ibmApiKey: string;
-  watsonxProjectId: string;
+  huggingfaceApiKey: string;
   onConversationActivated?: () => void;
 }
 
 export function useConversationState({
-  ibmApiKey,
-  watsonxProjectId,
+  huggingfaceApiKey,
   onConversationActivated,
 }: UseConversationStateArgs) {
   const [creatingConversation, setCreatingConversation] = useState(false);
@@ -164,8 +162,7 @@ export function useConversationState({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           firstMessage: firstUserMsg.content,
-          ibmApiKey,
-          watsonxProjectId,
+          huggingfaceApiKey,
         }),
       })
         .then((r) => r.json() as Promise<{ title: string | null }>)
@@ -181,7 +178,7 @@ export function useConversationState({
         })
         .catch(() => { /* silently ignore */ });
     }
-  }, [conversations, ibmApiKey, watsonxProjectId]);
+  }, [conversations, huggingfaceApiKey]);
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
   const messages = activeConversation?.messages ?? [];

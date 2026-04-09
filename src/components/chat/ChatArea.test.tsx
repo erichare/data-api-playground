@@ -86,10 +86,9 @@ function makeChatProps(overrides: Partial<Parameters<typeof ChatArea>[0]> = {}) 
     astraToken: "AstraCS:secret",
     astraEndpoint: "https://db.apps.astra.datastax.com",
     keyspace: "default_keyspace",
-    collections: [{ name: "orders", isVectorize: false }],
+    collections: [{ name: "orders", isVectorize: false, vectorDimension: 768 }],
     activeCollection: "orders",
-    ibmApiKey: "ibm-key",
-    watsonxProjectId: "project-1",
+    huggingfaceApiKey: "hf-key",
     collectionFields: { orders: ["total_spend", "status"] },
     initializing: false,
     ...overrides,
@@ -116,6 +115,21 @@ describe("ChatArea", () => {
     expect((screen.getByTestId("chat-input") as HTMLTextAreaElement).value).toBe(
       "What are the top 5 records by total_spend?"
     );
+  });
+
+  it("does not show demo mode copy when the app is connected via env-backed Astra credentials", () => {
+    render(
+      <ChatArea
+        {...makeChatProps({
+          astraToken: "",
+          isConnected: true,
+        })}
+      />
+    );
+
+    expect(
+      screen.queryByText("Demo mode — connect to Astra DB to query real data")
+    ).toBeNull();
   });
 
   it("streams chat events into a final assistant message with sources and pipeline steps", async () => {

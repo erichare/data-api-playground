@@ -16,11 +16,11 @@ interface ChatAreaProps {
   astraToken?: string;
   astraEndpoint?: string;
   keyspace?: string;
-  collections?: { name: string; isVectorize: boolean }[];
+  collections?: { name: string; isVectorize: boolean; vectorDimension?: number | null }[];
   activeCollection?: string;
-  ibmApiKey?: string;
-  watsonxProjectId?: string;
+  huggingfaceApiKey?: string;
   collectionFields?: Record<string, string[]>;
+  isConnected?: boolean;
   initializing?: boolean;
 }
 
@@ -34,9 +34,9 @@ export function ChatArea({
   keyspace,
   collections,
   activeCollection,
-  ibmApiKey,
-  watsonxProjectId,
+  huggingfaceApiKey,
   collectionFields,
+  isConnected = false,
   initializing = false,
 }: ChatAreaProps) {
   const [input, setInput] = useState("");
@@ -108,8 +108,7 @@ export function ChatArea({
           keyspace: keyspace || undefined,
           collections: collections ?? [],
           activeCollection: activeCollection ?? "",
-          ibmApiKey: ibmApiKey || undefined,
-          watsonxProjectId: watsonxProjectId || undefined,
+          huggingfaceApiKey: huggingfaceApiKey || undefined,
           allCollectionFields: collectionFields ?? {},
           history: messages
             .filter((m) => m.role === "user" || m.role === "assistant")
@@ -229,7 +228,7 @@ export function ChatArea({
         {isEmpty ? (
           <EmptyState
             onHintClick={(hint) => { setInput(hint); inputRef.current?.focus(); }}
-            isConnected={!!astraToken}
+            isConnected={isConnected}
             initializing={initializing}
             collectionFields={collectionFields ?? {}}
             collections={collections?.map((c) => c.name).filter((n) => !n.startsWith("dap_")) ?? []}

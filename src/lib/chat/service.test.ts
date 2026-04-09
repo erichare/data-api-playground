@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ResolvedAiBackend } from "@/lib/ai/service";
 
 const embedQueryMock = vi.fn();
 const searchCollectionsMock = vi.fn();
 const generateResponseMock = vi.fn();
+const generateTextMock = vi.fn();
 
 vi.mock("@/app/api/chat/shared", async () => {
   const actual = await vi.importActual<typeof import("@/app/api/chat/shared")>(
@@ -17,15 +19,51 @@ vi.mock("@/app/api/chat/shared", async () => {
   };
 });
 
+vi.mock("@/lib/ai/service", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/ai/service")>(
+    "@/lib/ai/service"
+  );
+
+  return {
+    ...actual,
+    generateText: generateTextMock,
+  };
+});
+
+const huggingFaceBackend: ResolvedAiBackend = {
+  provider: "huggingface",
+  source: "manual",
+  huggingfaceApiKey: "hf-key",
+  huggingFaceKeyPresent: true,
+  chatModel: "ibm-granite/granite-3.3-8b-instruct",
+  embedModel: "ibm-granite/granite-embedding-125m-english",
+  ollamaBaseUrl: "http://127.0.0.1:11434",
+};
+
 describe("runChatWorkflow", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+
+    generateTextMock.mockResolvedValue({
+      content: JSON.stringify({
+        collection: "orders",
+        searchMode: "hybrid",
+        intent: "Find spending data",
+        limit: 3,
+      }),
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
+
     embedQueryMock.mockResolvedValue({
       embeddingVector: [0.12, 0.34],
       vectorPreview: [0.12, 0.34],
       realEmbedding: true,
+      provider: "huggingface",
+      model: huggingFaceBackend.embedModel,
     });
+
     searchCollectionsMock.mockResolvedValue({
       searchResults: [
         {
@@ -38,31 +76,16 @@ describe("runChatWorkflow", () => {
       commandStr: 'await db.collection("orders").find({}, { limit: 5 }).toArray()',
       collection: "orders",
     });
-    generateResponseMock.mockResolvedValue("Here is the answer.");
+
+    generateResponseMock.mockResolvedValue({
+      content: "Here is the answer.",
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
   });
 
-  it("uses the analyzed collection fields when the LLM switches away from the active collection", async () => {
+  it("uses the analyzed collection fields when the backend switches away from the active collection", async () => {
     const send = vi.fn();
-    const watsonx = {
-      textChat: vi
-        .fn()
-        .mockResolvedValueOnce({
-          result: {
-            choices: [
-              {
-                message: {
-                  content: JSON.stringify({
-                    collection: "orders",
-                    searchMode: "hybrid",
-                    intent: "Find spending data",
-                    limit: 3,
-                  }),
-                },
-              },
-            ],
-          },
-        }),
-    };
 
     const { runChatWorkflow } = await import("./service");
     await runChatWorkflow({
@@ -82,8 +105,7 @@ describe("runChatWorkflow", () => {
       },
       token: "AstraCS:secret",
       endpoint: "https://db.apps.astra.datastax.com",
-      watsonx: watsonx as never,
-      projectId: "project-1",
+      backend: huggingFaceBackend,
       send,
     });
 
@@ -94,6 +116,8 @@ describe("runChatWorkflow", () => {
         data: expect.objectContaining({
           collection: "orders",
           fields: ["customer_id", "total_spend"],
+          provider: "huggingface",
+          model: huggingFaceBackend.chatModel,
         }),
       })
     );
@@ -106,8 +130,19 @@ describe("runChatWorkflow", () => {
   });
 
   it("skips embedding and search for a format-only follow-up", async () => {
-    const send = vi.fn();
+    generateTextMock.mockResolvedValueOnce({
+      content: JSON.stringify({
+        collection: "orders",
+        searchMode: "hybrid",
+        intent: "Format prior answer",
+        limit: 5,
+        skipSearch: true,
+      }),
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
 
+    const send = vi.fn();
     const { runChatWorkflow } = await import("./service");
     await runChatWorkflow({
       payload: {
@@ -127,7 +162,7 @@ describe("runChatWorkflow", () => {
       },
       token: "AstraCS:secret",
       endpoint: "https://db.apps.astra.datastax.com",
-      watsonx: null,
+      backend: huggingFaceBackend,
       send,
     });
 
@@ -143,6 +178,19 @@ describe("runChatWorkflow", () => {
   });
 
   it("marks collection overview questions as all-collections without running search", async () => {
+    generateTextMock.mockResolvedValueOnce({
+      content: JSON.stringify({
+        collection: "orders",
+        searchMode: "hybrid",
+        intent: "List collections",
+        limit: 5,
+        skipSearch: true,
+        allCollections: true,
+      }),
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
+
     const send = vi.fn();
 
     const { runChatWorkflow } = await import("./service");
@@ -164,7 +212,7 @@ describe("runChatWorkflow", () => {
       },
       token: "AstraCS:secret",
       endpoint: "https://db.apps.astra.datastax.com",
-      watsonx: null,
+      backend: huggingFaceBackend,
       send,
     });
 

@@ -65,6 +65,7 @@ export const ingestBodySchema = astraConnectionSchema.extend({
   collection: z.string().min(1),
   rows: z.array(z.record(z.string(), z.string())),
   filename: z.string().min(1),
+  huggingfaceApiKey: z.string().optional(),
 });
 
 // ── Conversations ────────────────────────────────────────────────────
@@ -91,8 +92,7 @@ export const messageCreateBodySchema = z.object({
 
 export const conversationTitleBodySchema = z.object({
   firstMessage: z.string().min(1),
-  ibmApiKey: z.string().optional(),
-  watsonxProjectId: z.string().optional(),
+  huggingfaceApiKey: z.string().optional(),
 });
 
 // ── Chat ─────────────────────────────────────────────────────────────
@@ -100,7 +100,13 @@ export const chatBodySchema = astraConnectionSchema.extend({
   query: z.string().min(1),
   searchMode: z.string().min(1),
   collections: z
-    .array(z.object({ name: z.string(), isVectorize: z.boolean() }))
+    .array(
+      z.object({
+        name: z.string(),
+        isVectorize: z.boolean(),
+        vectorDimension: z.number().int().positive().nullable().optional(),
+      })
+    )
     .optional(),
   activeCollection: z.string().optional(),
   allCollectionFields: z.record(z.string(), z.array(z.string())).optional(),
@@ -112,8 +118,7 @@ export const chatBodySchema = astraConnectionSchema.extend({
       })
     )
     .optional(),
-  ibmApiKey: z.string().optional(),
-  watsonxProjectId: z.string().optional(),
+  huggingfaceApiKey: z.string().optional(),
 });
 
 // ── Data API Proxy ───────────────────────────────────────────────────

@@ -75,9 +75,9 @@ export function Header({
 
       {/* Right: indicators + controls */}
       <div className="flex items-center gap-2">
-        {/* IBM Granite badge */}
+        {/* AI backend badge */}
         <a
-          href="https://huggingface.co/collections/ibm-granite/granite-embedding-models"
+          href="https://ollama.com/library/granite3.1-dense"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-opacity hover:opacity-75"
@@ -86,17 +86,17 @@ export function Header({
             border: "1px solid var(--interactive-border)",
             textDecoration: "none",
           }}
-          title="Powered by IBM Granite models via HuggingFace & watsonx.ai"
+          title="Uses Hugging Face when a key is available, otherwise falls back to local Ollama"
         >
           <div className="flex flex-col gap-0 leading-none">
             <span
               className="text-[9px] uppercase tracking-wider"
               style={{ color: "var(--interactive)", opacity: 0.7, fontFamily: "IBM Plex Mono, monospace" }}
             >
-              IBM Granite
+              AI Backend
             </span>
             <span className="text-[11px] font-semibold" style={{ color: "var(--interactive)", fontFamily: "IBM Plex Mono, monospace" }}>
-              Embed · 125M &nbsp;|&nbsp; Chat · 3-8B
+              Hugging Face &nbsp;|&nbsp; Ollama
             </span>
           </div>
           <motion.div

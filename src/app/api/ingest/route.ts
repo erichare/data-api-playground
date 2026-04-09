@@ -14,7 +14,6 @@ export async function POST(req: NextRequest) {
 
   const stream = streamCsvIngest({
     ...body,
-    hfKey: process.env.HUGGINGFACE_API_KEY,
   });
 
   return new Response(stream, {

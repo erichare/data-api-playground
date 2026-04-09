@@ -278,8 +278,7 @@ describe("conversationTitleBodySchema", () => {
     expect(
       conversationTitleBodySchema.safeParse({
         firstMessage: "hello",
-        ibmApiKey: "key",
-        watsonxProjectId: "proj",
+        huggingfaceApiKey: "hf-key",
       }).success
     ).toBe(true);
   });
@@ -320,12 +319,11 @@ describe("chatBodySchema", () => {
         token: "t",
         endpoint: "e",
         keyspace: "k",
-        collections: [{ name: "c", isVectorize: true }],
+        collections: [{ name: "c", isVectorize: true, vectorDimension: null }],
         activeCollection: "c",
         allCollectionFields: { c: ["field1"] },
         history: [{ role: "assistant", content: "hi" }],
-        ibmApiKey: "key",
-        watsonxProjectId: "proj",
+        huggingfaceApiKey: "hf-key",
       }).success
     ).toBe(true);
   });

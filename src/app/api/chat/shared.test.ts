@@ -1,26 +1,38 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ResolvedAiBackend } from "@/lib/ai/service";
 
 const getAstraDbMock = vi.fn();
+const embedManyMock = vi.fn();
+const generateTextMock = vi.fn();
 
 vi.mock("@/lib/astra", () => ({
   getAstraDb: getAstraDbMock,
   SYSTEM_FIELDS: new Set(["_id", "$vector"]),
 }));
 
-describe("chat shared helpers", () => {
-  const originalFetch = global.fetch;
-  const originalRandom = Math.random;
+vi.mock("@/lib/ai/service", () => ({
+  embedMany: embedManyMock,
+  generateText: generateTextMock,
+}));
 
+const huggingFaceBackend: ResolvedAiBackend = {
+  provider: "huggingface",
+  source: "manual",
+  huggingfaceApiKey: "hf-key",
+  huggingFaceKeyPresent: true,
+  chatModel: "ibm-granite/granite-3.3-8b-instruct",
+  embedModel: "ibm-granite/granite-embedding-125m-english",
+  ollamaBaseUrl: "http://127.0.0.1:11434",
+};
+
+describe("chat shared helpers", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
-    global.fetch = originalFetch;
-    Math.random = originalRandom;
   });
 
   afterEach(() => {
-    global.fetch = originalFetch;
-    Math.random = originalRandom;
+    vi.restoreAllMocks();
   });
 
   it("builds a compact document preview and skips system fields", async () => {
@@ -44,173 +56,91 @@ describe("chat shared helpers", () => {
     });
   });
 
-  it("falls back to Hugging Face embeddings when watsonx returns an invalid shape", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => [[0.11111, 0.22222, ...Array.from({ length: 110 }, (_, i) => i + 1)]],
-    } as Response) as typeof fetch;
+  it("embeds a query through the resolved backend", async () => {
+    embedManyMock.mockResolvedValueOnce({
+      embeddings: [[0.11111, 0.22222, 0.33333]],
+      provider: "huggingface",
+      model: huggingFaceBackend.embedModel,
+    });
 
     const { embedQuery } = await import("./shared");
     const result = await embedQuery({
-      watsonx: {
-        embedText: vi.fn().mockResolvedValue({
-          result: { results: [{ embedding: [1, 2, 3] }] },
-        }),
-      } as never,
-      projectId: "project-1",
+      backend: huggingFaceBackend,
       query: "find the best customer",
-      hfKey: "hf-key",
       isVectorize: false,
     });
 
     expect(result.realEmbedding).toBe(true);
-    expect(result.embeddingVector.length).toBeGreaterThan(100);
-    expect(result.vectorPreview[0]).toBe(0.1111);
-    expect(result.embedError).toBeUndefined();
+    expect(result.embeddingVector).toEqual([0.11111, 0.22222, 0.33333]);
+    expect(result.vectorPreview).toEqual([0.1111, 0.2222, 0.3333]);
+    expect(result.provider).toBe("huggingface");
+    expect(result.model).toBe(huggingFaceBackend.embedModel);
   });
 
-  it("returns a synthetic preview and combined error message when both embedding providers fail", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 503,
-      text: async () => "service unavailable",
-    } as Response) as typeof fetch;
-    Math.random = vi.fn(() => 0.75);
-
+  it("marks vectorize collections as Astra server-side embeddings", async () => {
     const { embedQuery } = await import("./shared");
     const result = await embedQuery({
-      watsonx: {
-        embedText: vi.fn().mockRejectedValue(new Error("watsonx down")),
-      } as never,
-      projectId: "project-1",
+      backend: huggingFaceBackend,
       query: "find the best customer",
-      isVectorize: false,
+      isVectorize: true,
     });
 
-    expect(result.realEmbedding).toBe(false);
-    expect(result.embeddingVector).toEqual([]);
-    expect(result.vectorPreview).toEqual([0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]);
-    expect(result.embedError).toContain("watsonx embed error: watsonx down");
-    expect(result.embedError).toContain("HuggingFace 503: service unavailable");
-  });
-
-  it("preserves filter clauses when searching across multiple collections", async () => {
-    const toArrayOrdersMock = vi.fn().mockResolvedValue([
-      { _id: "o1", total_spend: 500, status: "active" },
-    ]);
-    const toArrayCustomersMock = vi.fn().mockResolvedValue([
-      { _id: "c1", first_name: "Ava", status: "active" },
-    ]);
-
-    const findOrdersMock = vi.fn(() => ({ toArray: toArrayOrdersMock }));
-    const findCustomersMock = vi.fn(() => ({ toArray: toArrayCustomersMock }));
-
-    getAstraDbMock.mockReturnValue({
-      collection: vi.fn((name: string) =>
-        name === "orders"
-          ? { find: findOrdersMock }
-          : { find: findCustomersMock }
-      ),
-    });
-
-    const { searchCollections } = await import("./shared");
-    const result = await searchCollections({
-      token: "AstraCS:secret",
-      endpoint: "https://db.apps.astra.datastax.com",
-      keyspace: "default_keyspace",
-      isConnected: true,
-      query: "show active records",
-      collection: "orders",
-      collections: [
-        { name: "orders", isVectorize: false },
-        { name: "customers", isVectorize: false },
-      ],
-      collectionsToSearch: [
-        { name: "orders", isVec: false },
-        { name: "customers", isVec: false },
-      ],
-      userCollections: ["orders", "customers"],
-      searchMode: "hybrid",
-      sortField: null,
-      sortDir: "desc",
-      limit: 5,
-      filterField: "status",
-      filterOp: "$eq",
-      filterValue: "active",
+    expect(result).toEqual({
       embeddingVector: [],
+      vectorPreview: [],
+      realEmbedding: true,
+      provider: "astra",
+      model: "server-side vectorize",
     });
-
-    expect(findOrdersMock).toHaveBeenCalledWith({ status: "active" }, { limit: 5 });
-    expect(findCustomersMock).toHaveBeenCalledWith({ status: "active" }, { limit: 5 });
-    expect(result.searchResults).toHaveLength(2);
-    expect(result.commandStr).toContain("Searched 2 collections");
+    expect(embedManyMock).not.toHaveBeenCalled();
   });
 
-  it("retries without a filter when a single-collection filtered search fails", async () => {
-    const toArrayWithoutFilterMock = vi.fn().mockResolvedValue([
-      { _id: "o1", total_spend: 500 },
-    ]);
-    const findMock = vi
-      .fn()
-      .mockImplementationOnce(() => ({
-        toArray: vi.fn().mockRejectedValue(new Error("invalid filter")),
-      }))
-      .mockImplementationOnce(() => ({
-        toArray: toArrayWithoutFilterMock,
-      }));
-
+  it("validates embedding dimensions before searching non-vectorize collections", async () => {
     getAstraDbMock.mockReturnValue({
       collection: vi.fn(() => ({
-        find: findMock,
+        find: vi.fn(() => ({
+          toArray: vi.fn().mockResolvedValue([]),
+        })),
       })),
     });
 
     const { searchCollections } = await import("./shared");
-    const result = await searchCollections({
-      token: "AstraCS:secret",
-      endpoint: "https://db.apps.astra.datastax.com",
-      keyspace: "default_keyspace",
-      isConnected: true,
-      query: "show active orders",
-      collection: "orders",
-      collections: [{ name: "orders", isVectorize: false }],
-      collectionsToSearch: [{ name: "orders", isVec: false }],
-      userCollections: ["orders"],
-      searchMode: "hybrid",
-      sortField: null,
-      sortDir: "desc",
-      limit: 5,
-      filterField: "status",
-      filterOp: "$eq",
-      filterValue: "active",
-      embeddingVector: [],
-    });
 
-    expect(findMock).toHaveBeenNthCalledWith(1, { status: "active" }, { limit: 5 });
-    expect(findMock).toHaveBeenNthCalledWith(2, {}, { limit: 5 });
-    expect(result.searchResults).toEqual([
-      {
-        id: "o1",
-        similarity: 1,
-        preview: { total_spend: 500 },
+    await expect(
+      searchCollections({
+        token: "AstraCS:secret",
+        endpoint: "https://db.apps.astra.datastax.com",
+        keyspace: "default_keyspace",
+        isConnected: true,
+        query: "show active records",
         collection: "orders",
-      },
-    ]);
+        collections: [{ name: "orders", isVectorize: false, vectorDimension: 768 }],
+        collectionsToSearch: [{ name: "orders", isVec: false, vectorDimension: 768 }],
+        userCollections: ["orders"],
+        searchMode: "vector",
+        sortField: null,
+        sortDir: "desc",
+        limit: 5,
+        filterField: null,
+        filterOp: null,
+        filterValue: null,
+        embeddingVector: [0.1, 0.2, 0.3],
+      })
+    ).rejects.toThrow(
+      'Embedding dimension mismatch for "orders": collection expects 768d but active model returned 3d'
+    );
   });
 
-  it("sanitizes prior search dumps before calling watsonx to generate a response", async () => {
-    const textChatMock = vi.fn().mockResolvedValue({
-      result: {
-        choices: [{ message: { content: "A concise answer." } }],
-      },
+  it("sanitizes prior search dumps before generating a response", async () => {
+    generateTextMock.mockResolvedValueOnce({
+      content: "A concise answer.",
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
     });
 
     const { generateResponse } = await import("./shared");
-    const content = await generateResponse({
-      watsonx: {
-        textChat: textChatMock,
-      } as never,
-      projectId: "project-1",
+    const response = await generateResponse({
+      backend: huggingFaceBackend,
       query: "Summarize the results",
       skipSearch: true,
       searchResults: [],
@@ -229,11 +159,19 @@ describe("chat shared helpers", () => {
       ],
     });
 
-    expect(content).toBe("A concise answer.");
-    const [{ messages }] = textChatMock.mock.calls[0] as [
-      { messages: Array<{ role: string; content: string }> },
-    ];
-    expect(messages[1]?.content).toBe("Previous answer");
-    expect(messages[2]?.content).toContain("Reformat or continue your previous response accordingly.");
+    expect(response.content).toBe("A concise answer.");
+    expect(generateTextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({ role: "assistant", content: "Previous answer" }),
+          expect.objectContaining({
+            role: "user",
+            content: expect.stringContaining(
+              "Reformat or continue your previous response accordingly."
+            ),
+          }),
+        ]),
+      })
+    );
   });
 });

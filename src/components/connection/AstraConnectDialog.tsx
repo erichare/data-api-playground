@@ -1,8 +1,29 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Eye, EyeOff, Plug, PlugZap, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import {
+  X,
+  Eye,
+  EyeOff,
+  Plug,
+  PlugZap,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  Cpu,
+  KeyRound,
+} from "lucide-react";
+
+type AiStatus = {
+  hasHuggingFaceEnvKey: boolean;
+  ollamaReachable: boolean;
+  ollamaBaseUrl: string;
+  chatModelInstalled: boolean;
+  embedModelInstalled: boolean;
+  chatModel: string;
+  embedModel: string;
+};
 
 interface AstraConnectDialogProps {
   open: boolean;
@@ -12,10 +33,8 @@ interface AstraConnectDialogProps {
   connected: boolean;
   currentToken: string;
   currentEndpoint: string;
-  currentIbmApiKey: string;
-  currentWatsonxProjectId: string;
-  onIbmApiKeyChange: (key: string) => void;
-  onWatsonxProjectIdChange: (id: string) => void;
+  currentHuggingfaceApiKey?: string;
+  onHuggingfaceApiKeyChange: (key: string) => void;
   error?: string;
 }
 
@@ -27,59 +46,131 @@ export function AstraConnectDialog({
   connected,
   currentToken,
   currentEndpoint,
-  currentIbmApiKey,
-  currentWatsonxProjectId,
-  onIbmApiKeyChange,
-  onWatsonxProjectIdChange,
+  currentHuggingfaceApiKey,
+  onHuggingfaceApiKeyChange,
   error,
 }: AstraConnectDialogProps) {
   const [token, setToken] = useState(currentToken);
   const [endpoint, setEndpoint] = useState(currentEndpoint);
-  const [ibmApiKey, setIbmApiKey] = useState(currentIbmApiKey);
-  const [watsonxProjectId, setWatsonxProjectId] = useState(currentWatsonxProjectId);
+  const [huggingfaceApiKey, setHuggingfaceApiKey] = useState(
+    currentHuggingfaceApiKey ?? ""
+  );
   const [showToken, setShowToken] = useState(false);
-  const [showIbmApiKey, setShowIbmApiKey] = useState(false);
+  const [showHuggingfaceApiKey, setShowHuggingfaceApiKey] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [envHasKey, setEnvHasKey] = useState<boolean | null>(null);
-  const [envHasProjectId, setEnvHasProjectId] = useState<boolean | null>(null);
-  const [envAstra, setEnvAstra] = useState<{ hasToken: boolean; hasEndpoint: boolean } | null>(null);
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  const [envAstra, setEnvAstra] = useState<{
+    hasToken: boolean;
+    hasEndpoint: boolean;
+  } | null>(null);
   const isConnected = connected;
 
   useEffect(() => {
-    if (open) {
-      setToken(currentToken);
-      setEndpoint(currentEndpoint);
-      setIbmApiKey(currentIbmApiKey);
-      setWatsonxProjectId(currentWatsonxProjectId);
-      setShowToken(false);
-      setShowIbmApiKey(false);
-      Promise.all([
-        fetch("/api/watsonx-status").then((r) => r.json() as Promise<{ hasKey: boolean; hasProjectId: boolean }>),
-        fetch("/api/astra-status").then((r) => r.json() as Promise<{ hasToken: boolean; hasEndpoint: boolean }>),
-      ]).then(([wx, astra]) => {
-        setEnvHasKey(wx.hasKey);
-        setEnvHasProjectId(wx.hasProjectId);
+    if (!open) return;
+
+    setToken(currentToken);
+    setEndpoint(currentEndpoint);
+    setHuggingfaceApiKey(currentHuggingfaceApiKey ?? "");
+    setShowToken(false);
+    setShowHuggingfaceApiKey(false);
+
+    Promise.all([
+      fetch("/api/ai-status").then((response) => response.json() as Promise<AiStatus>),
+      fetch("/api/astra-status").then(
+        (response) =>
+          response.json() as Promise<{ hasToken: boolean; hasEndpoint: boolean }>
+      ),
+    ])
+      .then(([ai, astra]) => {
+        setAiStatus(ai);
         setEnvAstra(astra);
-      }).catch(() => {
-        setEnvHasKey(false);
-        setEnvHasProjectId(false);
+      })
+      .catch(() => {
+        setAiStatus(null);
         setEnvAstra({ hasToken: false, hasEndpoint: false });
       });
-    }
-  }, [open, currentToken, currentEndpoint, currentIbmApiKey, currentWatsonxProjectId]);
+  }, [open, currentToken, currentEndpoint, currentHuggingfaceApiKey]);
 
-  const canConnect = (!!token.trim() || !!envAstra?.hasToken) && (!!endpoint.trim() || !!envAstra?.hasEndpoint) && !loading;
+  const trimmedHuggingFaceKey = huggingfaceApiKey.trim();
+  const canConnect =
+    (!!token.trim() || !!envAstra?.hasToken) &&
+    (!!endpoint.trim() || !!envAstra?.hasEndpoint) &&
+    !loading;
+
+  const activeAiSummary = useMemo(() => {
+    if (trimmedHuggingFaceKey) {
+      return {
+        label: "Hugging Face via manual key",
+        tone: "rgba(34,197,94,0.08)",
+        border: "rgba(34,197,94,0.2)",
+        accent: "#22c55e",
+        detail: "Sent only to this app's server routes and kept in memory for this page session.",
+      };
+    }
+
+    if (aiStatus?.hasHuggingFaceEnvKey) {
+      return {
+        label: "Hugging Face via env",
+        tone: "rgba(34,197,94,0.08)",
+        border: "rgba(34,197,94,0.2)",
+        accent: "#22c55e",
+        detail: "Using server-side Hugging Face credentials from the current environment.",
+      };
+    }
+
+    if (!aiStatus) {
+      return {
+        label: "Ollama local fallback",
+        tone: "rgba(251,191,36,0.08)",
+        border: "rgba(251,191,36,0.2)",
+        accent: "#f59e0b",
+        detail: "Checking local Ollama status...",
+      };
+    }
+
+    if (!aiStatus.ollamaReachable) {
+      return {
+        label: "Ollama local fallback",
+        tone: "rgba(239,68,68,0.08)",
+        border: "rgba(239,68,68,0.2)",
+        accent: "#ef4444",
+        detail: `Ollama is not reachable at ${aiStatus.ollamaBaseUrl}. Start Ollama locally or provide a Hugging Face key.`,
+      };
+    }
+
+    const missingModels = [
+      !aiStatus.chatModelInstalled ? aiStatus.chatModel : null,
+      !aiStatus.embedModelInstalled ? aiStatus.embedModel : null,
+    ].filter(Boolean) as string[];
+
+    if (missingModels.length > 0) {
+      return {
+        label: "Ollama local fallback",
+        tone: "rgba(251,191,36,0.08)",
+        border: "rgba(251,191,36,0.2)",
+        accent: "#f59e0b",
+        detail: `Missing local models: ${missingModels.join(", ")}. First run can take several GB and a few minutes while Ollama downloads them.`,
+      };
+    }
+
+    return {
+      label: "Ollama local fallback",
+      tone: "rgba(59,130,246,0.08)",
+      border: "rgba(59,130,246,0.2)",
+      accent: "#60a5fa",
+      detail: `Ready locally at ${aiStatus.ollamaBaseUrl} using ${aiStatus.chatModel} and ${aiStatus.embedModel}.`,
+    };
+  }, [aiStatus, trimmedHuggingFaceKey]);
 
   const handleConnect = async () => {
     if (!canConnect) return;
     setLoading(true);
     try {
-      onIbmApiKeyChange(ibmApiKey.trim());
-      onWatsonxProjectIdChange(watsonxProjectId.trim());
+      onHuggingfaceApiKeyChange(trimmedHuggingFaceKey);
       await onConnect(token.trim(), endpoint.trim());
       onClose();
     } catch {
-      // error displayed via props.error
+      // Error displayed via props.error
     } finally {
       setLoading(false);
     }
@@ -122,17 +213,18 @@ export function AstraConnectDialog({
     <AnimatePresence>
       {open && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
             className="fixed inset-0 z-40"
-            style={{ backgroundColor: "rgba(0,0,0,0.5)", backdropFilter: "blur(3px)" }}
+            style={{
+              backgroundColor: "rgba(0,0,0,0.5)",
+              backdropFilter: "blur(3px)",
+            }}
           />
 
-          {/* Dialog */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -150,42 +242,62 @@ export function AstraConnectDialog({
                 pointerEvents: "auto",
               }}
             >
-              {/* Header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
+              <div
+                className="flex items-center justify-between px-5 py-4 border-b shrink-0"
+                style={{ borderColor: "var(--border-subtle)" }}
+              >
                 <div className="flex items-center gap-2.5">
                   <div
                     className="w-7 h-7 rounded-lg flex items-center justify-center"
                     style={{
-                      backgroundColor: isConnected ? "rgba(34,197,94,0.1)" : "var(--bg-hover)",
-                      border: `1px solid ${isConnected ? "rgba(34,197,94,0.3)" : "var(--border-subtle)"}`,
+                      backgroundColor: isConnected
+                        ? "rgba(34,197,94,0.1)"
+                        : "var(--bg-hover)",
+                      border: `1px solid ${
+                        isConnected
+                          ? "rgba(34,197,94,0.3)"
+                          : "var(--border-subtle)"
+                      }`,
                     }}
                   >
-                    {isConnected
-                      ? <PlugZap size={14} style={{ color: "#22c55e" }} />
-                      : <Plug size={14} style={{ color: "var(--text-muted)" }} />
-                    }
+                    {isConnected ? (
+                      <PlugZap size={14} style={{ color: "#22c55e" }} />
+                    ) : (
+                      <Plug size={14} style={{ color: "var(--text-muted)" }} />
+                    )}
                   </div>
-                  <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  <h2
+                    className="text-sm font-semibold"
+                    style={{ color: "var(--text-primary)" }}
+                  >
                     {isConnected ? "Astra DB Connected" : "Connect to Astra DB"}
                   </h2>
                 </div>
                 <motion.button
                   onClick={onClose}
                   className="p-1.5 rounded-lg"
-                  style={{ color: "var(--text-muted)", backgroundColor: "rgba(0,0,0,0)" }}
-                  whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" }}
+                  style={{
+                    color: "var(--text-muted)",
+                    backgroundColor: "rgba(0,0,0,0)",
+                  }}
+                  whileHover={{
+                    backgroundColor: "var(--bg-hover)",
+                    color: "var(--text-primary)",
+                  }}
                   whileTap={{ scale: 0.9 }}
                 >
                   <X size={14} />
                 </motion.button>
               </div>
 
-              {/* Body */}
               <div className="flex flex-col gap-4 px-5 py-5">
                 {isConnected && (
                   <div
                     className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg"
-                    style={{ backgroundColor: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.15)" }}
+                    style={{
+                      backgroundColor: "rgba(34,197,94,0.06)",
+                      border: "1px solid rgba(34,197,94,0.15)",
+                    }}
                   >
                     <motion.div
                       className="w-2 h-2 rounded-full shrink-0"
@@ -194,18 +306,79 @@ export function AstraConnectDialog({
                       transition={{ duration: 2, repeat: Infinity }}
                     />
                     <div className="flex flex-col min-w-0">
-                      <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>Active token</span>
-                      <span className="text-[12px]" style={{ color: "#22c55e", fontFamily: "IBM Plex Mono, monospace" }}>{maskedToken}</span>
+                      <span
+                        className="text-[11px]"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        Active token
+                      </span>
+                      <span
+                        className="text-[12px]"
+                        style={{
+                          color: "#22c55e",
+                          fontFamily: "IBM Plex Mono, monospace",
+                        }}
+                      >
+                        {maskedToken}
+                      </span>
                     </div>
                   </div>
                 )}
 
-                {/* Token */}
+                <div
+                  className="px-3 py-3 rounded-xl"
+                  style={{
+                    backgroundColor: activeAiSummary.tone,
+                    border: `1px solid ${activeAiSummary.border}`,
+                  }}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <div
+                      className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                      style={{
+                        backgroundColor: "rgba(255,255,255,0.04)",
+                        color: activeAiSummary.accent,
+                      }}
+                    >
+                      {trimmedHuggingFaceKey || aiStatus?.hasHuggingFaceEnvKey ? (
+                        <KeyRound size={14} />
+                      ) : (
+                        <Cpu size={14} />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div
+                        className="text-[10px] font-semibold uppercase tracking-widest"
+                        style={{ color: activeAiSummary.accent }}
+                      >
+                        AI Backend
+                      </div>
+                      <div
+                        className="text-[13px] font-semibold mt-0.5"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        {activeAiSummary.label}
+                      </div>
+                      <p
+                        className="text-[11px] mt-1 leading-relaxed"
+                        style={{ color: "var(--text-secondary)" }}
+                      >
+                        {activeAiSummary.detail}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label style={{ ...labelStyle, marginBottom: 0 }}>Astra DB Application Token</label>
+                    <label style={{ ...labelStyle, marginBottom: 0 }}>
+                      Astra DB Application Token
+                    </label>
                     {envAstra?.hasToken && !token && (
-                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#22c55e" }}>
+                      <span
+                        className="flex items-center gap-1 text-[10px]"
+                        style={{ color: "#22c55e" }}
+                      >
                         <CheckCircle2 size={10} /> Set via environment
                       </span>
                     )}
@@ -214,11 +387,13 @@ export function AstraConnectDialog({
                     <input
                       type={showToken ? "text" : "password"}
                       value={token}
-                      onChange={(e) => setToken(e.target.value)}
+                      onChange={(event) => setToken(event.target.value)}
                       data-testid="astra-token-input"
                       placeholder="AstraCS:••••••••••••"
                       style={{ ...inputStyle, paddingRight: "40px" }}
-                      onKeyDown={(e) => e.key === "Enter" && void handleConnect()}
+                      onKeyDown={(event) =>
+                        event.key === "Enter" && void handleConnect()
+                      }
                       autoFocus={!isConnected}
                       autoComplete="off"
                       data-1p-ignore
@@ -228,24 +403,32 @@ export function AstraConnectDialog({
                     />
                     <button
                       type="button"
-                      onClick={() => setShowToken((v) => !v)}
+                      onClick={() => setShowToken((value) => !value)}
                       className="absolute right-3 top-1/2 -translate-y-1/2"
                       style={{ color: "var(--text-muted)" }}
                     >
                       {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
                   </div>
-                  <p className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>
-                    Find in Astra DB console → Token Management. Stored in session memory only.
+                  <p
+                    className="text-[11px] mt-1.5"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    Find in Astra DB console → Token Management. Stored in session
+                    memory only.
                   </p>
                 </div>
 
-                {/* Endpoint */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label style={{ ...labelStyle, marginBottom: 0 }}>Astra DB Endpoint</label>
+                    <label style={{ ...labelStyle, marginBottom: 0 }}>
+                      Astra DB Endpoint
+                    </label>
                     {envAstra?.hasEndpoint && !endpoint && (
-                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#22c55e" }}>
+                      <span
+                        className="flex items-center gap-1 text-[10px]"
+                        style={{ color: "#22c55e" }}
+                      >
                         <CheckCircle2 size={10} /> Set via environment
                       </span>
                     )}
@@ -253,7 +436,7 @@ export function AstraConnectDialog({
                   <input
                     type="text"
                     value={endpoint}
-                    onChange={(e) => setEndpoint(e.target.value)}
+                    onChange={(event) => setEndpoint(event.target.value)}
                     data-testid="astra-endpoint-input"
                     placeholder="https://xxxx-xxxx.apps.astra.datastax.com"
                     style={inputStyle}
@@ -262,116 +445,147 @@ export function AstraConnectDialog({
                   />
                 </div>
 
-                {/* Divider */}
-                <div style={{ borderTop: "1px solid var(--border-subtle)", margin: "0 -4px" }} />
+                <div
+                  style={{
+                    borderTop: "1px solid var(--border-subtle)",
+                    margin: "0 -4px",
+                  }}
+                />
 
-                {/* IBM Cloud API Key */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label style={{ ...labelStyle, marginBottom: 0 }}>watsonx API Key</label>
-                    {envHasKey === true && !ibmApiKey && (
-                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#22c55e" }}>
+                    <label style={{ ...labelStyle, marginBottom: 0 }}>
+                      Hugging Face API Key
+                    </label>
+                    {trimmedHuggingFaceKey ? (
+                      <span
+                        className="flex items-center gap-1 text-[10px]"
+                        style={{ color: "#22c55e" }}
+                      >
+                        <CheckCircle2 size={10} /> Will override env
+                      </span>
+                    ) : aiStatus?.hasHuggingFaceEnvKey ? (
+                      <span
+                        className="flex items-center gap-1 text-[10px]"
+                        style={{ color: "#22c55e" }}
+                      >
                         <CheckCircle2 size={10} /> Set via environment
                       </span>
-                    )}
-                    {envHasKey === false && !ibmApiKey && (
-                      <span className="text-[10px]" style={{ color: "#f87171" }}>Not set in environment</span>
-                    )}
-                    {ibmApiKey && (
-                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#22c55e" }}>
-                        <CheckCircle2 size={10} /> Will override env
+                    ) : (
+                      <span
+                        className="text-[10px]"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        Optional
                       </span>
                     )}
                   </div>
                   <div className="relative">
                     <input
-                      type={showIbmApiKey ? "text" : "password"}
-                      value={ibmApiKey}
-                      onChange={(e) => setIbmApiKey(e.target.value)}
-                      onBlur={() => onIbmApiKeyChange(ibmApiKey.trim())}
-                      placeholder={envHasKey ? "Override environment key…" : "••••••••••••••••"}
+                      type={showHuggingfaceApiKey ? "text" : "password"}
+                      value={huggingfaceApiKey}
+                      onChange={(event) =>
+                        setHuggingfaceApiKey(event.target.value)
+                      }
+                      onBlur={() =>
+                        onHuggingfaceApiKeyChange(huggingfaceApiKey.trim())
+                      }
+                      data-testid="huggingface-api-key-input"
+                      placeholder={
+                        aiStatus?.hasHuggingFaceEnvKey
+                          ? "Override environment key..."
+                          : "hf_xxxxxxxxxxxxx"
+                      }
                       style={{ ...inputStyle, paddingRight: "40px" }}
                       autoComplete="off"
                       data-1p-ignore
                       data-lpignore="true"
+                      data-bwignore="true"
                       spellCheck={false}
                     />
                     <button
                       type="button"
-                      onClick={() => setShowIbmApiKey((v) => !v)}
+                      onClick={() =>
+                        setShowHuggingfaceApiKey((value) => !value)
+                      }
                       className="absolute right-3 top-1/2 -translate-y-1/2"
                       style={{ color: "var(--text-muted)" }}
                     >
-                      {showIbmApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                      {showHuggingfaceApiKey ? (
+                        <EyeOff size={14} />
+                      ) : (
+                        <Eye size={14} />
+                      )}
                     </button>
                   </div>
-                  <p className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>
-                    IBM Cloud API key for watsonx.ai. IBM Cloud → Manage → Access (IAM) → API keys.
-                  </p>
-                </div>
-
-                {/* watsonx Project ID */}
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label style={{ ...labelStyle, marginBottom: 0 }}>watsonx Project ID</label>
-                    {envHasProjectId === true && !watsonxProjectId && (
-                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#22c55e" }}>
-                        <CheckCircle2 size={10} /> Set via environment
-                      </span>
-                    )}
-                    {envHasProjectId === false && !watsonxProjectId && (
-                      <span className="text-[10px]" style={{ color: "#f87171" }}>Not set in environment</span>
-                    )}
-                    {watsonxProjectId && (
-                      <span className="flex items-center gap-1 text-[10px]" style={{ color: "#22c55e" }}>
-                        <CheckCircle2 size={10} /> Will override env
-                      </span>
-                    )}
-                  </div>
-                  <input
-                    type="text"
-                    value={watsonxProjectId}
-                    onChange={(e) => setWatsonxProjectId(e.target.value)}
-                    onBlur={() => onWatsonxProjectIdChange(watsonxProjectId.trim())}
-                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                    style={inputStyle}
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  <p className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>
-                    watsonx.ai → your project → Manage → General → Project ID.
+                  <p
+                    className="text-[11px] mt-1.5"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    Optional. When omitted, the app falls back to local Ollama for
+                    chat and embeddings.
                   </p>
                 </div>
               </div>
 
-              {/* Error */}
               {error && (
-                <div className="mx-5 mb-1 flex items-start gap-2 px-3 py-2.5 rounded-lg" style={{ backgroundColor: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)" }}>
-                  <AlertCircle size={13} style={{ color: "#ef4444", marginTop: "1px", flexShrink: 0 }} />
-                  <span className="text-[12px] leading-relaxed" style={{ color: "#fca5a5" }}>{error}</span>
+                <div
+                  className="mx-5 mb-1 flex items-start gap-2 px-3 py-2.5 rounded-lg"
+                  style={{
+                    backgroundColor: "rgba(239,68,68,0.07)",
+                    border: "1px solid rgba(239,68,68,0.2)",
+                  }}
+                >
+                  <AlertCircle
+                    size={13}
+                    style={{
+                      color: "#ef4444",
+                      marginTop: "1px",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span
+                    className="text-[12px] leading-relaxed"
+                    style={{ color: "#fca5a5" }}
+                  >
+                    {error}
+                  </span>
                 </div>
               )}
 
-              {/* Footer */}
-              <div className="flex items-center justify-between gap-2 px-5 py-4 border-t shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
+              <div
+                className="flex items-center justify-between gap-2 px-5 py-4 border-t shrink-0"
+                style={{ borderColor: "var(--border-subtle)" }}
+              >
                 {isConnected ? (
                   <motion.button
                     onClick={handleDisconnect}
                     className="px-4 py-2 rounded-lg text-sm font-medium"
-                    style={{ color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}
-                    whileHover={{ backgroundColor: "rgba(239,68,68,0.07)" }}
-                    whileTap={{ scale: 0.97 }}
+                    style={{
+                      color: "#ef4444",
+                      backgroundColor: "rgba(239,68,68,0.08)",
+                      border: "1px solid rgba(239,68,68,0.18)",
+                    }}
+                    whileHover={{ backgroundColor: "rgba(239,68,68,0.12)" }}
+                    whileTap={{ scale: 0.98 }}
                   >
                     Disconnect
                   </motion.button>
-                ) : <div />}
+                ) : (
+                  <div />
+                )}
+
                 <div className="flex items-center gap-2">
                   <motion.button
                     onClick={onClose}
                     className="px-4 py-2 rounded-lg text-sm font-medium"
-                    style={{ color: "var(--text-muted)", border: "1px solid var(--border-subtle)" }}
-                    whileHover={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" }}
-                    whileTap={{ scale: 0.97 }}
+                    style={{
+                      color: "var(--text-muted)",
+                      backgroundColor: "transparent",
+                      border: "1px solid var(--border-subtle)",
+                    }}
+                    whileHover={{ backgroundColor: "var(--bg-hover)" }}
+                    whileTap={{ scale: 0.98 }}
                   >
                     Cancel
                   </motion.button>
@@ -379,22 +593,19 @@ export function AstraConnectDialog({
                     onClick={() => void handleConnect()}
                     disabled={!canConnect}
                     data-testid="astra-connect-submit"
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
+                    className="px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
                     style={{
-                      backgroundColor: canConnect ? "var(--interactive)" : "var(--bg-hover)",
                       color: canConnect ? "#fff" : "var(--text-muted)",
-                      cursor: canConnect ? "pointer" : "not-allowed",
-                      boxShadow: canConnect ? "0 2px 8px var(--interactive-border)" : "none",
+                      backgroundColor: canConnect
+                        ? "var(--interactive)"
+                        : "var(--bg-hover)",
+                      border: "1px solid transparent",
                     }}
-                    whileHover={canConnect ? { scale: 1.02 } : {}}
-                    whileTap={canConnect ? { scale: 0.97 } : {}}
+                    whileHover={canConnect ? { scale: 1.01 } : {}}
+                    whileTap={canConnect ? { scale: 0.98 } : {}}
                   >
-                    {loading && (
-                      <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
-                        <Loader2 size={13} />
-                      </motion.div>
-                    )}
-                    {loading ? "Connecting…" : isConnected ? "Update" : "Connect"}
+                    {loading && <Loader2 size={14} className="animate-spin" />}
+                    {isConnected ? "Reconnect" : "Connect"}
                   </motion.button>
                 </div>
               </div>

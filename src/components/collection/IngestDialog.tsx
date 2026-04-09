@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import type { Collection } from "@/lib/types";
+import { formatBytes } from "@/components/ingest/ingestShared";
 
 type IngestCodeLang = "ts" | "python" | "java" | "curl";
 
@@ -187,12 +188,33 @@ interface IngestDialogProps {
   collection: Collection;
   astraToken?: string;
   astraEndpoint?: string;
+  huggingfaceApiKey?: string;
   isConnected?: boolean;
   onClose: () => void;
 }
 
-export function IngestDialog({ collection, astraToken, astraEndpoint, isConnected = false, onClose }: IngestDialogProps) {
+export function IngestDialog({
+  collection,
+  astraToken,
+  astraEndpoint,
+  huggingfaceApiKey,
+  isConnected = false,
+  onClose,
+}: IngestDialogProps) {
   const useVectorize = !!collection.vectorizeService;
+  const [backendInfo, setBackendInfo] = useState<{
+    provider: string;
+    model: string;
+    useVectorize: boolean;
+  } | null>(
+    useVectorize
+      ? {
+          provider: collection.vectorizeService?.provider ?? "astra",
+          model: collection.vectorizeService?.modelName ?? "server-side vectorize",
+          useVectorize: true,
+        }
+      : null
+  );
 
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<{
@@ -207,7 +229,21 @@ export function IngestDialog({ collection, astraToken, astraEndpoint, isConnecte
   const [totalRows, setTotalRows] = useState(0);
   const [ingestError, setIngestError] = useState("");
   const [done, setDone] = useState(false);
+  const [prepareState, setPrepareState] = useState<{
+    message: string;
+    model: string;
+    determinate: boolean;
+    completed?: number;
+    total?: number;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const formatProviderName = (value: string) => {
+    if (value === "ollama") return "Ollama";
+    if (value === "huggingface") return "Hugging Face";
+    if (value === "astra") return "Astra";
+    return value;
+  };
 
   const handleFileDrop = useCallback((file: File) => {
     if (!file.name.endsWith(".csv")) return;
@@ -223,6 +259,7 @@ export function IngestDialog({ collection, astraToken, astraEndpoint, isConnecte
       });
       setIngestError("");
       setDone(false);
+      setPrepareState(null);
     };
     reader.readAsText(file);
   }, []);
@@ -248,6 +285,17 @@ export function IngestDialog({ collection, astraToken, astraEndpoint, isConnecte
     setIngesting(true);
     setIngestError("");
     setDone(false);
+    setPrepareState(null);
+    setBackendInfo(
+      useVectorize
+        ? {
+            provider: collection.vectorizeService?.provider ?? "astra",
+            model:
+              collection.vectorizeService?.modelName ?? "server-side vectorize",
+            useVectorize: true,
+          }
+        : null
+    );
 
     if (!isConnected) {
       // Mock ingest
@@ -282,6 +330,7 @@ export function IngestDialog({ collection, astraToken, astraEndpoint, isConnecte
           collection: collection.name,
           rows: selectedFile.allRows,
           filename: selectedFile.name,
+          huggingfaceApiKey: huggingfaceApiKey || undefined,
         }),
       });
 
@@ -311,8 +360,30 @@ export function IngestDialog({ collection, astraToken, astraEndpoint, isConnecte
               processed?: number;
               total?: number;
               message?: string;
+              status?: string;
+              provider?: string;
+              model?: string;
+              useVectorize?: boolean;
+              completed?: number;
             };
+            if (evt.type === "prepare" && evt.status === "running") {
+              setPrepareState({
+                message: evt.message ?? "Preparing local model",
+                model: evt.model ?? "local model",
+                determinate: evt.total != null && evt.completed != null,
+                completed: evt.completed,
+                total: evt.total,
+              });
+            }
+            if (evt.type === "start") {
+              setBackendInfo({
+                provider: evt.provider ?? "unknown",
+                model: evt.model ?? "unknown",
+                useVectorize: evt.useVectorize === true,
+              });
+            }
             if (evt.type === "progress" || evt.type === "complete") {
+              setPrepareState(null);
               const p = evt.processed ?? 0;
               const t = evt.total ?? rows;
               setProgressRows(p);
@@ -336,6 +407,7 @@ export function IngestDialog({ collection, astraToken, astraEndpoint, isConnecte
       }
     } catch (err) {
       setIngestError(err instanceof Error ? err.message : "Ingest failed");
+      setPrepareState(null);
       setIngesting(false);
     }
   };
@@ -423,7 +495,9 @@ export function IngestDialog({ collection, astraToken, astraEndpoint, isConnecte
                   <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
                     {useVectorize
                       ? `${collection.vectorizeService!.provider} · ${collection.vectorizeService!.modelName}`
-                      : "IBM Granite · granite-embedding-125m-english · 768d"}
+                      : backendInfo
+                        ? `${formatProviderName(backendInfo.provider)} · ${backendInfo.model}`
+                        : "Resolved per request: Hugging Face or local Ollama"}
                   </span>
                 </div>
               </div>
@@ -604,23 +678,68 @@ export function IngestDialog({ collection, astraToken, astraEndpoint, isConnecte
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
-                        Vectorizing rows...
+                        {prepareState
+                          ? `Downloading local model ${prepareState.model}`
+                          : useVectorize
+                            ? "Storing rows..."
+                            : backendInfo?.provider === "ollama"
+                              ? "Embedding rows locally..."
+                              : "Embedding rows..."}
                       </span>
-                      <span className="text-xs" style={{ color: "var(--step-embed)" }}>
-                        {progressRows.toLocaleString()} / {totalRows.toLocaleString()}
-                      </span>
+                      {prepareState ? (
+                        prepareState.determinate &&
+                        typeof prepareState.completed === "number" &&
+                        typeof prepareState.total === "number" ? (
+                          <span
+                            className="text-xs"
+                            style={{ color: "#f59e0b" }}
+                          >
+                            {formatBytes(prepareState.completed)} /{" "}
+                            {formatBytes(prepareState.total)}
+                          </span>
+                        ) : (
+                          <span className="text-xs" style={{ color: "#f59e0b" }}>
+                            Downloading…
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-xs" style={{ color: "var(--step-embed)" }}>
+                          {progressRows.toLocaleString()} / {totalRows.toLocaleString()}
+                        </span>
+                      )}
                     </div>
                     <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "var(--border-subtle)" }}>
                       <motion.div
                         className="h-full rounded-full progress-shimmer"
-                        animate={{ width: `${progress}%` }}
-                        transition={{ duration: 0.1 }}
+                        animate={{
+                          width: prepareState
+                            ? prepareState.determinate &&
+                              typeof prepareState.completed === "number" &&
+                              typeof prepareState.total === "number" &&
+                              prepareState.total > 0
+                              ? `${Math.round((prepareState.completed / prepareState.total) * 100)}%`
+                              : "35%"
+                            : `${progress}%`,
+                          opacity: prepareState?.determinate ? 1 : prepareState ? [0.4, 1, 0.4] : 1,
+                        }}
+                        transition={
+                          prepareState && !prepareState.determinate
+                            ? { duration: 1.2, repeat: Infinity }
+                            : { duration: 0.1 }
+                        }
+                        style={{
+                          backgroundColor: prepareState ? "#f59e0b" : undefined,
+                        }}
                       />
                     </div>
                     <p className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>
-                      {useVectorize
-                        ? `${collection.vectorizeService?.provider ?? "Vectorize"} · ${collection.vectorizeService?.modelName ?? "server-side"}`
-                        : "IBM Granite · granite-embedding-125m-english · 768d"}
+                      {prepareState
+                        ? `${prepareState.message}. First run can take several GB and a few minutes.`
+                        : backendInfo
+                          ? `${formatProviderName(backendInfo.provider)} · ${backendInfo.model}`
+                          : useVectorize
+                            ? `${collection.vectorizeService?.provider ?? "Vectorize"} · ${collection.vectorizeService?.modelName ?? "server-side"}`
+                            : "Resolved per request: Hugging Face or local Ollama"}
                     </p>
                   </div>
                 </motion.div>

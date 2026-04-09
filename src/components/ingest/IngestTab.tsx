@@ -16,6 +16,7 @@ interface IngestTabProps {
   keyspace: string;
   collections: Collection[];
   activeCollection?: string;
+  huggingfaceApiKey?: string;
   isConnected: boolean;
 }
 
@@ -25,6 +26,7 @@ export function IngestTab({
   keyspace,
   collections,
   activeCollection,
+  huggingfaceApiKey,
   isConnected,
 }: IngestTabProps) {
   const selectedCollection = useMemo(
@@ -72,6 +74,7 @@ export function IngestTab({
     astraEndpoint,
     keyspace,
     selectedCollection,
+    huggingfaceApiKey,
     prependDocument,
   });
 

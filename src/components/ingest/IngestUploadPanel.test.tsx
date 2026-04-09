@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fileKey } from "@/components/ingest/ingestShared";
+import { MAX_DOCUMENT_UPLOAD_MB } from "@/lib/ingest/constants";
 import { IngestUploadPanel } from "./IngestUploadPanel";
 
 vi.mock("framer-motion", () => {
@@ -145,5 +146,13 @@ describe("IngestUploadPanel", () => {
     expect(screen.getByRole("button", { name: /Processing…/ }).hasAttribute("disabled")).toBe(
       true
     );
+  });
+
+  it("shows the supported file types and max upload size", () => {
+    render(<IngestUploadPanel {...makeProps()} />);
+
+    expect(
+      screen.getByText(new RegExp(`Up to ${MAX_DOCUMENT_UPLOAD_MB} MB`))
+    ).toBeTruthy();
   });
 });

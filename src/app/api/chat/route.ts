@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
-import { WatsonXAI } from "@ibm-cloud/watsonx-ai";
-import { IamAuthenticator } from "ibm-cloud-sdk-core";
 import { resolveAstraConnection } from "@/lib/astra";
+import { resolveBackend } from "@/lib/ai/service";
 import { requireApiAuth } from "@/lib/auth";
 import { runChatWorkflow } from "@/lib/chat/service";
 import type { StepEvent } from "@/lib/chat/types";
@@ -12,7 +11,6 @@ import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
 export const runtime = "nodejs";
 
-const WATSONX_VERSION = "2024-05-31";
 const chatLimiter = createRateLimiter({ windowMs: 60_000, max: 20 });
 
 export async function POST(req: NextRequest) {
@@ -41,8 +39,7 @@ export async function POST(req: NextRequest) {
   const {
     token: bodyToken,
     endpoint: bodyEndpoint,
-    ibmApiKey: bodyIbmApiKey,
-    watsonxProjectId: bodyProjectId,
+    huggingfaceApiKey,
     keyspace,
     ...payload
   } = result;
@@ -60,33 +57,14 @@ export async function POST(req: NextRequest) {
       const send = (event: StepEvent) => {
         controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
       };
-
-      const ibmApiKey = bodyIbmApiKey || process.env.WATSONX_API_KEY;
-      const projectId = bodyProjectId || process.env.WATSONX_PROJECT_ID;
-      const watsonxUrl =
-        process.env.WATSONX_URL || "https://wml-fvt.ml.test.cloud.ibm.com";
-      const iamUrl = process.env.WATSONX_IAM_URL || "https://iam.test.cloud.ibm.com";
-      const hfKey = process.env.HUGGINGFACE_API_KEY;
-      const watsonx =
-        ibmApiKey && projectId
-          ? new WatsonXAI({
-              version: WATSONX_VERSION,
-              serviceUrl: watsonxUrl,
-              authenticator: new IamAuthenticator({
-                apikey: ibmApiKey,
-                url: iamUrl,
-              }),
-            })
-          : null;
+      const backend = resolveBackend({ huggingfaceApiKey });
 
       try {
         await runChatWorkflow({
           payload,
           token,
           endpoint,
-          watsonx,
-          projectId,
-          hfKey,
+          backend,
           send,
         });
       } catch (err) {

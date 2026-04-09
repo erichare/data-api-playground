@@ -5,13 +5,38 @@ export type SearchResult = {
   collection?: string;
 };
 
+type ProviderMeta = {
+  provider: string;
+  model: string;
+};
+
 export type StepEvent =
+  | {
+      step: "prepare";
+      status: "running";
+      data: ProviderMeta & {
+        kind: "chat" | "embed";
+        message: string;
+        completed?: number;
+        total?: number;
+        determinate?: boolean;
+      };
+    }
+  | {
+      step: "prepare";
+      status: "complete";
+      latencyMs: number;
+      data: ProviderMeta & {
+        kind: "chat" | "embed";
+        downloaded: boolean;
+      };
+    }
   | { step: "analyze"; status: "running" }
   | {
       step: "analyze";
       status: "complete";
       latencyMs: number;
-      data: {
+      data: ProviderMeta & {
         collection: string;
         collections?: string[];
         allCollections?: boolean;
@@ -33,7 +58,12 @@ export type StepEvent =
       step: "embed";
       status: "complete";
       latencyMs: number;
-      data: { preview: number[]; dims: number; real: boolean; error?: string };
+      data: ProviderMeta & {
+        preview: number[];
+        dims: number;
+        real: boolean;
+        error?: string;
+      };
     }
   | { step: "embed"; status: "skipped" }
   | { step: "search"; status: "running" }
@@ -55,18 +85,19 @@ export type StepEvent =
       step: "respond";
       status: "complete";
       latencyMs: number;
-      data: { content: string };
+      data: ProviderMeta & { content: string };
     }
   | {
       step: "respond";
       status: "error";
       latencyMs: number;
-      data: { error: string };
+      data: Partial<ProviderMeta> & { error: string };
     };
 
 export interface ChatCollectionInfo {
   name: string;
   isVectorize: boolean;
+  vectorDimension?: number | null;
 }
 
 export interface ChatHistoryMessage {

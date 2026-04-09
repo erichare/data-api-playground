@@ -14,7 +14,6 @@ describe("/api/ingest-document route", () => {
     vi.clearAllMocks();
     vi.spyOn(console, "error").mockImplementation(() => {});
     delete process.env.PLAYGROUND_AUTH_PASSWORD;
-    delete process.env.HUGGINGFACE_API_KEY;
   });
 
   it("streams parsed document ingest output as ndjson", async () => {
@@ -42,8 +41,6 @@ describe("/api/ingest-document route", () => {
       })
     );
 
-    process.env.HUGGINGFACE_API_KEY = "hf-key";
-
     const { POST } = await import("./route");
     const request = new Request("http://localhost/api/ingest-document", {
       method: "POST",
@@ -60,7 +57,6 @@ describe("/api/ingest-document route", () => {
     expect(streamDocumentIngestMock).toHaveBeenCalledWith(
       expect.objectContaining({
         collectionName: "docs",
-        hfKey: "hf-key",
       })
     );
   });
