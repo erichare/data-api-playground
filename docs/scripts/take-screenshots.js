@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 // Screenshot script for Data API Playground docs
 // Run with: npx playwright-chromium node docs/scripts/take-screenshots.js
 // Or: node docs/scripts/take-screenshots.js (with playwright installed)

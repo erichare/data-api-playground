@@ -210,4 +210,90 @@ describe("AstraConnectDialog", () => {
     expect(props.onDisconnect).toHaveBeenCalled();
     expect(props.onClose).toHaveBeenCalled();
   });
+
+  it("shows missing Ollama models and lets users toggle secret visibility", async () => {
+    const props = makeProps();
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/ai-status") {
+        return new Response(
+          JSON.stringify({
+            hasHuggingFaceEnvKey: false,
+            ollamaReachable: true,
+            ollamaBaseUrl: "http://127.0.0.1:11434",
+            chatModelInstalled: false,
+            embedModelInstalled: false,
+            chatModel: "granite3.1-dense:8b",
+            embedModel: "granite-embedding:278m",
+          })
+        );
+      }
+
+      if (String(input) === "/api/astra-status") {
+        return new Response(JSON.stringify({ hasToken: false, hasEndpoint: false }));
+      }
+
+      throw new Error(`Unhandled fetch: ${String(input)}`);
+    }) as typeof fetch;
+
+    const { container } = render(<AstraConnectDialog {...props} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Missing local models:/)).toBeTruthy();
+    });
+    expect(screen.getByText("Optional")).toBeTruthy();
+
+    const tokenInput = screen.getByTestId("astra-token-input") as HTMLInputElement;
+    const huggingfaceInput = screen.getByTestId(
+      "huggingface-api-key-input"
+    ) as HTMLInputElement;
+    const toggleButtons = container.querySelectorAll(
+      '[data-testid="astra-token-input"] + button, [data-testid="huggingface-api-key-input"] + button'
+    );
+
+    expect(tokenInput.type).toBe("password");
+    expect(huggingfaceInput.type).toBe("password");
+
+    fireEvent.click(toggleButtons[0] as HTMLButtonElement);
+    fireEvent.click(toggleButtons[1] as HTMLButtonElement);
+
+    expect(tokenInput.type).toBe("text");
+    expect(huggingfaceInput.type).toBe("text");
+  });
+
+  it("submits on Enter when env-backed Astra credentials are available and shows errors", async () => {
+    const props = makeProps({ error: "Connection failed" });
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/ai-status") {
+        return new Response(
+          JSON.stringify({
+            hasHuggingFaceEnvKey: false,
+            ollamaReachable: false,
+            ollamaBaseUrl: "http://127.0.0.1:11434",
+            chatModelInstalled: false,
+            embedModelInstalled: false,
+            chatModel: "granite3.1-dense:8b",
+            embedModel: "granite-embedding:278m",
+          })
+        );
+      }
+
+      if (String(input) === "/api/astra-status") {
+        return new Response(JSON.stringify({ hasToken: true, hasEndpoint: true }));
+      }
+
+      throw new Error(`Unhandled fetch: ${String(input)}`);
+    }) as typeof fetch;
+
+    render(<AstraConnectDialog {...props} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Connection failed")).toBeTruthy();
+    });
+
+    fireEvent.keyDown(screen.getByTestId("astra-token-input"), { key: "Enter" });
+
+    await waitFor(() => {
+      expect(props.onConnect).toHaveBeenCalledWith("", "");
+    });
+  });
 });

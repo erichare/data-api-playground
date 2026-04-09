@@ -1,5 +1,5 @@
 import { chromium } from "playwright";
-import { writeFileSync, mkdirSync } from "fs";
+import { mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 

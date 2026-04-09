@@ -52,7 +52,6 @@ async function closeAllDialogs(page) {
   await closeAllDialogs(d);
 
   // 10 — Connect / Settings dialog — click header connection button
-  const connBtn = await d.$("header button");
   const headerBtns = await d.$$("header button");
   console.log(`Found ${headerBtns.length} header buttons`);
   // Try clicking the "Connected" / connection status button
@@ -116,13 +115,11 @@ async function closeAllDialogs(page) {
   }
   // Try finding by the right panel trigger
   const ingestBtns = await l.$$("button");
-  let ingestOpened = false;
   for (const btn of ingestBtns) {
     const txt = await btn.textContent();
     const aria = await btn.getAttribute("aria-label") ?? "";
     if (aria.toLowerCase().includes("ingest") || txt?.toLowerCase().includes("ingest")) {
       await btn.click({ force: true });
-      ingestOpened = true;
       break;
     }
   }

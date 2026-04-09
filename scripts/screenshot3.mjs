@@ -8,7 +8,6 @@ const OUT = join(__dirname, "../docs/screenshots");
 mkdirSync(OUT, { recursive: true });
 
 const BASE = "http://localhost:3000";
-const ID = "cd6f2a47-6df5-41e8-9e17-7595635fa0ad"; // server already running
 
 async function wait(page, ms = 800) { await page.waitForTimeout(ms); }
 

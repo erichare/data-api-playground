@@ -109,4 +109,44 @@ describe("DeleteCollectionDialog", () => {
     expect((screen.getByPlaceholderText("invoices") as HTMLInputElement).value).toBe("");
     expect(container.querySelector("code")?.textContent).toContain('"invoices"');
   });
+
+  it("supports close interactions and hover styling for the close controls", () => {
+    const onClose = vi.fn();
+    const { container } = render(
+      <DeleteCollectionDialog
+        collectionName="orders"
+        onClose={onClose}
+        onConfirm={vi.fn()}
+      />
+    );
+
+    const closeButton = screen.getAllByRole("button")[0] as HTMLButtonElement;
+    const cancelButton = screen.getByRole("button", { name: "Cancel" });
+    const input = screen.getByPlaceholderText("orders");
+
+    fireEvent.mouseEnter(closeButton);
+    expect(closeButton.style.color).toBe("var(--text-secondary)");
+    fireEvent.mouseLeave(closeButton);
+    expect(closeButton.style.color).toBe("var(--text-muted)");
+
+    fireEvent.mouseEnter(cancelButton);
+    expect((cancelButton as HTMLButtonElement).style.backgroundColor).toBe(
+      "var(--bg-hover)"
+    );
+    expect((cancelButton as HTMLButtonElement).style.color).toBe(
+      "var(--text-secondary)"
+    );
+    fireEvent.mouseLeave(cancelButton);
+    expect((cancelButton as HTMLButtonElement).style.backgroundColor).toBe(
+      "transparent"
+    );
+    expect((cancelButton as HTMLButtonElement).style.color).toBe(
+      "var(--text-muted)"
+    );
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    fireEvent.click(container.firstChild as HTMLElement);
+
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
 });

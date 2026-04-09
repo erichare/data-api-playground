@@ -76,6 +76,8 @@ describe("IngestUploadPanel", () => {
       throw new Error("Expected upload zone and file input to be rendered");
     }
 
+    const fileInputClick = vi.spyOn(fileInput, "click");
+
     fireEvent.dragOver(uploadZone, {
       preventDefault: vi.fn(),
     });
@@ -87,12 +89,14 @@ describe("IngestUploadPanel", () => {
     fireEvent.change(fileInput, {
       target: { files: [pdfFile] },
     });
+    fireEvent.click(uploadZone);
 
     expect(props.setIsDragOver).toHaveBeenNthCalledWith(1, true);
     expect(props.setIsDragOver).toHaveBeenNthCalledWith(2, false);
     expect(props.setIsDragOver).toHaveBeenNthCalledWith(3, false);
     expect(props.onFilesAdded).toHaveBeenNthCalledWith(1, [pdfFile, mdFile]);
     expect(props.onFilesAdded).toHaveBeenNthCalledWith(2, [pdfFile]);
+    expect(fileInputClick).toHaveBeenCalled();
   });
 
   it("renders queued files, progress state, and delegates row removal and ingest actions", () => {
@@ -154,5 +158,61 @@ describe("IngestUploadPanel", () => {
     expect(
       screen.getByText(new RegExp(`Up to ${MAX_DOCUMENT_UPLOAD_MB} MB`))
     ).toBeTruthy();
+  });
+
+  it("shows drag-over copy, a placeholder collection, and the single-file ingest CTA", () => {
+    render(
+      <IngestUploadPanel
+        {...makeProps({
+          isDragOver: true,
+          queuedFiles: [new File(["doc"], "draft.txt", { type: "text/plain" })],
+          selectedCollection: "",
+        })}
+      />
+    );
+
+    expect(screen.getByText("Drop to upload")).toBeTruthy();
+    expect(screen.getByText("—")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Ingest Document" })).toBeTruthy();
+  });
+
+  it("renders preparing, extracting, and completed states while hiding remove buttons during upload", () => {
+    const extractingFile = new File(["extract"], "extract.pdf", {
+      type: "application/pdf",
+    });
+    const preparingFile = new File(["prepare"], "prepare.pdf", {
+      type: "application/pdf",
+    });
+    const completeFile = new File(["done"], "done.pdf", { type: "application/pdf" });
+
+    const { container } = render(
+      <IngestUploadPanel
+        {...makeProps({
+          queuedFiles: [extractingFile, preparingFile, completeFile],
+          uploading: true,
+          fileStatuses: new Map([
+            [fileKey(extractingFile), { stage: "extracting" }],
+            [
+              fileKey(preparingFile),
+              {
+                stage: "preparing",
+                message: "Downloading layers",
+                model: "granite3.1-dense:8b",
+                completed: 4096,
+                total: 8192,
+                determinate: true,
+              },
+            ],
+            [fileKey(completeFile), { stage: "done", chunks: 2 }],
+          ]),
+        })}
+      />
+    );
+
+    expect(screen.getByText("Downloading granite3.1-dense:8b")).toBeTruthy();
+    expect(screen.getByText("Downloading layers. First run can take several GB and a few minutes.")).toBeTruthy();
+    expect(screen.getByText("4.0 KB/8.0 KB")).toBeTruthy();
+    expect(container.querySelectorAll(".animate-spin").length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByRole("button").length).toBe(1);
   });
 });

@@ -49,6 +49,8 @@ function makeDetailedSteps(): PipelineStep[] {
       status: "complete",
       latencyMs: 5,
       data: {
+        provider: "huggingface",
+        model: "ibm-granite/granite-3.3-8b-instruct",
         intent: "collection_overview",
         allCollections: true,
         collections: ["orders", "users"],
@@ -67,6 +69,8 @@ function makeDetailedSteps(): PipelineStep[] {
       status: "complete",
       latencyMs: 7,
       data: {
+        provider: "ollama",
+        model: "granite-embedding:278m",
         preview: [0.1, 0.2, 0.3],
         dims: 768,
         real: false,
@@ -94,6 +98,8 @@ function makeDetailedSteps(): PipelineStep[] {
       status: "complete",
       latencyMs: 13,
       data: {
+        provider: "huggingface",
+        model: "ibm-granite/granite-3.3-8b-instruct",
         content: "This answer summarizes the matching orders and highlights the strongest result for the user.",
       },
     },
@@ -114,7 +120,10 @@ describe("PipelineTrace", () => {
     expect(screen.getByText(/status "active"/)).toBeTruthy();
     expect(screen.getByText('{"intent":"collection_overview"}')).toBeTruthy();
     expect(screen.getByText("[0.1000, 0.2000, 0.3000, …]")).toBeTruthy();
-    expect(screen.getByText("mock")).toBeTruthy();
+    expect(
+      screen.getAllByText(/Hugging Face · ibm-granite\/granite-3.3-8b-instruct/)
+    ).toHaveLength(2);
+    expect(screen.getByText(/Ollama · granite-embedding:278m/)).toBeTruthy();
     expect(screen.getByText("Granite unavailable")).toBeTruthy();
     expect(screen.getByText("Searched:")).toBeTruthy();
     expect(screen.getByText("1. doc-1")).toBeTruthy();
@@ -147,7 +156,8 @@ describe("PipelineTrace", () => {
     fireEvent.click(screen.getByRole("button", { name: /Pipeline Trace/i }));
 
     expect(screen.getByText("Analyze Query")).toBeTruthy();
-    expect(screen.getByText("Embed with Granite")).toBeTruthy();
+    expect(screen.getByText("Prepare Model")).toBeTruthy();
+    expect(screen.getByText("Embed Query")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /Pipeline Trace/i }));
     expect(screen.queryByText("Analyze Query")).toBeNull();

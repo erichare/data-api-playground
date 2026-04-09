@@ -93,7 +93,8 @@ describe("createCollectionBodySchema", () => {
   });
 
   it("rejects missing name", () => {
-    const { name: _, ...rest } = valid;
+    const rest = { ...valid };
+    delete rest.name;
     expect(createCollectionBodySchema.safeParse(rest).success).toBe(false);
   });
 

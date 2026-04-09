@@ -462,6 +462,108 @@ describe("useIngestUpload", () => {
       expect(body.get("endpoint")).toBe("https://test.endpoint.com");
     });
 
+    it("includes a trimmed Hugging Face key when one is provided", async () => {
+      const file = makeFile("upload.txt", 512);
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              JSON.stringify({ type: "complete", chunks: 1, source_doc_id: "id-2" }) + "\n"
+            )
+          );
+          controller.close();
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        body: stream,
+      } as unknown as Response);
+
+      const { result } = renderHook(() =>
+        useIngestUpload({ ...defaultArgs, huggingfaceApiKey: "  hf-token  " })
+      );
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      const [, options] = vi.mocked(fetch).mock.calls[0];
+      const body = options?.body as FormData;
+      expect(body.get("huggingfaceApiKey")).toBe("hf-token");
+    });
+
+    it("tracks Ollama prepare events with fallback messaging before completion", async () => {
+      const file = makeFile("prepare.pdf");
+      let closeStream!: () => void;
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              JSON.stringify({
+                type: "prepare",
+                status: "running",
+                determinate: false,
+              }) + "\n"
+            )
+          );
+          closeStream = () => {
+            controller.enqueue(
+              encoder.encode(
+                JSON.stringify({
+                  type: "complete",
+                  chunks: 1,
+                  source_doc_id: "doc-prep",
+                }) + "\n"
+              )
+            );
+            controller.close();
+          };
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        body: stream,
+      } as unknown as Response);
+
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      act(() => {
+        void result.current.handleIngest();
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(result.current.fileStatuses.get("prepare.pdf__1024")).toEqual({
+        stage: "preparing",
+        message: "Preparing local model",
+        model: undefined,
+        completed: undefined,
+        total: undefined,
+        determinate: false,
+      });
+
+      await act(async () => {
+        closeStream();
+      });
+
+      expect(result.current.fileStatuses.get("prepare.pdf__1024")).toEqual({
+        stage: "done",
+        chunks: 1,
+      });
+    });
+
     it("sets uploading=false after completing all files", async () => {
       const file = makeFile("final.pdf");
       const { result } = renderHook(() => useIngestUpload(defaultArgs));
