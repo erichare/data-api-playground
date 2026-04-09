@@ -9,17 +9,19 @@ An interactive web app for exploring [DataStax Astra DB](https://www.datastax.co
 - Hugging Face when a key is available
 - Local Ollama fallback when no Hugging Face key is configured
 - CSV and document ingest with streaming progress
+- Visible Ollama prepare and download steps during first-run model setup
 - Automatic server-side `$vectorize` support for vectorize-enabled collections
 - Persistent conversations and ingested-document metadata in local SQLite
 
 ## AI Backend Behavior
 
-The app now supports two AI backends:
+All AI work flows through a shared provider layer in `src/lib/ai/service.ts`.
 
-1. Hugging Face
-   Use `HUGGINGFACE_API_KEY` from the server environment, or enter a manual Hugging Face key in the Connect dialog for the current page session.
-2. Ollama
-   If no Hugging Face key is available, the app falls back to local Ollama.
+Resolution order:
+
+1. Manual Hugging Face key entered in the Connect dialog
+2. `HUGGINGFACE_API_KEY` from the server environment
+3. Local Ollama fallback
 
 Default models:
 
@@ -28,7 +30,13 @@ Default models:
 - Ollama chat: `granite3.1-dense:8b`
 - Ollama embeddings: `granite-embedding:278m`
 
-When Ollama needs to pull a model, the chat and ingest UIs surface a dedicated prepare/download step so the first-run delay is obvious.
+The Connect dialog combines:
+
+- Astra status from `/api/astra-status`
+- AI backend status from `/api/ai-status`
+- an optional manual Hugging Face key that lives in memory only for the current page session
+
+When Ollama needs to pull a model, the chat and ingest UIs surface a dedicated `prepare` step so the first-run delay is obvious instead of looking like a stalled request.
 
 ## Getting Started
 
@@ -60,6 +68,19 @@ You can also enter credentials at runtime:
 
 The manual Hugging Face key is kept in memory only for the current page session.
 
+If you want to use the local fallback path, make sure Ollama is running:
+
+```bash
+ollama serve
+```
+
+The app can pull missing models on demand, but you can also pre-pull them:
+
+```bash
+ollama pull granite3.1-dense:8b
+ollama pull granite-embedding:278m
+```
+
 ### Run
 
 ```bash
@@ -75,6 +96,15 @@ Open [http://localhost:3000](http://localhost:3000).
 3. Chat with your collections and inspect the Output, Code, and Trace tabs.
 4. Ingest CSV or document files into a collection.
 5. If no Hugging Face key is available, make sure Ollama is running locally and let the app pull missing models on demand.
+
+## Ingest Behavior
+
+- Document uploads support PDF, TXT, MD, DOCX, CSV, and JSON files.
+- Document uploads are capped at 50 MB per file.
+- CSV ingest supports up to 5,000 rows per request.
+- Collections using Astra server-side vectorize skip client-side embedding entirely.
+- Non-vectorize collections use the resolved AI backend for embeddings.
+- Embedding dimensions are validated against collection metadata when Astra exposes a dimension.
 
 ## Tech Stack
 
@@ -110,17 +140,18 @@ src/
     ai/
     astra.ts
     chat/
-    collections/
     ingest/
     hooks/
+    server/
 ```
 
 ## Notes
 
-- Collections using Astra server-side vectorize skip client-side embedding entirely.
-- Non-vectorize collections use the resolved backend for embeddings.
+- `POST /api/chat` streams `prepare`, `analyze`, `embed`, `search`, and `respond` events.
+- `POST /api/conversations/title` is best-effort and returns `null` instead of blocking the UI if generation fails.
 - If a Hugging Face key is present but invalid, the app returns the provider error and does not auto-fallback to Ollama.
 - If Ollama is selected and a required model is missing, the app pulls it on demand and shows download progress in the UI.
+- General API requests are capped at 10 MB, while ingest routes are allowed up to 50 MB.
 
 ## Scripts
 
