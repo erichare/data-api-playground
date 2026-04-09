@@ -24,7 +24,11 @@ vi.mock("@/components/chat/ChatArea", () => ({
     collections,
     activeConversationId,
   }: {
-    collections: Array<{ name: string; isVectorize: boolean }>;
+    collections: Array<{
+      name: string;
+      isVectorize: boolean;
+      vectorDimension?: number | null;
+    }>;
     activeConversationId: string;
   }) => (
     <div data-testid="chat-area">
@@ -81,8 +85,7 @@ function renderPanel(overrides: Partial<Parameters<typeof PlaygroundMainPanel>[0
       astraToken=""
       astraEndpoint=""
       keyspace="default_keyspace"
-      ibmApiKey=""
-      watsonxProjectId=""
+      huggingfaceApiKey=""
       initializing={false}
       isConnected={true}
       {...overrides}
@@ -103,8 +106,8 @@ describe("PlaygroundMainPanel", () => {
     expect(screen.getByTestId("chat-area").textContent).toBe(
       JSON.stringify({
         collections: [
-          { name: "orders", isVectorize: true },
-          { name: "customers", isVectorize: false },
+          { name: "orders", isVectorize: true, vectorDimension: 768 },
+          { name: "customers", isVectorize: false, vectorDimension: 0 },
         ],
         activeConversationId: "conv-1",
       })

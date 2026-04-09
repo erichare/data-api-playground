@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { isAuthEnabled, isAuthenticatedRequest } from "@/lib/auth";
-
-const DEFAULT_BODY_LIMIT = 10 * 1024 * 1024; // 10 MB
-const INGEST_BODY_LIMIT = 50 * 1024 * 1024; // 50 MB
+import {
+  DEFAULT_API_BODY_LIMIT_BYTES,
+  INGEST_API_BODY_LIMIT_BYTES,
+} from "@/lib/server/requestLimits";
 
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
@@ -13,8 +14,8 @@ export function proxy(req: NextRequest) {
   if (contentLength && pathname.startsWith("/api/")) {
     const size = parseInt(contentLength, 10);
     const limit = pathname.startsWith("/api/ingest")
-      ? INGEST_BODY_LIMIT
-      : DEFAULT_BODY_LIMIT;
+      ? INGEST_API_BODY_LIMIT_BYTES
+      : DEFAULT_API_BODY_LIMIT_BYTES;
     if (!isNaN(size) && size > limit) {
       return NextResponse.json(
         { error: "Payload too large" },

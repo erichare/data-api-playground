@@ -2,188 +2,198 @@
 
 ## Overview
 
-The Data API Playground is a Next.js application that lets users connect to a DataStax Astra DB instance, explore collections, ingest CSV data, and run natural language queries powered by a RAG pipeline (IBM watsonx Granite + vector/hybrid/lexical search).
+The Data API Playground is a Next.js application for exploring Astra DB collections, ingesting data, and running a lightweight RAG workflow against Astra data.
 
-All API routes run as Next.js route handlers (Node.js runtime). The frontend is a single-page React app with no dedicated backend service.
+All API routes run as Next.js route handlers in the Node.js runtime. The frontend is a single-page React app.
 
----
+## Request Boundaries
+
+- Browser clients talk only to this app's route handlers.
+- Route handlers resolve Astra and AI credentials server-side before calling Astra, Hugging Face, or Ollama.
+- Optional app-level auth is enforced in the proxy and route handlers through `requireApiAuth`.
+
+Body-size limits are intentionally split:
+
+- General API requests: 10 MB
+- Ingest API requests: 50 MB
+- Document upload validation: 50 MB per file
+
+The Next.js proxy buffer, `src/proxy.ts`, and the document ingest validator all use aligned limits so multipart uploads are not truncated before the route can validate them.
+
+## AI Provider Resolution
+
+All AI work now flows through `src/lib/ai/service.ts`.
+
+Resolution order:
+
+1. Manual Hugging Face key from the Connect dialog
+2. `HUGGINGFACE_API_KEY` from the server environment
+3. Local Ollama fallback
+
+Normalized operations:
+
+- `resolveBackend({ huggingfaceApiKey })`
+- `getAiStatus()`
+- `ensureModel(kind)`
+- `generateText(...)`
+- `embedMany(...)`
+
+Default models:
+
+- Hugging Face chat: `ibm-granite/granite-3.3-8b-instruct`
+- Hugging Face embeddings: `ibm-granite/granite-embedding-125m-english`
+- Ollama chat: `granite3.1-dense:8b`
+- Ollama embeddings: `granite-embedding:278m`
+
+`GET /api/ai-status` reports:
+
+- whether an env Hugging Face key is configured
+- whether Ollama is reachable
+- the configured Ollama base URL
+- whether the active Ollama chat and embedding models are already installed
+
+If Ollama is active and a model is missing, `ensureModel` can stream progress from `/api/pull` into the app's `prepare` UI state.
 
 ## Frontend
 
-The app is a single page (`app/page.tsx`) composed of:
+Main composition:
 
-| Component | Location | Responsibility |
-|---|---|---|
-| `Header` | `components/shell/` | Connection status, settings button |
-| `Sidebar` | `components/shell/` | Keyspace selector, collection list, conversation list |
-| `PlaygroundMainPanel` | `components/shell/` | View composition for Chat, Ingest, and API modes |
-| `ViewModeSwitcher` | `components/shell/` | Chat / Ingest / API mode switching |
-| `ChatArea` | `components/chat/` | Conversation UI, query input, search mode toggle |
-| `IngestTab` | `components/ingest/` | Upload flow, document library, raw browser |
-| `AstraConnectDialog` | `components/connection/` | Token/endpoint/watsonx key input |
-| `NewCollectionDialog` | `components/collection/` | Create vector or vectorize-enabled collections |
-| `QuickStartGuide` | `components/onboarding/` | SDK code examples in Python, TypeScript, Java, cURL |
+- `src/app/page.tsx`
+- `src/components/shell/Sidebar.tsx`
+- `src/components/shell/PlaygroundMainPanel.tsx`
+- `src/components/connection/AstraConnectDialog.tsx`
+- `src/components/chat/ChatArea.tsx`
+- `src/components/ingest/IngestTab.tsx`
 
-Application state is composed in `lib/hooks/usePlaygroundState.ts`, with conversation logic in `lib/hooks/useConversationState.ts` and connection/session logic in `lib/hooks/usePlaygroundConnection.ts`.
+Top-level app state is composed in `src/lib/hooks/usePlaygroundState.ts`.
 
----
+Important state split:
 
-## State Persistence
-
-| What | Where | Survives page refresh? |
-|---|---|---|
-| Astra DB token | `sessionStorage` | Yes (until tab closes) |
-| Astra DB endpoint | `sessionStorage` | Yes |
-| IBM watsonx API key | `sessionStorage` | Yes |
-| watsonx Project ID | `sessionStorage` | Yes |
-| Conversations & messages | Local SQLite (`data/app.db`) | **Yes** |
-| Ingested document summaries | Local SQLite (`data/app.db`) | **Yes** |
-| Collections list | React state (re-fetched on load) | Effectively yes |
-| Keyspace selection | React state only | No |
-| UI state (dialogs, view mode) | React state only | No |
-
----
+- Astra connection and collection metadata live in `usePlaygroundConnection`
+- Conversations live in `useConversationState`
+- The manual Hugging Face key lives only in React state for the current page session
+- Connection state can come from env-backed Astra credentials even when no token is entered in the dialog
 
 ## API Routes
 
-All routes are Next.js route handlers at `app/api/`.
+Infrastructure:
 
-Runtime credentials are typically sent in JSON request bodies to the app's own server routes, then resolved server-side before talking to Astra DB. They are not sent to Astra from the browser directly, and routes should avoid placing them in query strings.
+- `/api/astra-status`
+- `/api/ai-status`
 
-### Infrastructure / Status
+Core flows:
 
-| Route | Method | Purpose |
-|---|---|---|
-| `/api/astra-status` | GET | Returns `{ hasToken, hasEndpoint }` — whether server env vars are set |
+- `/api/connect`
+- `/api/chat`
+- `/api/conversations`
+- `/api/conversations/[id]`
+- `/api/conversations/[id]/messages`
+- `/api/conversations/title`
+- `/api/browse`
+- `/api/count`
+- `/api/documents`
+- `/api/documents/chunks`
+- `/api/ingest`
+- `/api/ingest-document`
+- `/api/create-collection`
+- `/api/delete-collection`
+- `/api/delete-documents`
+- `/api/embedding-providers`
+- `/api/keyspaces`
+- `/api/data-api-proxy`
 
-### Connection & Schema
+## Chat Pipeline
 
-| Route | Method | Key Inputs | Returns |
-|---|---|---|---|
-| `/api/connect` | POST | `token`, `endpoint`, `keyspace?` | All collections with vector metadata and estimated counts |
-| `/api/keyspaces` | POST | `token`, `endpoint` | List of keyspace names |
-| `/api/embedding-providers` | POST | `token`, `endpoint` | All vectorize provider/model options available on the DB |
-| `/api/create-collection` | POST | `token`, `endpoint`, `name`, `dimension`, `metric`, `provider`, `model` | The created collection object |
-| `/api/delete-collection` | POST | `token`, `endpoint`, `name` | Drop a collection |
+`POST /api/chat` streams newline-delimited JSON events.
 
-### Data
+Pipeline order:
 
-| Route | Method | Key Inputs | Returns |
-|---|---|---|---|
-| `/api/browse` | POST | `token`, `endpoint`, `collection`, `pageState?`, `sort?` | 20 documents + next page cursor |
-| `/api/count` | POST | `token`, `endpoint`, `collection` | Estimated document count |
-| `/api/delete-documents` | POST | `token`, `endpoint`, `collection`, `ids[]` | Deleted count |
-| `/api/documents` | `GET/DELETE` | `collection?` or `source_doc_id`, `collection`, connection fields | SQLite document summaries or delete summary + Astra chunks |
-| `/api/ingest` | POST | `token`, `endpoint`, `collection`, `rows[]`, `filename` | NDJSON stream of progress events |
-| `/api/ingest-document` | POST | `FormData(file, collection, token?, endpoint?, keyspace?, metadata?)` | NDJSON stream of extraction/chunk/store progress |
+1. `prepare`
+   Optional. Emitted when Ollama checks or downloads a required local model.
+2. `analyze`
+   Uses the resolved chat model to interpret the user request and choose collection, mode, filters, and limits.
+3. `embed`
+   Generates a query embedding unless the target collection uses Astra server-side vectorize.
+4. `search`
+   Queries Astra with `$vector`, `$vectorize`, `$hybrid`, or lexical search.
+5. `respond`
+   Generates the final natural-language answer.
 
-### Chat / RAG
+Additional behavior:
 
-| Route | Method | Key Inputs | Returns |
-|---|---|---|---|
-| `/api/chat` | POST | `query`, `searchMode`, `token?`, `endpoint?`, `keyspace?`, `collections[]`, `activeCollection`, `history?`, `ibmApiKey?`, `watsonxProjectId?` | NDJSON stream of 4-step pipeline events |
+- Internal `dap_` collections are filtered out of AI collection selection.
+- `skipSearch` requests skip both embedding and search steps.
+- Provider and model metadata are attached to `prepare`, `analyze`, `embed`, and `respond` completion events.
+- Collections with server-side vectorize continue to bypass client-side embedding.
 
-The chat pipeline steps:
+## Conversation Titles
 
-```
-1. analyze  — IBM Granite (watsonx) reads the query and outputs { collection, searchMode, intent, limit, sortField, sortDir }
-              Only considers non-internal (non-dap_*) collections.
-2. embed    — IBM Granite 125M generates a 768-dim vector for the query
-              Uses watsonx AI SDK if IBM API key is set, otherwise falls back to HuggingFace Inference API.
-              Skipped entirely if the target collection uses server-side $vectorize.
-3. search   — Astra DB query using $vector / $vectorize / $hybrid / $text sort depending on mode
-4. respond  — IBM Granite synthesizes a concise, format-matched natural language answer from retrieved documents
-```
+`POST /api/conversations/title` uses the same backend resolution as chat, but remains best-effort:
 
-Each step streams two events: `{ step, status: "running" }` then `{ step, status: "complete", latencyMs, data }`.
+- it does not auto-pull Ollama models
+- it returns `{ title: null }` if generation fails
+- it is intentionally non-blocking so conversation creation never depends on title generation
 
-### Conversations
+## Ingest
 
-Conversations and messages are stored locally in SQLite via `better-sqlite3`. This makes conversation persistence independent from Astra connection state and available immediately on load.
+`src/lib/ingest/service.ts` handles both CSV and document ingest.
 
-| Route | Method | Purpose |
-|---|---|---|
-| `/api/conversations` | GET | List conversations (sorted by `updatedAt` desc) |
-| `/api/conversations` | POST | Create a new conversation |
-| `/api/conversations/[id]` | PATCH | Rename a conversation |
-| `/api/conversations/[id]` | DELETE | Delete conversation and all its messages |
-| `/api/conversations/[id]/messages` | GET | Load messages for a conversation |
-| `/api/conversations/[id]/messages` | POST | Append a message (user or assistant) |
+Behavior:
 
-#### Data Model
+- CSV ingest batches rows into Astra writes and caps requests at 5,000 rows.
+- Document ingest extracts text, chunks it, writes document metadata locally, and inserts chunk records into Astra.
+- Vectorize-enabled collections use `$vectorize`
+- Non-vectorize collections call the resolved AI backend for embeddings
+- Ollama model pulls emit `prepare` progress events
+- Non-vectorize ingest now fails fast on provider errors
+- Non-vectorize ingest validates embedding dimensions against collection metadata when available
 
-**`conversations`** — one row per thread:
-```ts
-{ id: string; name: string; created_at: string; updated_at: string; message_count: number; }
-```
+There is no longer any random-vector fallback or silent insert-without-vectors path for connected ingest.
 
-**`messages`** — one row per message:
-```ts
-{ id: string; conversation_id: string; role: "user" | "assistant"; content: string; timestamp: string; }
-```
+Upload constraints:
 
-#### Initialization Flow
+- supported document types: PDF, TXT, MD, DOCX, CSV, JSON
+- maximum document upload size: 50 MB
+- metadata payload cap: 16 KB
+- extracted text cap: 1,000,000 characters
+- maximum document chunks: 500
 
-```
-On connect:
-  1. Fetch GET /api/conversations → populate conversation list
-  2. Select most recently updated conversation
-  3. Fetch GET /api/conversations/[id]/messages → populate message list
+## Persistence
 
-On new conversation:
-  1. POST /api/conversations → get new ID
-  2. Add to local list, set as active
+Stored locally in SQLite:
 
-On send:
-  1. POST user message to /api/conversations/[id]/messages immediately
-  2. Stream /api/chat
-  3. POST assistant message to /api/conversations/[id]/messages after stream ends
+- conversations
+- messages
+- ingested document summaries
 
-On conversation switch:
-  1. Fetch /api/conversations/[id]/messages (lazy-loaded on demand)
-  2. Switch view mode to Chat tab
-```
+Stored in browser React state only:
 
----
+- manual Hugging Face key
+- open dialog state
+- active view mode
 
-## Internal Collections
+Stored in in-memory connection state:
 
-Collections prefixed `dap_` are considered internal application collections and are excluded from normal user exploration. The chat pipeline also filters them out when choosing collections.
-
-- Hidden from the normal collection list
-- Never selected as the default active collection
-- Never queried by the AI pipeline unless explicitly instructed
-
----
-
-## Service Layer
-
-The backend/domain logic is now organized into service modules instead of living only in route handlers.
-
-| Module | Responsibility |
-|---|---|
-| `lib/chat/service.ts` | Analyze/embed/search/respond workflow orchestration |
-| `lib/chat/types.ts` | Shared chat workflow event/request/result types |
-| `lib/collections/service.ts` | Collection CRUD and ingested-document metadata operations |
-| `lib/ingest/service.ts` | CSV ingest, document ingest, extraction, chunking, embedding |
-
-This keeps route files focused on request parsing, response shaping, and streaming boundaries.
-
----
+- Astra token and endpoint when entered through the Connect dialog
+- env-backed Astra availability flags from `/api/astra-status`
 
 ## Environment Variables
 
-```env
-# Astra DB — required (or enter in the UI Connect dialog)
-ASTRA_DB_APPLICATION_TOKEN=AstraCS:...
-ASTRA_DB_API_ENDPOINT=https://<db-id>.apps.astra.datastax.com
+See [.env.example](/Users/erichare/GitHub/data-api-playground/.env.example).
 
-# IBM watsonx — optional; enables real LLM + embedding pipeline
-WATSONX_API_KEY=...
-WATSONX_PROJECT_ID=...
-WATSONX_SERVICE_URL=https://us-south.ml.cloud.ibm.com   # defaults to this if omitted
-WATSONX_IAM_URL=https://iam.cloud.ibm.com/identity/token # defaults to this if omitted
+Key variables:
 
-# HuggingFace — fallback embedding provider if watsonx is not configured
-HUGGINGFACE_API_KEY=hf_...
-```
+- `ASTRA_DB_APPLICATION_TOKEN`
+- `ASTRA_DB_API_ENDPOINT`
+- `HUGGINGFACE_API_KEY`
+- `HUGGINGFACE_CHAT_MODEL`
+- `HUGGINGFACE_EMBED_MODEL`
+- `OLLAMA_BASE_URL`
+- `OLLAMA_CHAT_MODEL`
+- `OLLAMA_EMBED_MODEL`
+
+Important behavior:
+
+- a manual Hugging Face key overrides `HUGGINGFACE_API_KEY` for the current page session only
+- if Hugging Face is selected but the key is invalid, the app returns the provider error and does not auto-fallback to Ollama
+- if no Hugging Face key is available, the app resolves to Ollama automatically

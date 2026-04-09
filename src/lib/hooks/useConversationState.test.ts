@@ -56,8 +56,7 @@ describe("useConversationState", () => {
 
     const { result } = renderHook(() =>
       useConversationState({
-        ibmApiKey: "",
-        watsonxProjectId: "",
+        huggingfaceApiKey: "",
       })
     );
 
@@ -113,8 +112,7 @@ describe("useConversationState", () => {
 
     const { result } = renderHook(() =>
       useConversationState({
-        ibmApiKey: "ibm-key",
-        watsonxProjectId: "project-1",
+        huggingfaceApiKey: "hf-key",
       })
     );
 

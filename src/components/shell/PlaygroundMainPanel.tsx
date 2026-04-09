@@ -20,8 +20,7 @@ interface PlaygroundMainPanelProps {
   astraToken: string;
   astraEndpoint: string;
   keyspace: string;
-  ibmApiKey: string;
-  watsonxProjectId: string;
+  huggingfaceApiKey?: string;
   initializing: boolean;
   isConnected: boolean;
 }
@@ -40,8 +39,7 @@ export function PlaygroundMainPanel({
   astraToken,
   astraEndpoint,
   keyspace,
-  ibmApiKey,
-  watsonxProjectId,
+  huggingfaceApiKey,
   initializing,
   isConnected,
 }: PlaygroundMainPanelProps) {
@@ -67,6 +65,7 @@ export function PlaygroundMainPanel({
           keyspace={keyspace}
           collections={collections}
           activeCollection={activeCollection}
+          huggingfaceApiKey={huggingfaceApiKey}
           isConnected={isConnected}
         />
       ) : (
@@ -80,12 +79,13 @@ export function PlaygroundMainPanel({
           collections={collections.map((collection) => ({
             name: collection.name,
             isVectorize: !!collection.vectorizeService,
+            vectorDimension: collection.vectorDim,
           }))}
           activeCollection={activeCollection}
           keyspace={keyspace}
-          ibmApiKey={ibmApiKey}
-          watsonxProjectId={watsonxProjectId}
+          huggingfaceApiKey={huggingfaceApiKey}
           collectionFields={collectionFields}
+          isConnected={isConnected}
           initializing={initializing}
         />
       )}

@@ -8,9 +8,11 @@ import {
   ACCEPTED_LABEL,
   FileIcon,
   fileKey,
+  formatBytes,
   getFileType,
   type FileStatus,
 } from "@/components/ingest/ingestShared";
+import { MAX_DOCUMENT_UPLOAD_MB } from "@/lib/ingest/constants";
 
 interface IngestUploadPanelProps {
   isDragOver: boolean;
@@ -61,7 +63,7 @@ export function IngestUploadPanel({
           Upload Document
         </p>
         <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-          {ACCEPTED_LABEL}
+          {ACCEPTED_LABEL} · Up to {MAX_DOCUMENT_UPLOAD_MB} MB
         </p>
       </div>
 
@@ -225,6 +227,13 @@ function QueuedFileRow({
             style={{ color: "var(--interactive)" }}
           />
         )}
+        {status.stage === "preparing" && (
+          <Loader2
+            size={11}
+            className="animate-spin shrink-0"
+            style={{ color: "#f59e0b" }}
+          />
+        )}
         {status.stage === "done" && (
           <CheckCircle2
             size={12}
@@ -278,6 +287,54 @@ function QueuedFileRow({
                     : "0%",
               }}
               transition={{ ease: "easeOut", duration: 0.3 }}
+            />
+          </div>
+        </div>
+      )}
+      {status.stage === "preparing" && (
+        <div className="mt-1.5">
+          <div className="flex justify-between gap-2 mb-0.5">
+            <span className="text-xs" style={{ color: "#f59e0b" }}>
+              {status.model
+                ? `Downloading ${status.model}`
+                : "Preparing local model"}
+            </span>
+            {status.determinate &&
+              typeof status.completed === "number" &&
+              typeof status.total === "number" && (
+                <span
+                  className="text-xs font-mono"
+                  style={{ color: "var(--text-primary)" }}
+                >
+                  {formatBytes(status.completed)}/{formatBytes(status.total)}
+                </span>
+              )}
+          </div>
+          <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+            {status.message}. First run can take several GB and a few minutes.
+          </p>
+          <div
+            className="h-1 rounded-full overflow-hidden mt-1.5"
+            style={{ backgroundColor: "var(--bg-primary)" }}
+          >
+            <motion.div
+              className="h-full rounded-full"
+              style={{ backgroundColor: "#f59e0b" }}
+              animate={{
+                width:
+                  status.determinate &&
+                  typeof status.completed === "number" &&
+                  typeof status.total === "number" &&
+                  status.total > 0
+                    ? `${Math.round((status.completed / status.total) * 100)}%`
+                    : "35%",
+                opacity: status.determinate ? 1 : [0.4, 1, 0.4],
+              }}
+              transition={
+                status.determinate
+                  ? { ease: "easeOut", duration: 0.3 }
+                  : { duration: 1.2, repeat: Infinity }
+              }
             />
           </div>
         </div>

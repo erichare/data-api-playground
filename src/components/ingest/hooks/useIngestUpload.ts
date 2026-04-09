@@ -7,12 +7,17 @@ import {
   getFileType,
   type FileStatus,
 } from "@/components/ingest/ingestShared";
+import {
+  MAX_DOCUMENT_UPLOAD_BYTES,
+  MAX_DOCUMENT_UPLOAD_MB,
+} from "@/lib/ingest/constants";
 
 interface UseIngestUploadArgs {
   astraToken: string;
   astraEndpoint: string;
   keyspace: string;
   selectedCollection: string;
+  huggingfaceApiKey?: string;
   prependDocument: (doc: IngestedDocumentSummary) => void;
 }
 
@@ -21,6 +26,7 @@ export function useIngestUpload({
   astraEndpoint,
   keyspace,
   selectedCollection,
+  huggingfaceApiKey,
   prependDocument,
 }: UseIngestUploadArgs) {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -63,6 +69,14 @@ export function useIngestUpload({
       const setStatus = (status: FileStatus) =>
         setFileStatuses((prev) => new Map(prev).set(key, status));
 
+      if (file.size > MAX_DOCUMENT_UPLOAD_BYTES) {
+        setStatus({
+          stage: "error",
+          message: `File exceeds ${MAX_DOCUMENT_UPLOAD_MB} MB upload limit`,
+        });
+        return;
+      }
+
       setStatus({ stage: "extracting" });
 
       const formData = new FormData();
@@ -71,6 +85,9 @@ export function useIngestUpload({
       formData.append("keyspace", keyspace);
       formData.append("token", astraToken);
       formData.append("endpoint", astraEndpoint);
+      if (huggingfaceApiKey?.trim()) {
+        formData.append("huggingfaceApiKey", huggingfaceApiKey.trim());
+      }
 
       try {
         const res = await fetch("/api/ingest-document", {
@@ -94,6 +111,21 @@ export function useIngestUpload({
             if (!line.trim()) continue;
             const event = JSON.parse(line) as Record<string, unknown>;
 
+            if (event.type === "prepare" && event.status === "running") {
+              setStatus({
+                stage: "preparing",
+                message: String(event.message ?? "Preparing local model"),
+                model:
+                  typeof event.model === "string" ? event.model : undefined,
+                completed:
+                  typeof event.completed === "number"
+                    ? event.completed
+                    : undefined,
+                total:
+                  typeof event.total === "number" ? event.total : undefined,
+                determinate: event.determinate === true,
+              });
+            }
             if (event.type === "chunked") {
               setStatus({
                 stage: "storing",
@@ -135,7 +167,14 @@ export function useIngestUpload({
         });
       }
     },
-    [astraEndpoint, astraToken, keyspace, prependDocument, selectedCollection]
+    [
+      astraEndpoint,
+      astraToken,
+      huggingfaceApiKey,
+      keyspace,
+      prependDocument,
+      selectedCollection,
+    ]
   );
 
   const handleIngest = useCallback(async () => {

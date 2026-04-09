@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const resolveAstraConnectionMock = vi.fn();
+const resolveBackendMock = vi.fn();
 const runChatWorkflowMock = vi.fn();
 
 vi.mock("@/lib/astra", () => ({
   resolveAstraConnection: resolveAstraConnectionMock,
+}));
+
+vi.mock("@/lib/ai/service", () => ({
+  resolveBackend: resolveBackendMock,
 }));
 
 vi.mock("@/lib/chat/service", () => ({
@@ -18,6 +23,15 @@ describe("/api/chat route", () => {
     resolveAstraConnectionMock.mockReturnValue({
       token: "",
       endpoint: "",
+    });
+    resolveBackendMock.mockReturnValue({
+      provider: "huggingface",
+      source: "manual",
+      huggingfaceApiKey: "hf-key",
+      huggingFaceKeyPresent: true,
+      chatModel: "chat-model",
+      embedModel: "embed-model",
+      ollamaBaseUrl: "http://127.0.0.1:11434",
     });
   });
 
@@ -41,11 +55,12 @@ describe("/api/chat route", () => {
         query: "What collections do I have?",
         searchMode: "hybrid",
         collections: [
-          { name: "books", isVectorize: false },
-          { name: "notes", isVectorize: true },
+          { name: "books", isVectorize: false, vectorDimension: 768 },
+          { name: "notes", isVectorize: true, vectorDimension: null },
         ],
         activeCollection: "books",
         history: [],
+        huggingfaceApiKey: "hf-key",
       }),
     });
 
@@ -75,7 +90,11 @@ describe("/api/chat route", () => {
         }),
         token: "",
         endpoint: "",
+        backend: expect.objectContaining({
+          provider: "huggingface",
+        }),
       })
     );
+    expect(resolveBackendMock).toHaveBeenCalledWith({ huggingfaceApiKey: "hf-key" });
   });
 });

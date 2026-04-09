@@ -1,13 +1,12 @@
-import { WatsonXAI } from "@ibm-cloud/watsonx-ai";
 import {
   ANALYZE_MAX_TOKENS,
   buildAnalyzePrompt,
   embedQuery,
   generateResponse,
-  GRANITE_CHAT_MODEL,
   MAX_LIMIT,
   searchCollections,
 } from "@/app/api/chat/shared";
+import { generateText, type EnsureModelProgress, type ResolvedAiBackend } from "@/lib/ai/service";
 import type {
   AnalyzeDecision,
   ChatRequestPayload,
@@ -18,9 +17,7 @@ interface RunChatWorkflowArgs {
   payload: ChatRequestPayload;
   token?: string;
   endpoint?: string;
-  watsonx: WatsonXAI | null;
-  projectId?: string;
-  hfKey?: string;
+  backend: ResolvedAiBackend;
   send: (event: StepEvent) => void;
 }
 
@@ -28,16 +25,13 @@ export async function runChatWorkflow({
   payload,
   token,
   endpoint,
-  watsonx,
-  projectId,
-  hfKey,
+  backend,
   send,
 }: RunChatWorkflowArgs) {
   const isConnected = !!(token && endpoint);
   const decision = await analyzeChatRequest({
     payload,
-    watsonx,
-    projectId,
+    backend,
     send,
   });
 
@@ -48,10 +42,14 @@ export async function runChatWorkflow({
     decision.allCollections && decision.userCollections.length > 1
       ? decision.userCollections
       : decision.targetedCollections ?? [decision.collection];
-  const collectionsToSearch = searchCollectionNames.map((name) => ({
-    name,
-    isVec: payload.collections?.find((collection) => collection.name === name)?.isVectorize ?? false,
-  }));
+  const collectionsToSearch = searchCollectionNames.map((name) => {
+    const collectionMeta = payload.collections?.find((collection) => collection.name === name);
+    return {
+      name,
+      isVec: collectionMeta?.isVectorize ?? false,
+      vectorDimension: collectionMeta?.vectorDimension ?? null,
+    };
+  });
   const isVectorize = collectionsToSearch.every((collection) => collection.isVec);
 
   if (decision.skipSearch) {
@@ -64,13 +62,18 @@ export async function runChatWorkflow({
       embeddingVector,
       vectorPreview,
       realEmbedding,
-      embedError,
-    } = await embedQuery({
-      watsonx,
-      projectId,
-      query: payload.query,
-      hfKey,
-      isVectorize,
+      provider,
+      model,
+    } = await withPrepareTracking({
+      kind: isVectorize ? "embed" : "embed",
+      send,
+      task: (onPrepareProgress) =>
+        embedQuery({
+          backend,
+          query: payload.query,
+          isVectorize,
+          onPrepareProgress,
+        }),
     });
 
     send({
@@ -79,9 +82,10 @@ export async function runChatWorkflow({
       latencyMs: Date.now() - embedStart,
       data: {
         preview: vectorPreview,
-        dims: isVectorize ? 0 : embeddingVector.length || 768,
+        dims: isVectorize ? 0 : embeddingVector.length,
         real: realEmbedding,
-        ...(embedError ? { error: embedError } : {}),
+        provider,
+        model,
       },
     });
 
@@ -128,33 +132,41 @@ export async function runChatWorkflow({
 
   send({ step: "respond", status: "running" });
   const respondStart = Date.now();
-  const content = await generateResponse({
-    watsonx,
-    projectId,
-    query: payload.query,
-    skipSearch: decision.skipSearch,
-    searchResults,
-    allCollections: decision.allCollections,
-    targetedCollections: decision.targetedCollections,
-    userCollections: decision.userCollections,
-    collection: resolvedCollection,
-    allCollectionFields: payload.allCollectionFields ?? {},
-    collectionFields: decision.collectionFields,
-    history: payload.history,
+  const response = await withPrepareTracking({
+    kind: "chat",
+    send,
+    task: (onPrepareProgress) =>
+      generateResponse({
+        backend,
+        query: payload.query,
+        skipSearch: decision.skipSearch,
+        searchResults,
+        allCollections: decision.allCollections,
+        targetedCollections: decision.targetedCollections,
+        userCollections: decision.userCollections,
+        collection: resolvedCollection,
+        allCollectionFields: payload.allCollectionFields ?? {},
+        collectionFields: decision.collectionFields,
+        history: payload.history,
+        onPrepareProgress,
+      }),
   });
 
   send({
     step: "respond",
     status: "complete",
     latencyMs: Date.now() - respondStart,
-    data: { content },
+    data: {
+      content: response.content,
+      provider: response.provider,
+      model: response.model,
+    },
   });
 }
 
 interface AnalyzeChatRequestArgs {
   payload: ChatRequestPayload;
-  watsonx: WatsonXAI | null;
-  projectId?: string;
+  backend: ResolvedAiBackend;
   send: (event: StepEvent) => void;
 }
 
@@ -162,10 +174,19 @@ interface AnalyzeContext extends AnalyzeDecision {
   userCollections: string[];
 }
 
+function extractJsonObject(text: string) {
+  const cleaned = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  return jsonMatch ? jsonMatch[0] : "{}";
+}
+
 async function analyzeChatRequest({
   payload,
-  watsonx,
-  projectId,
+  backend,
   send,
 }: AnalyzeChatRequestArgs): Promise<AnalyzeContext> {
   send({ step: "analyze", status: "running" });
@@ -203,73 +224,75 @@ async function analyzeChatRequest({
     ? `\nPer-collection known fields:\n${perCollectionFieldsLines}`
     : "";
 
-  let rawAnalysis = watsonx ? "(pending)" : "(no watsonx config)";
+  let rawAnalysis = "(pending)";
+  let analysisProvider = backend.provider;
+  let analysisModel = backend.chatModel;
 
-  if (watsonx && projectId) {
-    const collectionList =
-      userCollections.length > 0 ? userCollections.join(", ") : "documents";
-    try {
-      const analyzePrompt = buildAnalyzePrompt({
-        collectionList,
-        defaultCollection,
-        fieldsSection,
-        history: payload.history,
-        query: payload.query,
-      });
-      const analysis = await watsonx.textChat({
-        modelId: GRANITE_CHAT_MODEL,
-        projectId,
-        messages: [{ role: "user", content: analyzePrompt }],
-        maxTokens: ANALYZE_MAX_TOKENS,
-        timeLimit: 10_000,
-      });
-      let text = (analysis.result.choices?.[0]?.message?.content ?? "{}").trim();
-      rawAnalysis = text;
-      text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      text = jsonMatch ? jsonMatch[0] : "{}";
-      const parsed = JSON.parse(text) as {
-        collection?: string;
-        collections?: string[] | null;
-        searchMode?: string;
-        intent?: string;
-        limit?: number;
-        sortField?: string | null;
-        sortDir?: string;
-        filterField?: string | null;
-        filterOp?: string | null;
-        filterValue?: unknown;
-        skipSearch?: boolean;
-        allCollections?: boolean;
-      };
+  const collectionList =
+    userCollections.length > 0 ? userCollections.join(", ") : "documents";
+  try {
+    const analyzePrompt = buildAnalyzePrompt({
+      collectionList,
+      defaultCollection,
+      fieldsSection,
+      history: payload.history,
+      query: payload.query,
+    });
+    const analysis = await withPrepareTracking({
+      kind: "chat",
+      send,
+      task: (onPrepareProgress) =>
+        generateText({
+          backend,
+          messages: [{ role: "user", content: analyzePrompt }],
+          maxTokens: ANALYZE_MAX_TOKENS,
+          onPrepareProgress,
+        }),
+    });
+    analysisProvider = analysis.provider;
+    analysisModel = analysis.model;
+    rawAnalysis = analysis.content;
+    const parsed = JSON.parse(extractJsonObject(analysis.content)) as {
+      collection?: string;
+      collections?: string[] | null;
+      searchMode?: string;
+      intent?: string;
+      limit?: number;
+      sortField?: string | null;
+      sortDir?: string;
+      filterField?: string | null;
+      filterOp?: string | null;
+      filterValue?: unknown;
+      skipSearch?: boolean;
+      allCollections?: boolean;
+    };
 
-      if (
-        parsed.collection &&
-        (collectionNames.length === 0 || collectionNames.includes(parsed.collection))
-      ) {
-        collection = parsed.collection;
-      }
-      searchMode = parsed.searchMode ?? searchMode;
-      intent = parsed.intent ?? intent;
-      if (parsed.limit && parsed.limit > 0) {
-        limit = Math.min(parsed.limit, MAX_LIMIT);
-      }
-      if (parsed.sortField) sortField = parsed.sortField;
-      if (parsed.sortDir === "asc") sortDir = "asc";
-      if (parsed.filterField && parsed.filterValue != null) {
-        filterField = parsed.filterField;
-        filterOp = parsed.filterOp ?? "$eq";
-        filterValue = parsed.filterValue;
-      }
-      if (parsed.skipSearch === true) skipSearch = true;
-      if (parsed.allCollections === true) allCollections = true;
-      if (Array.isArray(parsed.collections) && parsed.collections.length > 1) {
-        const valid = parsed.collections.filter((name) => collectionNames.includes(name));
-        if (valid.length > 1) targetedCollections = valid;
-      }
-    } catch (error) {
-      rawAnalysis = `ERROR: ${error} | raw: ${rawAnalysis}`;
+    if (
+      parsed.collection &&
+      (collectionNames.length === 0 || collectionNames.includes(parsed.collection))
+    ) {
+      collection = parsed.collection;
     }
+    searchMode = parsed.searchMode ?? searchMode;
+    intent = parsed.intent ?? intent;
+    if (parsed.limit && parsed.limit > 0) {
+      limit = Math.min(parsed.limit, MAX_LIMIT);
+    }
+    if (parsed.sortField) sortField = parsed.sortField;
+    if (parsed.sortDir === "asc") sortDir = "asc";
+    if (parsed.filterField && parsed.filterValue != null) {
+      filterField = parsed.filterField;
+      filterOp = parsed.filterOp ?? "$eq";
+      filterValue = parsed.filterValue;
+    }
+    if (parsed.skipSearch === true) skipSearch = true;
+    if (parsed.allCollections === true) allCollections = true;
+    if (Array.isArray(parsed.collections) && parsed.collections.length > 1) {
+      const valid = parsed.collections.filter((name) => collectionNames.includes(name));
+      if (valid.length > 1) targetedCollections = valid;
+    }
+  } catch (error) {
+    rawAnalysis = `ERROR: ${error instanceof Error ? error.message : String(error)} | raw: ${rawAnalysis}`;
   }
 
   if (!allCollections && userCollections.length > 1) {
@@ -320,14 +343,16 @@ async function analyzeChatRequest({
       searchMode,
       intent,
       limit,
-      sortField: sortField ?? undefined,
-      sortDir: sortField ? sortDir : undefined,
-      filterField: filterField ?? undefined,
-      filterOp: filterOp ?? undefined,
-      filterValue: filterValue ?? undefined,
-      fields: collectionFields.length > 0 ? collectionFields : undefined,
-      skipSearch: skipSearch || undefined,
+      ...(sortField ? { sortField } : {}),
+      ...(sortDir ? { sortDir } : {}),
+      ...(filterField ? { filterField } : {}),
+      ...(filterOp ? { filterOp } : {}),
+      ...(filterValue != null ? { filterValue } : {}),
+      ...(collectionFields.length > 0 ? { fields: collectionFields } : {}),
+      ...(skipSearch ? { skipSearch: true } : {}),
       _raw: rawAnalysis,
+      provider: analysisProvider,
+      model: analysisModel,
     },
   });
 
@@ -349,4 +374,55 @@ async function analyzeChatRequest({
     rawAnalysis,
     userCollections,
   };
+}
+
+async function withPrepareTracking<T>(args: {
+  kind: "chat" | "embed";
+  send: (event: StepEvent) => void;
+  task: (onPrepareProgress: (progress: EnsureModelProgress) => void) => Promise<T>;
+}): Promise<T> {
+  const { kind, send, task } = args;
+  const prepareStart = Date.now();
+  let sawProgress = false;
+  let downloaded = false;
+  let finalProvider = "ollama";
+  let finalModel = "";
+
+  const onPrepareProgress = (progress: EnsureModelProgress) => {
+    sawProgress = true;
+    finalProvider = progress.provider;
+    finalModel = progress.model;
+    if (progress.status !== "Model already installed") downloaded = true;
+    send({
+      step: "prepare",
+      status: "running",
+      data: {
+        provider: progress.provider,
+        model: progress.model,
+        kind: progress.kind,
+        message: progress.status,
+        ...(typeof progress.completed === "number" ? { completed: progress.completed } : {}),
+        ...(typeof progress.total === "number" ? { total: progress.total } : {}),
+        determinate: progress.determinate,
+      },
+    });
+  };
+
+  const result = await task(onPrepareProgress);
+
+  if (sawProgress) {
+    send({
+      step: "prepare",
+      status: "complete",
+      latencyMs: Date.now() - prepareStart,
+      data: {
+        provider: finalProvider,
+        model: finalModel,
+        kind,
+        downloaded,
+      },
+    });
+  }
+
+  return result;
 }

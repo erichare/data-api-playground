@@ -55,7 +55,7 @@ export interface IngestedDocumentSummary {
   collection: string;
 }
 
-export type PipelineStepId = "analyze" | "embed" | "search" | "respond";
+export type PipelineStepId = "prepare" | "analyze" | "embed" | "search" | "respond";
 export type PipelineStepStatus = "pending" | "running" | "complete" | "error" | "skipped";
 
 export interface PipelineStep {

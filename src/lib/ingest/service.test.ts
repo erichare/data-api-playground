@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  MAX_DOCUMENT_UPLOAD_BYTES,
+  MAX_DOCUMENT_UPLOAD_MB,
+} from "@/lib/ingest/constants";
 
 const insertManyMock = vi.fn();
 const listCollectionsMock = vi.fn();
@@ -95,7 +99,7 @@ describe("ingest service", () => {
     const { parseDocumentUpload } = await import("./service");
     const formData = new FormData();
     const oversized = new File(
-      [new Uint8Array(10 * 1024 * 1024 + 1)],
+      [new Uint8Array(MAX_DOCUMENT_UPLOAD_BYTES + 1)],
       "too-large.txt",
       { type: "text/plain" }
     );
@@ -104,7 +108,7 @@ describe("ingest service", () => {
     formData.set("collection", "docs");
 
     await expect(parseDocumentUpload(formData)).rejects.toThrow(
-      "File exceeds 10 MB upload limit"
+      `File exceeds ${MAX_DOCUMENT_UPLOAD_MB} MB upload limit`
     );
   });
 

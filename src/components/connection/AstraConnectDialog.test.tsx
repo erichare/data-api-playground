@@ -50,10 +50,8 @@ function makeProps(overrides: Partial<Parameters<typeof AstraConnectDialog>[0]> 
     connected: false,
     currentToken: "",
     currentEndpoint: "",
-    currentIbmApiKey: "",
-    currentWatsonxProjectId: "",
-    onIbmApiKeyChange: vi.fn(),
-    onWatsonxProjectIdChange: vi.fn(),
+    currentHuggingfaceApiKey: "",
+    onHuggingfaceApiKeyChange: vi.fn(),
     error: undefined,
     ...overrides,
   };
@@ -74,8 +72,18 @@ describe("AstraConnectDialog", () => {
   it("loads environment status on open and allows env-backed connections", async () => {
     const props = makeProps();
     global.fetch = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input) === "/api/watsonx-status") {
-        return new Response(JSON.stringify({ hasKey: true, hasProjectId: true }));
+      if (String(input) === "/api/ai-status") {
+        return new Response(
+          JSON.stringify({
+            hasHuggingFaceEnvKey: true,
+            ollamaReachable: true,
+            ollamaBaseUrl: "http://127.0.0.1:11434",
+            chatModelInstalled: true,
+            embedModelInstalled: true,
+            chatModel: "granite3.1-dense:8b",
+            embedModel: "granite-embedding:278m",
+          })
+        );
       }
 
       if (String(input) === "/api/astra-status") {
@@ -91,7 +99,8 @@ describe("AstraConnectDialog", () => {
       expect(global.fetch).toHaveBeenCalledTimes(2);
     });
 
-    expect(screen.getAllByText("Set via environment").length).toBe(4);
+    expect(screen.getByText("Hugging Face via env")).toBeTruthy();
+    expect(screen.getAllByText("Set via environment").length).toBe(3);
 
     const connectButton = screen.getByTestId("astra-connect-submit");
     await waitFor(() => {
@@ -106,11 +115,21 @@ describe("AstraConnectDialog", () => {
     expect(props.onClose).toHaveBeenCalled();
   });
 
-  it("trims manual credentials and propagates watsonx field changes on blur and connect", async () => {
+  it("trims the manual Hugging Face key on blur and connect", async () => {
     const props = makeProps();
     global.fetch = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input) === "/api/watsonx-status") {
-        return new Response(JSON.stringify({ hasKey: false, hasProjectId: false }));
+      if (String(input) === "/api/ai-status") {
+        return new Response(
+          JSON.stringify({
+            hasHuggingFaceEnvKey: false,
+            ollamaReachable: false,
+            ollamaBaseUrl: "http://127.0.0.1:11434",
+            chatModelInstalled: false,
+            embedModelInstalled: false,
+            chatModel: "granite3.1-dense:8b",
+            embedModel: "granite-embedding:278m",
+          })
+        );
       }
 
       if (String(input) === "/api/astra-status") {
@@ -123,24 +142,19 @@ describe("AstraConnectDialog", () => {
     render(<AstraConnectDialog {...props} />);
 
     await waitFor(() => {
-      expect(screen.getAllByText("Not set in environment").length).toBe(2);
+      expect(screen.getByText("Ollama local fallback")).toBeTruthy();
     });
 
-    const ibmApiKeyInput = screen.getByPlaceholderText("••••••••••••••••");
-    const watsonxProjectInput = screen.getByPlaceholderText("xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
+    const huggingfaceInput = screen.getByTestId("huggingface-api-key-input");
     const tokenInput = screen.getByTestId("astra-token-input");
     const endpointInput = screen.getByTestId("astra-endpoint-input");
     const connectButton = screen.getByTestId("astra-connect-submit");
 
     expect(connectButton.hasAttribute("disabled")).toBe(true);
 
-    fireEvent.change(ibmApiKeyInput, { target: { value: "  ibm-key  " } });
-    fireEvent.blur(ibmApiKeyInput);
-    expect(props.onIbmApiKeyChange).toHaveBeenCalledWith("ibm-key");
-
-    fireEvent.change(watsonxProjectInput, { target: { value: "  project-1  " } });
-    fireEvent.blur(watsonxProjectInput);
-    expect(props.onWatsonxProjectIdChange).toHaveBeenCalledWith("project-1");
+    fireEvent.change(huggingfaceInput, { target: { value: "  hf-key  " } });
+    fireEvent.blur(huggingfaceInput);
+    expect(props.onHuggingfaceApiKeyChange).toHaveBeenCalledWith("hf-key");
 
     fireEvent.change(tokenInput, { target: { value: "  AstraCS:manual-token  " } });
     fireEvent.change(endpointInput, { target: { value: "  https://db.apps.astra.datastax.com  " } });
@@ -155,8 +169,7 @@ describe("AstraConnectDialog", () => {
         "https://db.apps.astra.datastax.com"
       );
     });
-    expect(props.onIbmApiKeyChange).toHaveBeenLastCalledWith("ibm-key");
-    expect(props.onWatsonxProjectIdChange).toHaveBeenLastCalledWith("project-1");
+    expect(props.onHuggingfaceApiKeyChange).toHaveBeenLastCalledWith("hf-key");
     expect(props.onClose).toHaveBeenCalled();
   });
 
@@ -167,8 +180,18 @@ describe("AstraConnectDialog", () => {
       currentEndpoint: "https://db.apps.astra.datastax.com",
     });
     global.fetch = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input) === "/api/watsonx-status") {
-        return new Response(JSON.stringify({ hasKey: true, hasProjectId: true }));
+      if (String(input) === "/api/ai-status") {
+        return new Response(
+          JSON.stringify({
+            hasHuggingFaceEnvKey: true,
+            ollamaReachable: true,
+            ollamaBaseUrl: "http://127.0.0.1:11434",
+            chatModelInstalled: true,
+            embedModelInstalled: true,
+            chatModel: "granite3.1-dense:8b",
+            embedModel: "granite-embedding:278m",
+          })
+        );
       }
 
       if (String(input) === "/api/astra-status") {

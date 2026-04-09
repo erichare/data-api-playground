@@ -60,6 +60,14 @@ export function TypeBadge({ type }: { type: IngestFileType }) {
 export type FileStatus =
   | { stage: "queued" }
   | { stage: "extracting" }
+  | {
+      stage: "preparing";
+      message: string;
+      model?: string;
+      completed?: number;
+      total?: number;
+      determinate: boolean;
+    }
   | { stage: "storing"; processed: number; total: number }
   | { stage: "done"; chunks: number }
   | { stage: "error"; message: string };

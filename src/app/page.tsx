@@ -15,10 +15,8 @@ export default function PlaygroundPage() {
     astraToken,
     astraEndpoint,
     astraFromEnv,
-    ibmApiKey,
-    watsonxProjectId,
-    handleIbmApiKeyChange,
-    handleWatsonxProjectIdChange,
+    huggingfaceApiKey,
+    handleHuggingfaceApiKeyChange,
     envReady,
     initializing,
     isConnected,
@@ -129,8 +127,7 @@ export default function PlaygroundPage() {
           astraToken={astraToken}
           astraEndpoint={astraEndpoint}
           keyspace={selectedKeyspace}
-          ibmApiKey={ibmApiKey}
-          watsonxProjectId={watsonxProjectId}
+          huggingfaceApiKey={huggingfaceApiKey}
           initializing={initializing}
           isConnected={isConnected}
         />
@@ -156,10 +153,8 @@ export default function PlaygroundPage() {
         onConnect={handleConnect}
         onDisconnect={handleDisconnect}
         astraFromEnv={astraFromEnv}
-        ibmApiKey={ibmApiKey}
-        watsonxProjectId={watsonxProjectId}
-        onIbmApiKeyChange={handleIbmApiKeyChange}
-        onWatsonxProjectIdChange={handleWatsonxProjectIdChange}
+        huggingfaceApiKey={huggingfaceApiKey}
+        onHuggingfaceApiKeyChange={handleHuggingfaceApiKeyChange}
         connectError={connectError}
         isConnected={isConnected}
       />

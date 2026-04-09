@@ -2,7 +2,19 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Zap, Database, MessageSquare, ChevronDown, CheckCircle2, Loader2, Clock, Minus, XCircle, Table2, Code2 } from "lucide-react";
+import {
+  Search,
+  Zap,
+  Database,
+  MessageSquare,
+  ChevronDown,
+  CheckCircle2,
+  Loader2,
+  Clock,
+  Minus,
+  XCircle,
+  HardDriveDownload,
+} from "lucide-react";
 import type { PipelineStep, PipelineStepId } from "@/lib/types";
 
 interface PipelineTraceProps {
@@ -11,61 +23,45 @@ interface PipelineTraceProps {
 }
 
 const STEP_META: Record<PipelineStepId, { label: string; colorVar: string; icon: React.ElementType }> = {
+  prepare: { label: "Prepare Model",      colorVar: "#f59e0b",             icon: HardDriveDownload },
   analyze: { label: "Analyze Query",       colorVar: "var(--step-analyze)", icon: Search       },
-  embed:   { label: "Embed with Granite",  colorVar: "var(--step-embed)",   icon: Zap          },
+  embed:   { label: "Embed Query",         colorVar: "var(--step-embed)",   icon: Zap          },
   search:  { label: "Search Astra DB",     colorVar: "var(--step-search)",  icon: Database     },
   respond: { label: "Generate Response",   colorVar: "var(--step-respond)", icon: MessageSquare },
 };
 
-const ORDER: PipelineStepId[] = ["analyze", "embed", "search", "respond"];
+const ORDER: PipelineStepId[] = ["prepare", "analyze", "embed", "search", "respond"];
 
-type CodeLang = "ts" | "python" | "java";
-const LANG_LABELS: Record<CodeLang, string> = { ts: "TS", python: "Py", java: "Java" };
-const LANG_NAMES: Record<CodeLang, string> = { ts: "astra-db-ts", python: "astrapy · python", java: "astra-db-java" };
-
-function toPythonCommand(tsCmd: string): string {
-  const limit = tsCmd.match(/limit:\s*(\d+)/)?.[1] ?? "5";
-  if (tsCmd.includes(".findAndRerank(")) return `collection.find_and_rerank(\n  {},\n  sort={"$hybrid": {"$vectorize": query}},\n  limit=${limit}\n)`;
-  if (tsCmd.includes("$vectorize")) return `collection.find(\n  {},\n  sort={"$vectorize": query},\n  limit=${limit},\n  include_similarity=True\n)`;
-  if (tsCmd.includes("$vector")) return `collection.find(\n  {},\n  sort={"$vector": embedding},\n  limit=${limit},\n  include_similarity=True\n)`;
-  const sortMatch = tsCmd.match(/sort:\s*\{\s*(\w+):\s*(-?1)/);
-  if (sortMatch) {
-    const dir = sortMatch[2] === "1" ? "ASCENDING" : "DESCENDING";
-    return `from astrapy.constants import SortDocuments\ncollection.find(\n  {},\n  sort={"${sortMatch[1]}": SortDocuments.${dir}},\n  limit=${limit}\n)`;
-  }
-  return `collection.find({}, limit=${limit})`;
+function formatProviderName(value: string) {
+  if (value === "huggingface") return "Hugging Face";
+  if (value === "ollama") return "Ollama";
+  if (value === "astra") return "Astra";
+  return value;
 }
 
-function toJavaCommand(tsCmd: string): string {
-  const limit = tsCmd.match(/limit:\s*(\d+)/)?.[1] ?? "5";
-  if (tsCmd.includes(".findAndRerank(")) return `collection.findAndRerank(\n  Filter.empty(),\n  new FindOneAndRerankOptions()\n    .sort(Sorts.hybrid(query))\n    .limit(${limit})\n)`;
-  if (tsCmd.includes("$vectorize")) return `collection.find(\n  Filter.empty(),\n  new FindOptions()\n    .sort(Sorts.vectorize(query))\n    .limit(${limit})\n)`;
-  if (tsCmd.includes("$vector")) return `collection.find(\n  Filter.empty(),\n  new FindOptions()\n    .sort(Sorts.vector(embedding))\n    .limit(${limit})\n)`;
-  const sortMatch = tsCmd.match(/sort:\s*\{\s*(\w+):\s*(-?1)/);
-  if (sortMatch) {
-    const dir = sortMatch[2] === "1" ? "ascending" : "descending";
-    return `collection.find(\n  Filter.empty(),\n  new FindOptions()\n    .sort(Sorts.${dir}("${sortMatch[1]}"))\n    .limit(${limit})\n)`;
-  }
-  return `collection.find(Filter.empty(), new FindOptions().limit(${limit}))`;
-}
+function ProviderBadge({
+  provider,
+  model,
+}: {
+  provider?: string | null;
+  model?: string | null;
+}) {
+  if (!provider && !model) return null;
 
-function LangToggle({ lang, onChange }: { lang: CodeLang; onChange: (l: CodeLang) => void }) {
   return (
-    <div className="flex gap-0.5">
-      {(Object.keys(LANG_LABELS) as CodeLang[]).map((l) => (
-        <button
-          key={l}
-          onClick={() => onChange(l)}
-          className="px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide"
-          style={{
-            backgroundColor: lang === l ? "var(--interactive-light)" : "transparent",
-            color: lang === l ? "var(--interactive)" : "var(--text-muted)",
-            border: lang === l ? "1px solid var(--interactive-border)" : "1px solid transparent",
-          }}
-        >
-          {LANG_LABELS[l]}
-        </button>
-      ))}
+    <div className="flex gap-1.5 items-center">
+      <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>Model</span>
+      <span
+        className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+        style={{
+          backgroundColor: "rgba(0,194,203,0.08)",
+          color: "var(--step-embed)",
+        }}
+      >
+        {[provider ? formatProviderName(provider) : null, model ?? null]
+          .filter(Boolean)
+          .join(" · ")}
+      </span>
     </div>
   );
 }
@@ -136,6 +132,74 @@ function SearchStepPreview({ results, collections }: {
 }
 
 function StepDataPreview({ stepId, data }: { stepId: PipelineStepId; data: Record<string, unknown> }) {
+  if (stepId === "prepare") {
+    const provider = data.provider ? String(data.provider) : null;
+    const model = data.model ? String(data.model) : null;
+    const message = data.message ? String(data.message) : null;
+    const downloaded = data.downloaded === true;
+    const completed =
+      typeof data.completed === "number" ? data.completed : undefined;
+    const total = typeof data.total === "number" ? data.total : undefined;
+    const determinate = data.determinate === true;
+
+    return (
+      <div className="flex flex-col gap-1.5 pt-1">
+        {message && (
+          <div
+            className="px-2 py-1.5 rounded text-[10px] font-mono"
+            style={{
+              backgroundColor: "rgba(245,158,11,0.08)",
+              border: "1px solid rgba(245,158,11,0.22)",
+              color: "#f59e0b",
+            }}
+          >
+            {message}
+          </div>
+        )}
+        <div className="flex gap-3 items-center flex-wrap">
+          <ProviderBadge provider={provider} model={model} />
+          {"downloaded" in data && (
+            <div className="flex gap-1.5 items-center">
+              <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>
+                Result
+              </span>
+              <span
+                className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                style={{
+                  backgroundColor: downloaded
+                    ? "rgba(245,158,11,0.12)"
+                    : "rgba(34,197,94,0.1)",
+                  color: downloaded ? "#f59e0b" : "var(--step-respond)",
+                }}
+              >
+                {downloaded ? "Downloaded locally" : "Already installed"}
+              </span>
+            </div>
+          )}
+          {determinate &&
+            typeof completed === "number" &&
+            typeof total === "number" && (
+              <div className="flex gap-1.5 items-center">
+                <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>
+                  Progress
+                </span>
+                <span
+                  className="text-[10px] font-mono"
+                  style={{ color: "var(--text-primary)" }}
+                >
+                  {Math.round((completed / total) * 100)}%
+                </span>
+              </div>
+            )}
+        </div>
+        <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+          First Ollama run can take several GB and a few minutes while local
+          model weights download.
+        </p>
+      </div>
+    );
+  }
+
   if (stepId === "analyze") {
     const intent = data.intent ? String(data.intent) : null;
     const isAllCollections = data.allCollections === true;
@@ -149,6 +213,8 @@ function StepDataPreview({ stepId, data }: { stepId: PipelineStepId; data: Recor
     const filterOp = data.filterOp ? String(data.filterOp) : "$eq";
     const filterValue = data.filterValue != null ? data.filterValue : null;
     const raw = data._raw ? String(data._raw) : null;
+    const provider = data.provider ? String(data.provider) : null;
+    const model = data.model ? String(data.model) : null;
     return (
       <div className="flex flex-col gap-1.5 pt-1">
         {intent && (
@@ -205,6 +271,7 @@ function StepDataPreview({ stepId, data }: { stepId: PipelineStepId; data: Recor
               </span>
             </div>
           )}
+          <ProviderBadge provider={provider} model={model} />
         </div>
         {raw && (
           <pre className="text-[9px] font-mono px-2 py-1 rounded overflow-x-auto mt-1" style={{ backgroundColor: "var(--bg-primary)", border: "1px solid var(--border-subtle)", color: "var(--text-muted)", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
@@ -220,6 +287,8 @@ function StepDataPreview({ stepId, data }: { stepId: PipelineStepId; data: Recor
     const dims = data.dims as number | undefined;
     const real = data.real as boolean | undefined;
     const embedError = data.error as string | undefined;
+    const provider = data.provider ? String(data.provider) : null;
+    const model = data.model ? String(data.model) : null;
     return (
       <div className="flex flex-col gap-1.5 pt-1">
         {preview && preview.length > 0 && (
@@ -234,10 +303,11 @@ function StepDataPreview({ stepId, data }: { stepId: PipelineStepId; data: Recor
               <span style={{ color: "var(--text-primary)", fontSize: "11px", fontFamily: "IBM Plex Mono, monospace" }}>{dims}</span>
             </div>
           )}
+          <ProviderBadge provider={provider} model={model} />
           <div className="flex gap-1.5 items-center">
-            <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>Source</span>
+            <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>Status</span>
             <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: real ? "rgba(34,197,94,0.12)" : "var(--bg-hover)", color: real ? "var(--step-respond)" : "var(--text-muted)" }}>
-              {real ? "ibm/slate-125m-english-rtrvr-v2" : "mock"}
+              {real ? "Live embedding" : "Unavailable"}
             </span>
           </div>
         </div>
@@ -258,12 +328,15 @@ function StepDataPreview({ stepId, data }: { stepId: PipelineStepId; data: Recor
 
   if (stepId === "respond") {
     const content = data.content as string | undefined;
+    const provider = data.provider ? String(data.provider) : null;
+    const model = data.model ? String(data.model) : null;
     if (!content) return null;
     return (
-      <div className="pt-1">
+      <div className="pt-1 flex flex-col gap-1.5">
         <p className="text-[11px] leading-relaxed" style={{ color: "var(--text-secondary)", fontStyle: "italic" }}>
           &ldquo;{content.slice(0, 120)}{content.length > 120 ? "…" : ""}&rdquo;
         </p>
+        <ProviderBadge provider={provider} model={model} />
       </div>
     );
   }

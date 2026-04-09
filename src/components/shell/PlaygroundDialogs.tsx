@@ -23,10 +23,8 @@ interface PlaygroundDialogsProps {
   onConnect: (token: string, endpoint: string) => Promise<void>;
   onDisconnect: () => void;
   astraFromEnv: boolean;
-  ibmApiKey: string;
-  watsonxProjectId: string;
-  onIbmApiKeyChange: (value: string) => void;
-  onWatsonxProjectIdChange: (value: string) => void;
+  huggingfaceApiKey?: string;
+  onHuggingfaceApiKeyChange: (value: string) => void;
   connectError: string;
   isConnected: boolean;
 }
@@ -48,10 +46,8 @@ export function PlaygroundDialogs({
   onConnect,
   onDisconnect,
   astraFromEnv,
-  ibmApiKey,
-  watsonxProjectId,
-  onIbmApiKeyChange,
-  onWatsonxProjectIdChange,
+  huggingfaceApiKey,
+  onHuggingfaceApiKeyChange,
   connectError,
   isConnected,
 }: PlaygroundDialogsProps) {
@@ -76,6 +72,7 @@ export function PlaygroundDialogs({
           collection={ingestCollection}
           astraToken={astraToken}
           astraEndpoint={astraEndpoint}
+          huggingfaceApiKey={huggingfaceApiKey}
           isConnected={isConnected}
           onClose={onCloseIngestDialog}
         />
@@ -91,10 +88,8 @@ export function PlaygroundDialogs({
         connected={isConnected}
         currentToken={astraFromEnv ? "" : astraToken}
         currentEndpoint={astraFromEnv ? "" : astraEndpoint}
-        currentIbmApiKey={ibmApiKey}
-        currentWatsonxProjectId={watsonxProjectId}
-        onIbmApiKeyChange={onIbmApiKeyChange}
-        onWatsonxProjectIdChange={onWatsonxProjectIdChange}
+        currentHuggingfaceApiKey={huggingfaceApiKey}
+        onHuggingfaceApiKeyChange={onHuggingfaceApiKeyChange}
         error={connectError}
       />
     </>

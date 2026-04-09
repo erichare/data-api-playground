@@ -8,24 +8,18 @@ import { usePlaygroundConnection } from "@/lib/hooks/usePlaygroundConnection";
 // ── Hook ────────────────────────────────────────────────────────────────────
 
 export function usePlaygroundState() {
-  const [ibmApiKey, setIbmApiKey] = useState("");
-  const [watsonxProjectId, setWatsonxProjectId] = useState("");
+  const [huggingfaceApiKey, setHuggingfaceApiKey] = useState("");
 
   // UI state
   const [viewMode, setViewMode] = useState<ViewMode>("chat");
   const [newCollectionOpen, setNewCollectionOpen] = useState(false);
   const [quickStartOpen, setQuickStartOpen] = useState(false);
-  const handleIbmApiKeyChange = (key: string) => {
-    setIbmApiKey(key);
-  };
-
-  const handleWatsonxProjectIdChange = (id: string) => {
-    setWatsonxProjectId(id);
+  const handleHuggingfaceApiKeyChange = (key: string) => {
+    setHuggingfaceApiKey(key);
   };
 
   const conversationState = useConversationState({
-    ibmApiKey,
-    watsonxProjectId,
+    huggingfaceApiKey,
     onConversationActivated: () => setViewMode("chat"),
   });
 
@@ -40,10 +34,8 @@ export function usePlaygroundState() {
     astraToken: connectionState.astraToken,
     astraEndpoint: connectionState.astraEndpoint,
     astraFromEnv: connectionState.astraFromEnv,
-    ibmApiKey,
-    watsonxProjectId,
-    handleIbmApiKeyChange,
-    handleWatsonxProjectIdChange,
+    huggingfaceApiKey,
+    handleHuggingfaceApiKeyChange,
     envReady: connectionState.envReady,
     initializing: connectionState.initializing,
     isConnected: connectionState.isConnected,

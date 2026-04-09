@@ -1,19 +1,180 @@
 import { createHash, randomUUID } from "crypto";
+import {
+  embedMany,
+  ensureModel,
+  resolveBackend,
+  type EnsureModelProgress,
+  type ResolvedAiBackend,
+} from "@/lib/ai/service";
 import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
 import { getDb } from "@/lib/db";
+import {
+  MAX_DOCUMENT_UPLOAD_BYTES,
+  MAX_DOCUMENT_UPLOAD_MB,
+} from "@/lib/ingest/constants";
 
-const HF_MODEL = "ibm-granite/granite-embedding-125m-english";
 const CSV_BATCH_SIZE = 20;
 const DOCUMENT_BATCH_SIZE = 10;
 const DEFAULT_CHUNK_SIZE = 1200;
 const DEFAULT_CHUNK_OVERLAP = 150;
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_EXTRACTED_TEXT_CHARS = 1_000_000;
 const MAX_DOCUMENT_CHUNKS = 500;
 const MIN_CHUNK_SIZE = 200;
 const MAX_CHUNK_SIZE = 4_000;
 const MAX_CSV_ROWS = 5_000;
 const MAX_METADATA_BYTES = 16 * 1024;
+
+type CollectionDescription = {
+  name: string;
+  definition?: {
+    vector?: {
+      dimension?: number | null;
+      service?: {
+        provider?: string;
+        modelName?: string;
+      } | null;
+    } | null;
+  } | null;
+};
+
+type IngestBackendHint = {
+  provider: string;
+  model: string;
+};
+
+type IngestPrepareEvent =
+  | {
+      type: "prepare";
+      status: "running";
+      provider: string;
+      model: string;
+      kind: "chat" | "embed";
+      message: string;
+      completed?: number;
+      total?: number;
+      determinate: boolean;
+    }
+  | {
+      type: "prepare";
+      status: "complete";
+      provider: string;
+      model: string;
+      kind: "chat" | "embed";
+      downloaded: boolean;
+      latencyMs: number;
+    };
+
+function createPrepareTracker(
+  send: (event: Record<string, unknown> | IngestPrepareEvent) => void
+) {
+  return async function withPrepareTracking<T>(args: {
+    backend: ResolvedAiBackend;
+    kind: "chat" | "embed";
+    task: (onPrepareProgress: (progress: EnsureModelProgress) => void) => Promise<T>;
+  }): Promise<T> {
+    const { backend, kind, task } = args;
+    if (backend.provider !== "ollama") {
+      return task(() => undefined);
+    }
+
+    const prepareStart = Date.now();
+    let sawProgress = false;
+    let downloaded = false;
+    let finalModel = kind === "chat" ? backend.chatModel : backend.embedModel;
+
+    const onPrepareProgress = (progress: EnsureModelProgress) => {
+      sawProgress = true;
+      finalModel = progress.model;
+      if (progress.status !== "Model already installed") {
+        downloaded = true;
+      }
+
+      send({
+        type: "prepare",
+        status: "running",
+        provider: progress.provider,
+        model: progress.model,
+        kind: progress.kind,
+        message: progress.status,
+        ...(typeof progress.completed === "number"
+          ? { completed: progress.completed }
+          : {}),
+        ...(typeof progress.total === "number" ? { total: progress.total } : {}),
+        determinate: progress.determinate,
+      });
+    };
+
+    const result = await task(onPrepareProgress);
+
+    if (sawProgress) {
+      send({
+        type: "prepare",
+        status: "complete",
+        provider: backend.provider,
+        model: finalModel,
+        kind,
+        downloaded,
+        latencyMs: Date.now() - prepareStart,
+      });
+    }
+
+    return result;
+  };
+}
+
+function getCollectionConfig(description: CollectionDescription | undefined) {
+  const vectorDef = description?.definition?.vector;
+  const service = vectorDef?.service ?? null;
+
+  return {
+    useVectorize: !!service,
+    vectorDimension: vectorDef?.dimension ?? null,
+    vectorizeProvider: service?.provider ?? "astra",
+    vectorizeModel: service?.modelName ?? "server-side vectorize",
+  };
+}
+
+function getBackendHint(
+  description: CollectionDescription | undefined,
+  backend: ResolvedAiBackend | null
+): IngestBackendHint {
+  const config = getCollectionConfig(description);
+
+  if (config.useVectorize) {
+    return {
+      provider: config.vectorizeProvider,
+      model: config.vectorizeModel,
+    };
+  }
+
+  if (!backend) {
+    return {
+      provider: "unknown",
+      model: "unknown",
+    };
+  }
+
+  return {
+    provider: backend.provider,
+    model: backend.embedModel,
+  };
+}
+
+function validateVectorDimension(args: {
+  collection: string;
+  expected: number | null;
+  embeddings: number[][];
+}) {
+  const { collection, expected, embeddings } = args;
+  if (!expected || embeddings.length === 0) return;
+
+  const actual = embeddings[0]?.length ?? 0;
+  if (actual !== expected) {
+    throw new Error(
+      `Embedding dimension mismatch for "${collection}": collection expects ${expected}d but active model returned ${actual}d`
+    );
+  }
+}
 
 export function chunkText(
   text: string,
@@ -89,32 +250,6 @@ export async function extractText(
   }
 }
 
-export async function embedBatch(
-  texts: string[],
-  hfKey?: string
-): Promise<number[][]> {
-  const response = await fetch(
-    `https://api-inference.huggingface.co/models/${HF_MODEL}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(hfKey ? { Authorization: `Bearer ${hfKey}` } : {}),
-      },
-      body: JSON.stringify({ inputs: texts }),
-      signal: AbortSignal.timeout(30000),
-    }
-  );
-  if (!response.ok) {
-    throw new Error(`HuggingFace error ${response.status}`);
-  }
-  const result = (await response.json()) as number[][] | number[][][];
-  if (Array.isArray(result[0][0])) {
-    return (result as number[][][]).map((row) => row[0]);
-  }
-  return result as number[][];
-}
-
 export function streamCsvIngest(args: {
   token?: string;
   endpoint?: string;
@@ -122,19 +257,20 @@ export function streamCsvIngest(args: {
   collection: string;
   rows: Record<string, string>[];
   filename: string;
-  hfKey?: string;
+  huggingfaceApiKey?: string;
 }): ReadableStream<Uint8Array> {
   const { token, endpoint, keyspace } = resolveAstraConnection(args, {
     includeDefaultKeyspace: true,
   });
-  const { collection, rows, filename, hfKey } = args;
+  const { collection, rows, filename, huggingfaceApiKey } = args;
   const encoder = new TextEncoder();
 
   return new ReadableStream({
     async start(controller) {
-      const send = (event: Record<string, unknown>) => {
+      const send = (event: Record<string, unknown> | IngestPrepareEvent) => {
         controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
       };
+      const withPrepareTracking = createPrepareTracker(send);
 
       try {
         if (!token || !endpoint || !collection || !rows.length) {
@@ -154,16 +290,44 @@ export function streamCsvIngest(args: {
 
         const db = getAstraDb(token, endpoint, keyspace);
         const collectionRef = db.collection(collection);
-        const collectionDescriptions = await db.listCollections({ nameOnly: false });
+        const collectionDescriptions = (await db.listCollections({
+          nameOnly: false,
+        })) as CollectionDescription[];
         const collectionDescription = collectionDescriptions.find(
           (candidate) => candidate.name === collection
         );
-        const useVectorize = !!collectionDescription?.definition?.vector?.service;
+        const collectionConfig = getCollectionConfig(collectionDescription);
+        const backend = collectionConfig.useVectorize
+          ? null
+          : resolveBackend({ huggingfaceApiKey });
+        const backendHint = getBackendHint(collectionDescription, backend);
+
+        if (backend) {
+          await withPrepareTracking({
+            backend,
+            kind: "embed",
+            task: (onPrepareProgress) =>
+              ensureModel({
+                backend,
+                kind: "embed",
+                allowPull: true,
+                onProgress: onPrepareProgress,
+              }),
+          });
+        }
 
         const total = rows.length;
         let processed = 0;
 
-        send({ type: "start", total, filename, collection, useVectorize });
+        send({
+          type: "start",
+          total,
+          filename,
+          collection,
+          useVectorize: collectionConfig.useVectorize,
+          provider: backendHint.provider,
+          model: backendHint.model,
+        });
 
         for (let i = 0; i < rows.length; i += CSV_BATCH_SIZE) {
           const batch = rows.slice(i, i + CSV_BATCH_SIZE);
@@ -173,38 +337,49 @@ export function streamCsvIngest(args: {
               .join("; ")
           );
 
-          let docs: Record<string, unknown>[];
-          if (useVectorize) {
-            docs = batch.map((row, index) => ({
-              ...row,
-              $vectorize: texts[index],
-              _filename: filename,
-              _ingested_at: new Date().toISOString(),
-            }));
-          } else {
-            let vectors: number[][] | null = null;
-            try {
-              vectors = await embedBatch(texts, hfKey);
-            } catch {
-              vectors = texts.map(() =>
-                Array.from({ length: 768 }, () => Math.random() * 2 - 1)
-              );
-            }
+          const docs = collectionConfig.useVectorize
+            ? batch.map((row, index) => ({
+                ...row,
+                $vectorize: texts[index],
+                _filename: filename,
+                _ingested_at: new Date().toISOString(),
+              }))
+            : await (async () => {
+                const embeddings = (
+                  await embedMany({
+                    backend: backend!,
+                    input: texts,
+                    allowPull: false,
+                    skipEnsure: true,
+                  })
+                ).embeddings;
 
-            docs = batch.map((row, index) => ({
-              ...row,
-              $vector: vectors![index],
-              _filename: filename,
-              _ingested_at: new Date().toISOString(),
-            }));
-          }
+                validateVectorDimension({
+                  collection,
+                  expected: collectionConfig.vectorDimension,
+                  embeddings,
+                });
+
+                return batch.map((row, index) => ({
+                  ...row,
+                  $vector: embeddings[index],
+                  _filename: filename,
+                  _ingested_at: new Date().toISOString(),
+                }));
+              })();
 
           await collectionRef.insertMany(docs);
           processed += batch.length;
           send({ type: "progress", processed, total });
         }
 
-        send({ type: "complete", processed, total });
+        send({
+          type: "complete",
+          processed,
+          total,
+          provider: backendHint.provider,
+          model: backendHint.model,
+        });
       } catch (err) {
         send({
           type: "error",
@@ -239,6 +414,8 @@ export async function parseDocumentUpload(formData: FormData) {
   const chunkSize = Number.isFinite(requestedChunkSize)
     ? Math.min(Math.max(requestedChunkSize, MIN_CHUNK_SIZE), MAX_CHUNK_SIZE)
     : DEFAULT_CHUNK_SIZE;
+  const huggingfaceApiKey =
+    (formData.get("huggingfaceApiKey") as string | null) ?? undefined;
 
   let metadata: Record<string, unknown> = {};
   try {
@@ -257,10 +434,8 @@ export async function parseDocumentUpload(formData: FormData) {
   const fileType = ["pdf", "txt", "md", "csv", "json", "docx"].includes(ext)
     ? ext
     : "txt";
-  if (file.size > MAX_UPLOAD_BYTES) {
-    throw new Error(
-      `File exceeds ${(MAX_UPLOAD_BYTES / (1024 * 1024)).toFixed(0)} MB upload limit`
-    );
+  if (file.size > MAX_DOCUMENT_UPLOAD_BYTES) {
+    throw new Error(`File exceeds ${MAX_DOCUMENT_UPLOAD_MB} MB upload limit`);
   }
   const buffer = Buffer.from(await file.arrayBuffer());
 
@@ -275,6 +450,7 @@ export async function parseDocumentUpload(formData: FormData) {
     chunkSize,
     metadata,
     buffer,
+    huggingfaceApiKey,
   };
 }
 
@@ -288,7 +464,7 @@ export function streamDocumentIngest(args: {
   chunkSize: number;
   metadata: Record<string, unknown>;
   buffer: Buffer;
-  hfKey?: string;
+  huggingfaceApiKey?: string;
 }): ReadableStream<Uint8Array> {
   const {
     filename,
@@ -300,7 +476,7 @@ export function streamDocumentIngest(args: {
     chunkSize,
     metadata,
     buffer,
-    hfKey,
+    huggingfaceApiKey,
   } = args;
 
   const md5Hash = createHash("md5").update(buffer).digest("hex");
@@ -311,9 +487,10 @@ export function streamDocumentIngest(args: {
 
   return new ReadableStream({
     async start(controller) {
-      const send = (event: Record<string, unknown>) => {
+      const send = (event: Record<string, unknown> | IngestPrepareEvent) => {
         controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
       };
+      const withPrepareTracking = createPrepareTracker(send);
 
       try {
         send({ type: "extracting", filename });
@@ -331,9 +508,9 @@ export function streamDocumentIngest(args: {
           );
         }
 
-        send({ type: "chunked", filename, chunks: chunkTotal, chars: text.length });
-
         if (!token || !endpoint || !collectionName) {
+          send({ type: "chunked", filename, chunks: chunkTotal, chars: text.length });
+
           for (let i = 0; i < chunkTotal; i += 1) {
             await new Promise((resolve) => setTimeout(resolve, 40));
             send({ type: "chunk_progress", processed: i + 1, total: chunkTotal });
@@ -369,22 +546,62 @@ export function streamDocumentIngest(args: {
 
         const db = getAstraDb(token, endpoint, keyspace);
         const collection = db.collection(collectionName);
-        const collectionDescriptions = await db.listCollections({ nameOnly: false });
+        const collectionDescriptions = (await db.listCollections({
+          nameOnly: false,
+        })) as CollectionDescription[];
         const collectionDescription = collectionDescriptions.find(
           (candidate) => candidate.name === collectionName
         );
-        const useVectorize = !!collectionDescription?.definition?.vector?.service;
+        const collectionConfig = getCollectionConfig(collectionDescription);
+        const backend = collectionConfig.useVectorize
+          ? null
+          : resolveBackend({ huggingfaceApiKey });
+        const backendHint = getBackendHint(collectionDescription, backend);
+
+        if (backend) {
+          await withPrepareTracking({
+            backend,
+            kind: "embed",
+            task: (onPrepareProgress) =>
+              ensureModel({
+                backend,
+                kind: "embed",
+                allowPull: true,
+                onProgress: onPrepareProgress,
+              }),
+          });
+        }
+
+        send({
+          type: "chunked",
+          filename,
+          chunks: chunkTotal,
+          chars: text.length,
+          useVectorize: collectionConfig.useVectorize,
+          provider: backendHint.provider,
+          model: backendHint.model,
+        });
 
         for (let i = 0; i < chunks.length; i += DOCUMENT_BATCH_SIZE) {
           const batch = chunks.slice(i, i + DOCUMENT_BATCH_SIZE);
 
-          let vectors: number[][] | null = null;
-          if (!useVectorize && hfKey) {
-            try {
-              vectors = await embedBatch(batch, hfKey);
-            } catch {
-              // Best effort for non-vectorize collections.
-            }
+          const embeddings = collectionConfig.useVectorize
+            ? null
+            : (
+                await embedMany({
+                  backend: backend!,
+                  input: batch,
+                  allowPull: false,
+                  skipEnsure: true,
+                })
+              ).embeddings;
+
+          if (embeddings) {
+            validateVectorDimension({
+              collection: collectionName,
+              expected: collectionConfig.vectorDimension,
+              embeddings,
+            });
           }
 
           const docs = batch.map((content, index) => {
@@ -399,10 +616,10 @@ export function streamDocumentIngest(args: {
               },
             };
 
-            if (useVectorize) {
+            if (collectionConfig.useVectorize) {
               doc.$vectorize = content;
-            } else if (vectors?.[index]) {
-              doc.$vector = vectors[index];
+            } else {
+              doc.$vector = embeddings![index];
             }
 
             return doc;
@@ -440,6 +657,8 @@ export function streamDocumentIngest(args: {
           source_doc_id: sourceDocId,
           chunks: chunkTotal,
           collection: collectionName,
+          provider: backendHint.provider,
+          model: backendHint.model,
         });
       } catch (err) {
         send({

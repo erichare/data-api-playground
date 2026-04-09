@@ -2,6 +2,10 @@
 
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  MAX_DOCUMENT_UPLOAD_BYTES,
+  MAX_DOCUMENT_UPLOAD_MB,
+} from "@/lib/ingest/constants";
 import { useIngestUpload } from "./useIngestUpload";
 
 // Mock ingestShared utilities
@@ -22,6 +26,7 @@ const defaultArgs = {
   astraEndpoint: "https://test.endpoint.com",
   keyspace: "test-ks",
   selectedCollection: "my-col",
+  huggingfaceApiKey: "",
   prependDocument: vi.fn(),
 };
 
@@ -374,6 +379,27 @@ describe("useIngestUpload", () => {
       expect(result.current.fileStatuses.get("network.pdf__1024")).toEqual({
         stage: "error",
         message: "Network error",
+      });
+    });
+
+    it("rejects oversized files before issuing the upload request", async () => {
+      const file = makeFile("large.pdf", MAX_DOCUMENT_UPLOAD_BYTES + 1);
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(fetch).not.toHaveBeenCalled();
+      expect(
+        result.current.fileStatuses.get(`large.pdf__${MAX_DOCUMENT_UPLOAD_BYTES + 1}`)
+      ).toEqual({
+        stage: "error",
+        message: `File exceeds ${MAX_DOCUMENT_UPLOAD_MB} MB upload limit`,
       });
     });
 

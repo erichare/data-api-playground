@@ -1,9 +1,7 @@
-import { WatsonXAI } from "@ibm-cloud/watsonx-ai";
+import { embedMany, generateText, type EnsureModelProgress, type ResolvedAiBackend } from "@/lib/ai/service";
 import { getAstraDb, SYSTEM_FIELDS } from "@/lib/astra";
 import type { ChatCollectionInfo, SearchResult } from "@/lib/chat/types";
 
-export const GRANITE_CHAT_MODEL = "ibm/granite-3-8b-instruct";
-export const GRANITE_EMBED_MODEL = "ibm/slate-125m-english-rtrvr-v2";
 export const ANALYZE_MAX_TOKENS = 300;
 export const RESPOND_MAX_TOKENS = 1500;
 export const MAX_LIMIT = 1000;
@@ -12,6 +10,8 @@ export interface EmbedResult {
   embeddingVector: number[];
   vectorPreview: number[];
   realEmbedding: boolean;
+  provider: string;
+  model: string;
   embedError?: string;
 }
 
@@ -62,82 +62,64 @@ JSON format: {"collection": "...", "collections": null, "searchMode": "...", "in
 }
 
 export async function embedQuery(args: {
-  watsonx: WatsonXAI | null;
-  projectId?: string;
+  backend: ResolvedAiBackend;
   query: string;
-  hfKey?: string;
   isVectorize: boolean;
+  onPrepareProgress?: (progress: EnsureModelProgress) => void;
 }): Promise<EmbedResult> {
-  const { watsonx, projectId, query, hfKey, isVectorize } = args;
-  let embeddingVector: number[] = [];
-  let vectorPreview: number[] = [];
-  let realEmbedding = false;
-  let embedError: string | undefined;
+  const { backend, query, isVectorize, onPrepareProgress } = args;
 
   if (isVectorize) {
-    return { embeddingVector, vectorPreview, realEmbedding: true };
+    return {
+      embeddingVector: [],
+      vectorPreview: [],
+      realEmbedding: true,
+      provider: "astra",
+      model: "server-side vectorize",
+    };
   }
 
-  if (watsonx && projectId) {
-    try {
-      const embedRes = await watsonx.embedText({
-        modelId: GRANITE_EMBED_MODEL,
-        projectId,
-        inputs: [query],
-      });
-      const vec = embedRes.result.results?.[0]?.embedding;
-      if (vec && vec.length > 100) {
-        embeddingVector = vec;
-        vectorPreview = vec.slice(0, 8).map((v) => parseFloat(v.toFixed(4)));
-        realEmbedding = true;
-      } else {
-        embedError = "Unexpected embedding shape from watsonx";
-      }
-    } catch (e) {
-      embedError = `watsonx embed error: ${e instanceof Error ? e.message : String(e)}`;
-    }
+  const result = await embedMany({
+    backend,
+    input: [query],
+    onPrepareProgress,
+  });
+  const embeddingVector = result.embeddings[0] ?? [];
+  if (embeddingVector.length === 0) {
+    throw new Error(`${result.provider} returned an empty embedding`);
   }
 
-  if (!realEmbedding) {
-    try {
-      const hfRes = await fetch(
-        "https://router.huggingface.co/hf-inference/models/ibm-granite/granite-embedding-125m-english/pipeline/feature-extraction",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(hfKey ? { Authorization: `Bearer ${hfKey}` } : {}),
-          },
-          body: JSON.stringify({ inputs: query }),
-          signal: AbortSignal.timeout(8000),
-        }
-      );
-      if (hfRes.ok) {
-        const result = await hfRes.json() as number[] | number[][];
-        const flat = Array.isArray(result[0]) ? (result as number[][])[0] : result as number[];
-        if (Array.isArray(flat) && flat.length > 100) {
-          embeddingVector = flat;
-          vectorPreview = flat.slice(0, 8).map((v) => parseFloat(v.toFixed(4)));
-          realEmbedding = true;
-          embedError = undefined;
-        } else {
-          embedError = (embedError ? embedError + "; " : "") + "Unexpected HuggingFace response shape";
-        }
-      } else {
-        const text = await hfRes.text().catch(() => "");
-        const hfErr = `HuggingFace ${hfRes.status}: ${text.slice(0, 100)}${!hfKey ? " (no HUGGINGFACE_API_KEY)" : ""}`;
-        embedError = (embedError ? embedError + "; " : "") + hfErr;
-      }
-    } catch (e) {
-      embedError = (embedError ? embedError + "; " : "") + (e instanceof Error ? e.message : "HuggingFace request failed");
-    }
-  }
+  return {
+    embeddingVector,
+    vectorPreview: embeddingVector.slice(0, 8).map((v) => parseFloat(v.toFixed(4))),
+    realEmbedding: true,
+    provider: result.provider,
+    model: result.model,
+  };
+}
 
-  if (!realEmbedding) {
-    vectorPreview = Array.from({ length: 8 }, () => parseFloat((Math.random() * 2 - 1).toFixed(4)));
-  }
+function getCollectionDimension(
+  collections: ChatCollectionInfo[] | undefined,
+  name: string
+) {
+  const collection = collections?.find((candidate) => candidate.name === name);
+  return collection?.vectorDimension ?? null;
+}
 
-  return { embeddingVector, vectorPreview, realEmbedding, embedError };
+function assertVectorDimension(args: {
+  collections: ChatCollectionInfo[] | undefined;
+  collectionName: string;
+  isVectorize: boolean;
+  embeddingVector: number[];
+}) {
+  const { collections, collectionName, isVectorize, embeddingVector } = args;
+  if (isVectorize || embeddingVector.length === 0) return;
+  const dimension = getCollectionDimension(collections, collectionName);
+  if (dimension && dimension !== embeddingVector.length) {
+    throw new Error(
+      `Embedding dimension mismatch for "${collectionName}": collection expects ${dimension}d but active model returned ${embeddingVector.length}d`
+    );
+  }
 }
 
 export async function searchCollections(args: {
@@ -148,7 +130,7 @@ export async function searchCollections(args: {
   query: string;
   collection: string;
   collections?: ChatCollectionInfo[];
-  collectionsToSearch: { name: string; isVec: boolean }[];
+  collectionsToSearch: { name: string; isVec: boolean; vectorDimension?: number | null }[];
   userCollections: string[];
   searchMode: string;
   sortField: string | null;
@@ -187,7 +169,19 @@ export async function searchCollections(args: {
       : `{ ${filterField}: { ${filterOp}: ${JSON.stringify(filterValue)} } }`
     : "{}";
 
-  const executeSearch = async (colName: string, isVec: boolean, filter: Record<string, unknown>, fStr: string): Promise<{ results: SearchResult[]; command: string }> => {
+  const executeSearch = async (
+    colName: string,
+    isVec: boolean,
+    filter: Record<string, unknown>,
+    fStr: string
+  ): Promise<{ results: SearchResult[]; command: string }> => {
+    assertVectorDimension({
+      collections,
+      collectionName: colName,
+      isVectorize: isVec,
+      embeddingVector,
+    });
+
     const coll = db.collection(colName);
     let results: SearchResult[] = [];
     let cmd = "";
@@ -286,8 +280,7 @@ export async function searchCollections(args: {
 }
 
 export async function generateResponse(args: {
-  watsonx: WatsonXAI | null;
-  projectId?: string;
+  backend: ResolvedAiBackend;
   query: string;
   skipSearch: boolean;
   searchResults: SearchResult[];
@@ -298,17 +291,12 @@ export async function generateResponse(args: {
   allCollectionFields: Record<string, string[]>;
   collectionFields: string[];
   history?: { role: "user" | "assistant"; content: string }[];
+  onPrepareProgress?: (progress: EnsureModelProgress) => void;
 }) {
   const {
-    watsonx, projectId, query, skipSearch, searchResults, allCollections, targetedCollections,
-    userCollections, collection, allCollectionFields, collectionFields, history,
+    backend, query, skipSearch, searchResults, allCollections, targetedCollections,
+    userCollections, collection, allCollectionFields, collectionFields, history, onPrepareProgress,
   } = args;
-
-  if (!watsonx) {
-    return !skipSearch && searchResults.length > 0
-      ? `Found ${searchResults.length} results in the ${collection} collection. Top result: ${JSON.stringify(searchResults[0].preview)}.`
-      : "No AI model configured — add your IBM Cloud API key and watsonx Project ID to enable responses.";
-  }
 
   const searchWasRun = !skipSearch;
   const noResults = searchWasRun && searchResults.length === 0;
@@ -345,9 +333,8 @@ export async function generateResponse(args: {
           ? `The user is asking a follow-up or requesting a different format: "${query}"\n\nReformat or continue your previous response accordingly. Do not search the database again.`
           : query;
 
-  const resp = await watsonx.textChat({
-    modelId: GRANITE_CHAT_MODEL,
-    projectId,
+  return generateText({
+    backend,
     messages: [
       { role: "system", content: systemPrompt },
       ...(history ?? []).slice(-10).map((m) => ({
@@ -360,7 +347,6 @@ export async function generateResponse(args: {
       { role: "user", content: userContent },
     ],
     maxTokens: RESPOND_MAX_TOKENS,
-    timeLimit: 20_000,
+    onPrepareProgress,
   });
-  return resp.result.choices?.[0]?.message?.content ?? "";
 }
