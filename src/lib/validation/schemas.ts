@@ -17,7 +17,7 @@ export const connectBodySchema = astraConnectionSchema;
 
 export const browseBodySchema = astraConnectionSchema.extend({
   collection: z.string().min(1),
-  pageState: z.string().optional(),
+  pageState: z.string().nullable().optional(),
   sort: z
     .object({ col: z.string(), dir: z.union([z.literal(1), z.literal(-1)]) })
     .optional(),

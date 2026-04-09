@@ -90,6 +90,32 @@ describe("/api/browse route", () => {
     });
   });
 
+  it("accepts a null pageState for the first page", async () => {
+    fetchNextPageMock.mockResolvedValueOnce({
+      result: [{ _id: "1", title: "Doc 1" }],
+      nextPageState: null,
+    });
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      new Request("http://localhost/api/browse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          collection: "docs",
+          pageState: null,
+        }),
+      }) as never
+    );
+
+    expect(response.status).toBe(200);
+    expect(initialPageStateMock).not.toHaveBeenCalled();
+    expect(await response.json()).toEqual({
+      documents: [{ _id: "1", title: "Doc 1" }],
+      nextPageState: null,
+    });
+  });
+
   it("returns a 400 when browsing fails", async () => {
     fetchNextPageMock.mockRejectedValueOnce(new Error("browse failed"));
 
