@@ -42,6 +42,16 @@ type IngestBackendHint = {
   model: string;
 };
 
+type ExistingIngestedDocument = {
+  source_doc_id: string;
+  source_filename: string;
+  md5_hash: string;
+  ingested_at: string;
+  collection: string;
+};
+
+type NameConflictAction = "overwrite" | "skip";
+
 type IngestPrepareEvent =
   | {
       type: "prepare";
@@ -119,7 +129,76 @@ function createPrepareTracker(
     }
 
     return result;
-  };
+    };
+}
+
+function getLatestDuplicateByHash(args: {
+  collection: string;
+  md5Hash: string;
+}): ExistingIngestedDocument | undefined {
+  return getDb()
+    .prepare(
+      `
+        SELECT source_doc_id, source_filename, md5_hash, ingested_at, collection
+        FROM ingested_documents
+        WHERE collection = ? AND md5_hash = ?
+        ORDER BY ingested_at DESC
+        LIMIT 1
+      `
+    )
+    .get(args.collection, args.md5Hash) as ExistingIngestedDocument | undefined;
+}
+
+function listFilenameConflicts(args: {
+  collection: string;
+  filename: string;
+}): ExistingIngestedDocument[] {
+  return getDb()
+    .prepare(
+      `
+        SELECT source_doc_id, source_filename, md5_hash, ingested_at, collection
+        FROM ingested_documents
+        WHERE collection = ? AND source_filename = ?
+        ORDER BY ingested_at DESC
+      `
+    )
+    .all(args.collection, args.filename) as ExistingIngestedDocument[];
+}
+
+async function deleteDocumentsForOverwrite(args: {
+  collectionName: string;
+  token?: string;
+  endpoint?: string;
+  keyspace?: string;
+  existingDocuments: ExistingIngestedDocument[];
+}) {
+  const { collectionName, token, endpoint, keyspace, existingDocuments } = args;
+  if (existingDocuments.length === 0) return;
+
+  if (token && endpoint) {
+    const astraDb = getAstraDb(token, endpoint, keyspace);
+    const collection = astraDb.collection(collectionName);
+
+    for (const existingDocument of existingDocuments) {
+      await collection.deleteMany({
+        "metadata.source_doc_id": { $eq: existingDocument.source_doc_id },
+      });
+    }
+  }
+
+  const db = getDb();
+  const deleteStmt = db.prepare(
+    "DELETE FROM ingested_documents WHERE source_doc_id = ?"
+  );
+  const deleteTransaction = db.transaction((sourceDocIds: string[]) => {
+    for (const sourceDocId of sourceDocIds) {
+      deleteStmt.run(sourceDocId);
+    }
+  });
+
+  deleteTransaction(
+    existingDocuments.map((existingDocument) => existingDocument.source_doc_id)
+  );
 }
 
 function getCollectionConfig(description: CollectionDescription | undefined) {
@@ -416,6 +495,12 @@ export async function parseDocumentUpload(formData: FormData) {
     : DEFAULT_CHUNK_SIZE;
   const huggingfaceApiKey =
     (formData.get("huggingfaceApiKey") as string | null) ?? undefined;
+  const nameConflictActionRaw =
+    (formData.get("nameConflictAction") as string | null) ?? undefined;
+  const nameConflictAction =
+    nameConflictActionRaw === "overwrite" || nameConflictActionRaw === "skip"
+      ? nameConflictActionRaw
+      : undefined;
 
   let metadata: Record<string, unknown> = {};
   try {
@@ -451,6 +536,7 @@ export async function parseDocumentUpload(formData: FormData) {
     metadata,
     buffer,
     huggingfaceApiKey,
+    nameConflictAction,
   };
 }
 
@@ -465,6 +551,7 @@ export function streamDocumentIngest(args: {
   metadata: Record<string, unknown>;
   buffer: Buffer;
   huggingfaceApiKey?: string;
+  nameConflictAction?: NameConflictAction;
 }): ReadableStream<Uint8Array> {
   const {
     filename,
@@ -477,6 +564,7 @@ export function streamDocumentIngest(args: {
     metadata,
     buffer,
     huggingfaceApiKey,
+    nameConflictAction,
   } = args;
 
   const md5Hash = createHash("md5").update(buffer).digest("hex");
@@ -493,6 +581,67 @@ export function streamDocumentIngest(args: {
       const withPrepareTracking = createPrepareTracker(send);
 
       try {
+        const duplicateByHash = getLatestDuplicateByHash({
+          collection: collectionName || "demo",
+          md5Hash,
+        });
+
+        if (duplicateByHash) {
+          send({
+            type: "skipped",
+            reason: "duplicate_hash",
+            source_doc_id: duplicateByHash.source_doc_id,
+            message: `Already ingested as "${duplicateByHash.source_filename}" on ${new Date(
+              duplicateByHash.ingested_at
+            ).toLocaleString("en-US")}; skipping duplicate upload.`,
+          });
+          return;
+        }
+
+        const filenameConflicts = listFilenameConflicts({
+          collection: collectionName || "demo",
+          filename,
+        });
+
+        if (filenameConflicts.length > 0 && nameConflictAction !== "overwrite") {
+          if (nameConflictAction === "skip") {
+            send({
+              type: "skipped",
+              reason: "name_conflict",
+              source_doc_id: filenameConflicts[0]?.source_doc_id,
+              message: `Skipped "${filename}" because a different file with that name is already in this collection.`,
+            });
+            return;
+          }
+
+          send({
+            type: "conflict",
+            reason: "name_conflict",
+            existing_count: filenameConflicts.length,
+            existing_source_doc_id: filenameConflicts[0]?.source_doc_id,
+            existing_ingested_at: filenameConflicts[0]?.ingested_at,
+            message:
+              filenameConflicts.length === 1
+                ? `A different "${filename}" is already ingested in this collection. Overwrite it or skip this upload.`
+                : `There are ${filenameConflicts.length} different files named "${filename}" in this collection. Overwrite them or skip this upload.`,
+          });
+          return;
+        }
+
+        let replacedSourceDocIds: string[] = [];
+        if (filenameConflicts.length > 0 && nameConflictAction === "overwrite") {
+          replacedSourceDocIds = filenameConflicts.map(
+            (existingDocument) => existingDocument.source_doc_id
+          );
+          await deleteDocumentsForOverwrite({
+            collectionName: collectionName || "demo",
+            token,
+            endpoint,
+            keyspace,
+            existingDocuments: filenameConflicts,
+          });
+        }
+
         send({ type: "extracting", filename });
         const text = await extractText(buffer, fileType);
         if (text.length > MAX_EXTRACTED_TEXT_CHARS) {
@@ -540,6 +689,8 @@ export function streamDocumentIngest(args: {
             chunks: chunkTotal,
             collection: collectionName,
             demo: true,
+            md5_hash: md5Hash,
+            replaced_source_doc_ids: replacedSourceDocIds,
           });
           return;
         }
@@ -659,6 +810,8 @@ export function streamDocumentIngest(args: {
           collection: collectionName,
           provider: backendHint.provider,
           model: backendHint.model,
+          md5_hash: md5Hash,
+          replaced_source_doc_ids: replacedSourceDocIds,
         });
       } catch (err) {
         send({

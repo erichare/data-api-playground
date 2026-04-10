@@ -28,12 +28,14 @@ const defaultArgs = {
   selectedCollection: "my-col",
   huggingfaceApiKey: "",
   prependDocument: vi.fn(),
+  replaceDocumentsByIds: vi.fn(),
 };
 
 describe("useIngestUpload", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
     defaultArgs.prependDocument = vi.fn();
+    defaultArgs.replaceDocumentsByIds = vi.fn();
   });
 
   afterEach(() => {
@@ -192,6 +194,7 @@ describe("useIngestUpload", () => {
       });
 
       vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
         body: neverEndingStream,
       } as unknown as Response);
 
@@ -243,6 +246,7 @@ describe("useIngestUpload", () => {
       });
 
       vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
         body: stream,
       } as unknown as Response);
 
@@ -287,6 +291,7 @@ describe("useIngestUpload", () => {
       });
 
       vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
         body: stream,
       } as unknown as Response);
 
@@ -306,6 +311,54 @@ describe("useIngestUpload", () => {
           chunk_total: 5,
         })
       );
+      expect(defaultArgs.replaceDocumentsByIds).not.toHaveBeenCalled();
+    });
+
+    it("replaces existing document rows when the server reports an overwrite", async () => {
+      const file = makeFile("report.pdf");
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      const encoder = new TextEncoder();
+      const events = [
+        JSON.stringify({ type: "chunked", chunks: 2 }),
+        JSON.stringify({
+          type: "complete",
+          chunks: 2,
+          source_doc_id: "doc-new",
+          replaced_source_doc_ids: ["doc-old-1", "doc-old-2"],
+          md5_hash: "new-hash",
+        }),
+      ].join("\n") + "\n";
+
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(events));
+          controller.close();
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        body: stream,
+      } as unknown as Response);
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(defaultArgs.replaceDocumentsByIds).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source_doc_id: "doc-new",
+          md5_hash: "new-hash",
+          source_filename: "report.pdf",
+        }),
+        ["doc-old-1", "doc-old-2"]
+      );
+      expect(defaultArgs.prependDocument).not.toHaveBeenCalled();
     });
 
     it("sets error status when stream contains an error event", async () => {
@@ -327,6 +380,7 @@ describe("useIngestUpload", () => {
       });
 
       vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
         body: stream,
       } as unknown as Response);
 
@@ -349,6 +403,7 @@ describe("useIngestUpload", () => {
       });
 
       vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
         body: null,
       } as unknown as Response);
 
@@ -444,6 +499,7 @@ describe("useIngestUpload", () => {
       });
 
       vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
         body: stream,
       } as unknown as Response);
 
@@ -477,6 +533,7 @@ describe("useIngestUpload", () => {
       });
 
       vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
         body: stream,
       } as unknown as Response);
 
@@ -528,6 +585,7 @@ describe("useIngestUpload", () => {
       });
 
       vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
         body: stream,
       } as unknown as Response);
 
@@ -564,6 +622,73 @@ describe("useIngestUpload", () => {
       });
     });
 
+    it("tracks determinate prepare progress when the model download reports totals", async () => {
+      const file = makeFile("prepare-progress.pdf");
+      let closeStream!: () => void;
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              JSON.stringify({
+                type: "prepare",
+                status: "running",
+                message: "Downloading layers",
+                model: "granite-embedding:278m",
+                completed: 1024,
+                total: 2048,
+                determinate: true,
+              }) + "\n"
+            )
+          );
+          closeStream = () => {
+            controller.enqueue(
+              encoder.encode(
+                JSON.stringify({
+                  type: "complete",
+                  chunks: 1,
+                  source_doc_id: "doc-prep-2",
+                }) + "\n"
+              )
+            );
+            controller.close();
+          };
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        body: stream,
+      } as unknown as Response);
+
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      act(() => {
+        void result.current.handleIngest();
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(result.current.fileStatuses.get("prepare-progress.pdf__1024")).toEqual({
+        stage: "preparing",
+        message: "Downloading layers",
+        model: "granite-embedding:278m",
+        completed: 1024,
+        total: 2048,
+        determinate: true,
+      });
+
+      await act(async () => {
+        closeStream();
+      });
+    });
+
     it("sets uploading=false after completing all files", async () => {
       const file = makeFile("final.pdf");
       const { result } = renderHook(() => useIngestUpload(defaultArgs));
@@ -584,13 +709,333 @@ describe("useIngestUpload", () => {
         },
       });
 
-      vi.mocked(fetch).mockResolvedValueOnce({ body: stream } as unknown as Response);
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        body: stream,
+      } as unknown as Response);
 
       await act(async () => {
         await result.current.handleIngest();
       });
 
       expect(result.current.uploading).toBe(false);
+    });
+
+    it("pauses on a filename conflict and resumes with overwrite when resolved", async () => {
+      const file = makeFile("report.pdf");
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      const encoder = new TextEncoder();
+      const conflictStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              JSON.stringify({
+                type: "conflict",
+                message:
+                  'A different "report.pdf" is already ingested in this collection. Overwrite it or skip this upload.',
+              }) + "\n"
+            )
+          );
+          controller.close();
+        },
+      });
+      const completeStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              JSON.stringify({
+                type: "complete",
+                chunks: 3,
+                source_doc_id: "doc-overwrite",
+                replaced_source_doc_ids: ["doc-old"],
+                md5_hash: "new-hash",
+              }) + "\n"
+            )
+          );
+          controller.close();
+        },
+      });
+
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({ ok: true, body: conflictStream } as unknown as Response)
+        .mockResolvedValueOnce({ ok: true, body: completeStream } as unknown as Response);
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(result.current.fileStatuses.get("report.pdf__1024")).toEqual({
+        stage: "conflict",
+        message:
+          'A different "report.pdf" is already ingested in this collection. Overwrite it or skip this upload.',
+      });
+      expect(result.current.uploading).toBe(false);
+
+      await act(async () => {
+        result.current.resolveConflict(file, "overwrite", true);
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(fetch).toHaveBeenCalledTimes(2);
+      const [, secondOptions] = vi.mocked(fetch).mock.calls[1];
+      const secondBody = secondOptions?.body as FormData;
+      expect(secondBody.get("nameConflictAction")).toBe("overwrite");
+      expect(result.current.fileStatuses.get("report.pdf__1024")).toEqual({
+        stage: "done",
+        chunks: 3,
+      });
+    });
+
+    it("uses a fallback filename conflict message when the stream omits one", async () => {
+      const file = makeFile("fallback-conflict.pdf");
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      const encoder = new TextEncoder();
+      const conflictStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "conflict" }) + "\n")
+          );
+          controller.close();
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        body: conflictStream,
+      } as unknown as Response);
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(result.current.fileStatuses.get("fallback-conflict.pdf__1024")).toEqual({
+        stage: "conflict",
+        message:
+          'A different "fallback-conflict.pdf" is already in this collection.',
+      });
+    });
+
+    it("marks conflicts as skipped without retrying when the user chooses skip", async () => {
+      const file = makeFile("report.pdf");
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      const encoder = new TextEncoder();
+      const conflictStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              JSON.stringify({
+                type: "conflict",
+                message:
+                  'A different "report.pdf" is already ingested in this collection. Overwrite it or skip this upload.',
+              }) + "\n"
+            )
+          );
+          controller.close();
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        body: conflictStream,
+      } as unknown as Response);
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      await act(async () => {
+        result.current.resolveConflict(file, "skip", false);
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(result.current.fileStatuses.get("report.pdf__1024")).toEqual({
+        stage: "skipped",
+        message:
+          'Skipped "report.pdf" because a different file with that name is already in this collection.',
+      });
+    });
+
+    it("treats duplicate-hash responses as skipped uploads", async () => {
+      const file = makeFile("duplicate.pdf");
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      const encoder = new TextEncoder();
+      const skippedStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              JSON.stringify({
+                type: "skipped",
+                reason: "duplicate_hash",
+                message:
+                  'Already ingested as "original.pdf" on 4/9/2026, 8:00:00 PM; skipping duplicate upload.',
+              }) + "\n"
+            )
+          );
+          controller.close();
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        body: skippedStream,
+      } as unknown as Response);
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(result.current.fileStatuses.get("duplicate.pdf__1024")).toEqual({
+        stage: "skipped",
+        message:
+          'Already ingested as "original.pdf" on 4/9/2026, 8:00:00 PM; skipping duplicate upload.',
+      });
+    });
+
+    it("uses a fallback skip message when the stream omits one", async () => {
+      const file = makeFile("skipped.pdf");
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      const encoder = new TextEncoder();
+      const skippedStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "skipped" }) + "\n")
+          );
+          controller.close();
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        body: skippedStream,
+      } as unknown as Response);
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(result.current.fileStatuses.get("skipped.pdf__1024")).toEqual({
+        stage: "skipped",
+        message: 'Skipped "skipped.pdf".',
+      });
+    });
+
+    it("surfaces JSON error responses when the route rejects before streaming", async () => {
+      const file = makeFile("invalid.pdf");
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: false,
+        json: vi.fn().mockResolvedValue({ error: "Upload rejected" }),
+      } as unknown as Response);
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(result.current.fileStatuses.get("invalid.pdf__1024")).toEqual({
+        stage: "error",
+        message: "Upload rejected",
+      });
+    });
+
+    it("falls back to a generic error when a failed response cannot be parsed", async () => {
+      const file = makeFile("invalid-json.pdf");
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: false,
+        json: vi.fn().mockRejectedValue(new Error("bad json")),
+      } as unknown as Response);
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(result.current.fileStatuses.get("invalid-json.pdf__1024")).toEqual({
+        stage: "error",
+        message: "Ingestion failed",
+      });
+    });
+
+    it("ignores blank ndjson lines while processing the stream", async () => {
+      const file = makeFile("blank-lines.pdf");
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              "\n" +
+                JSON.stringify({
+                  type: "complete",
+                  chunks: 1,
+                  source_doc_id: "doc-blank",
+                }) +
+                "\n"
+            )
+          );
+          controller.close();
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        body: stream,
+      } as unknown as Response);
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(result.current.fileStatuses.get("blank-lines.pdf__1024")).toEqual({
+        stage: "done",
+        chunks: 1,
+      });
     });
   });
 });

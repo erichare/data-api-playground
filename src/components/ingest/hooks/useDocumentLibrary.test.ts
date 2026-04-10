@@ -385,4 +385,38 @@ describe("useDocumentLibrary", () => {
       expect(fetch).toHaveBeenLastCalledWith("/api/documents?collection=col2");
     });
   });
+
+  describe("document mutations", () => {
+    it("replaces overwritten documents by source id while keeping the new upload at the top", async () => {
+      const docs = [makeDoc("doc-1"), makeDoc("doc-2")];
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ documents: docs }),
+      } as unknown as Response);
+
+      const { result } = renderHook(() => useDocumentLibrary(defaultArgs));
+
+      await waitFor(() => expect(result.current.loadingDocs).toBe(false));
+
+      act(() => {
+        result.current.replaceDocumentsByIds(
+          {
+            ...makeDoc("doc-3"),
+            source_filename: "replacement.pdf",
+          },
+          ["doc-1"]
+        );
+      });
+
+      expect(result.current.documents).toEqual([
+        expect.objectContaining({
+          source_doc_id: "doc-3",
+          source_filename: "replacement.pdf",
+        }),
+        expect.objectContaining({
+          source_doc_id: "doc-2",
+        }),
+      ]);
+    });
+  });
 });

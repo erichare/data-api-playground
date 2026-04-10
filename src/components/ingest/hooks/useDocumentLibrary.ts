@@ -88,6 +88,17 @@ export function useDocumentLibrary({
     setDocuments((prev) => [doc, ...prev]);
   }, []);
 
+  const replaceDocumentsByIds = useCallback(
+    (doc: IngestedDocumentSummary, replacedSourceDocIds: string[]) => {
+      const replacedIdSet = new Set(replacedSourceDocIds);
+      setDocuments((prev) => [
+        doc,
+        ...prev.filter((existingDoc) => !replacedIdSet.has(existingDoc.source_doc_id)),
+      ]);
+    },
+    []
+  );
+
   const filteredDocs = useMemo(() => (
     documents.filter((d) => {
       const matchesSearch = !search || d.source_filename.toLowerCase().includes(search.toLowerCase());
@@ -111,5 +122,6 @@ export function useDocumentLibrary({
     loadDocuments,
     handleDelete,
     prependDocument,
+    replaceDocumentsByIds,
   };
 }

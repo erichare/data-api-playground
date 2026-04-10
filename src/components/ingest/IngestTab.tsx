@@ -52,6 +52,7 @@ export function IngestTab({
     loadDocuments,
     handleDelete,
     prependDocument,
+    replaceDocumentsByIds,
   } = useDocumentLibrary({
     isConnected,
     selectedCollection,
@@ -69,6 +70,7 @@ export function IngestTab({
     addFiles,
     removeFile,
     handleIngest,
+    resolveConflict,
   } = useIngestUpload({
     astraToken,
     astraEndpoint,
@@ -76,6 +78,7 @@ export function IngestTab({
     selectedCollection,
     huggingfaceApiKey,
     prependDocument,
+    replaceDocumentsByIds,
   });
 
   return (
@@ -90,6 +93,9 @@ export function IngestTab({
         onFilesAdded={addFiles}
         onRemoveFile={removeFile}
         onIngest={() => void handleIngest()}
+        onResolveConflict={(file, action, applyToAll) =>
+          void resolveConflict(file, action, applyToAll)
+        }
       />
 
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden">

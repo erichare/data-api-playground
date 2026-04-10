@@ -68,6 +68,8 @@ export type FileStatus =
       total?: number;
       determinate: boolean;
     }
+  | { stage: "conflict"; message: string }
+  | { stage: "skipped"; message: string }
   | { stage: "storing"; processed: number; total: number }
   | { stage: "done"; chunks: number }
   | { stage: "error"; message: string };

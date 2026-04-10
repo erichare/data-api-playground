@@ -51,6 +51,8 @@ export function getDb(): Database.Database {
     );
 
     CREATE INDEX IF NOT EXISTS idx_docs_ingested_at ON ingested_documents(ingested_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_docs_collection_md5 ON ingested_documents(collection, md5_hash);
+    CREATE INDEX IF NOT EXISTS idx_docs_collection_filename ON ingested_documents(collection, source_filename);
   `);
 
   return _db;

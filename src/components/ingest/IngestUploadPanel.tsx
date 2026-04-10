@@ -1,8 +1,15 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, CheckCircle2, Loader2, Upload, X } from "lucide-react";
-import { useRef } from "react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  Upload,
+  X,
+} from "lucide-react";
+import { useRef, useState } from "react";
 import {
   ACCEPTED,
   ACCEPTED_LABEL,
@@ -24,6 +31,11 @@ interface IngestUploadPanelProps {
   onFilesAdded: (files: File[]) => void;
   onRemoveFile: (file: File) => void;
   onIngest: () => void;
+  onResolveConflict: (
+    file: File,
+    action: "overwrite" | "skip",
+    applyToAll: boolean
+  ) => void;
 }
 
 export function IngestUploadPanel({
@@ -36,6 +48,7 @@ export function IngestUploadPanel({
   onFilesAdded,
   onRemoveFile,
   onIngest,
+  onResolveConflict,
 }: IngestUploadPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -124,6 +137,7 @@ export function IngestUploadPanel({
                 status={fileStatuses.get(fileKey(file)) ?? { stage: "queued" }}
                 uploading={uploading}
                 onRemove={onRemoveFile}
+                onResolveConflict={onResolveConflict}
               />
             ))}
           </motion.div>
@@ -188,12 +202,20 @@ function QueuedFileRow({
   status,
   uploading,
   onRemove,
+  onResolveConflict,
 }: {
   file: File;
   status: FileStatus;
   uploading: boolean;
   onRemove: (file: File) => void;
+  onResolveConflict: (
+    file: File,
+    action: "overwrite" | "skip",
+    applyToAll: boolean
+  ) => void;
 }) {
+  const [applyToAll, setApplyToAll] = useState(false);
+
   return (
     <motion.div
       layout
@@ -250,9 +272,26 @@ function QueuedFileRow({
             />
           </span>
         )}
+        {status.stage === "skipped" && (
+          <span title={status.message}>
+            <CheckCircle2
+              size={12}
+              className="shrink-0"
+              style={{ color: "#f59e0b" }}
+            />
+          </span>
+        )}
+        {status.stage === "conflict" && (
+          <AlertTriangle
+            size={12}
+            className="shrink-0"
+            style={{ color: "#f59e0b" }}
+          />
+        )}
         {(status.stage === "queued" ||
           status.stage === "done" ||
-          status.stage === "error") &&
+          status.stage === "error" ||
+          status.stage === "skipped") &&
           !uploading && (
             <button
               onClick={() => onRemove(file)}
@@ -338,6 +377,57 @@ function QueuedFileRow({
             />
           </div>
         </div>
+      )}
+      {status.stage === "conflict" && !uploading && (
+        <div className="mt-2 rounded-md px-2.5 py-2" style={{ backgroundColor: "rgba(245,158,11,0.08)" }}>
+          <p className="text-[11px]" style={{ color: "#fcd34d" }}>
+            {status.message}
+          </p>
+          <label
+            className="mt-2 flex items-center gap-1.5 text-[11px]"
+            style={{ color: "var(--text-muted)" }}
+          >
+            <input
+              type="checkbox"
+              checked={applyToAll}
+              onChange={(event) => setApplyToAll(event.target.checked)}
+            />
+            Apply to later filename conflicts in this queue
+          </label>
+          <div className="mt-2 flex gap-2">
+            <button
+              onClick={() => onResolveConflict(file, "overwrite", applyToAll)}
+              className="rounded-md px-2 py-1 text-[11px] font-medium"
+              style={{
+                backgroundColor: "var(--interactive)",
+                color: "#fff",
+              }}
+            >
+              Overwrite
+            </button>
+            <button
+              onClick={() => onResolveConflict(file, "skip", applyToAll)}
+              className="rounded-md px-2 py-1 text-[11px] font-medium"
+              style={{
+                backgroundColor: "var(--bg-primary)",
+                color: "var(--text-primary)",
+                border: "1px solid var(--border-subtle)",
+              }}
+            >
+              Skip
+            </button>
+          </div>
+        </div>
+      )}
+      {status.stage === "skipped" && (
+        <p className="mt-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
+          {status.message}
+        </p>
+      )}
+      {status.stage === "error" && (
+        <p className="mt-1.5 text-[11px]" style={{ color: "#fca5a5" }}>
+          {status.message}
+        </p>
       )}
     </motion.div>
   );

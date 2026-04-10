@@ -54,6 +54,7 @@ function makeProps(overrides: Partial<Parameters<typeof IngestUploadPanel>[0]> =
     onFilesAdded: vi.fn(),
     onRemoveFile: vi.fn(),
     onIngest: vi.fn(),
+    onResolveConflict: vi.fn(),
     ...overrides,
   };
 }
@@ -214,5 +215,69 @@ describe("IngestUploadPanel", () => {
     expect(screen.getByText("4.0 KB/8.0 KB")).toBeTruthy();
     expect(container.querySelectorAll(".animate-spin").length).toBeGreaterThanOrEqual(3);
     expect(screen.getAllByRole("button").length).toBe(1);
+  });
+
+  it("renders filename conflicts with overwrite, skip, and apply-to-all controls", () => {
+    const conflictFile = new File(["new"], "report.pdf", {
+      type: "application/pdf",
+    });
+    const props = makeProps({
+      queuedFiles: [conflictFile],
+      fileStatuses: new Map([
+        [
+          fileKey(conflictFile),
+          {
+            stage: "conflict",
+            message:
+              'A different "report.pdf" is already ingested in this collection. Overwrite it or skip this upload.',
+          },
+        ],
+      ]),
+    });
+
+    render(<IngestUploadPanel {...props} />);
+
+    fireEvent.click(screen.getByLabelText("Apply to later filename conflicts in this queue"));
+    fireEvent.click(screen.getByRole("button", { name: "Overwrite" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+
+    expect(props.onResolveConflict).toHaveBeenNthCalledWith(
+      1,
+      conflictFile,
+      "overwrite",
+      true
+    );
+    expect(props.onResolveConflict).toHaveBeenNthCalledWith(
+      2,
+      conflictFile,
+      "skip",
+      true
+    );
+  });
+
+  it("renders skipped uploads with their skip reason", () => {
+    const skippedFile = new File(["same"], "report.pdf", {
+      type: "application/pdf",
+    });
+
+    render(
+      <IngestUploadPanel
+        {...makeProps({
+          queuedFiles: [skippedFile],
+          fileStatuses: new Map([
+            [
+              fileKey(skippedFile),
+              {
+                stage: "skipped",
+                message:
+                  'Already ingested as "report.pdf" on 4/9/2026, 8:00:00 PM; skipping duplicate upload.',
+              },
+            ],
+          ]),
+        })}
+      />
+    );
+
+    expect(screen.getByText(/skipping duplicate upload/i)).toBeTruthy();
   });
 });
