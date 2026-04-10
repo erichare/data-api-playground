@@ -1,9 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Conversation, Message } from "@/lib/types";
 import {
+  createConversationInApi,
+  fetchCollectionsFromApi,
+  fetchConversationsFromApi,
   getNextUntitledConversationName,
   isUntitledConversationName,
   makeBlankConversation,
+  readApiErrorMessage,
   serializeMessage,
 } from "./client";
 
@@ -19,7 +23,25 @@ function conversation(name: string): Conversation {
   };
 }
 
+function jsonResponse(body: unknown, init?: ResponseInit) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+    ...init,
+  });
+}
+
 describe("playground client helpers", () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
   it("picks the next untitled conversation suffix without reusing gaps incorrectly", () => {
     expect(getNextUntitledConversationName([])).toBe("Untitled");
     expect(
@@ -96,5 +118,163 @@ describe("playground client helpers", () => {
     expect(result.name).toBe("Untitled");
     expect(result.messageCount).toBe(0);
     expect(result.messages).toEqual([]);
+  });
+
+  it("formats API errors with request ids and falls back when the response is not JSON", async () => {
+    await expect(
+      readApiErrorMessage(
+        jsonResponse({ error: "Failed to save", requestId: "req-42" }, { status: 500 }),
+        "Fallback"
+      )
+    ).resolves.toBe("Failed to save (request req-42)");
+
+    await expect(
+      readApiErrorMessage(new Response("not-json", { status: 500 }), "Fallback")
+    ).resolves.toBe("Fallback");
+  });
+
+  it("fetches collections and tolerates a failing keyspaces request", async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          collections: [
+            {
+              name: "movies",
+              count: 8,
+              vectorDim: 768,
+            },
+          ],
+          fields: {
+            movies: ["title", "genre"],
+          },
+        })
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 500 })) as typeof fetch;
+
+    await expect(
+      fetchCollectionsFromApi("token-123", "https://db.example.com", "analytics")
+    ).resolves.toEqual({
+      collections: [
+        {
+          name: "movies",
+          count: 8,
+          vectorDim: 768,
+        },
+      ],
+      fields: {
+        movies: ["title", "genre"],
+      },
+      keyspaces: [],
+    });
+
+    expect(global.fetch).toHaveBeenNthCalledWith(1, "/api/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token: "token-123",
+        endpoint: "https://db.example.com",
+        keyspace: "analytics",
+      }),
+    });
+    expect(global.fetch).toHaveBeenNthCalledWith(2, "/api/keyspaces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token: "token-123",
+        endpoint: "https://db.example.com",
+      }),
+    });
+  });
+
+  it("surfaces collection fetch failures with request ids", async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error: "Connection failed",
+            requestId: "req-connect",
+          },
+          { status: 401 }
+        )
+      )
+      .mockResolvedValueOnce(jsonResponse({ keyspaces: ["default_keyspace"] })) as typeof fetch;
+
+    await expect(
+      fetchCollectionsFromApi("token-123", "https://db.example.com")
+    ).rejects.toThrow("Connection failed (request req-connect)");
+  });
+
+  it("maps remote conversation payloads into local conversation models", async () => {
+    global.fetch = vi.fn().mockResolvedValue(
+      jsonResponse({
+        conversations: [
+          {
+            id: "conv-1",
+            name: "Orders",
+            createdAt: "2026-04-01T10:00:00.000Z",
+            updatedAt: "2026-04-01T10:30:00.000Z",
+            messageCount: 4,
+          },
+        ],
+      })
+    ) as typeof fetch;
+
+    await expect(fetchConversationsFromApi()).resolves.toEqual([
+      {
+        id: "conv-1",
+        name: "Orders",
+        messages: [],
+        createdAt: new Date("2026-04-01T10:00:00.000Z"),
+        updatedAt: new Date("2026-04-01T10:30:00.000Z"),
+        messageCount: 4,
+      },
+    ]);
+  });
+
+  it("returns an empty conversation list when the conversations request fails", async () => {
+    global.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 503 })) as typeof fetch;
+
+    await expect(fetchConversationsFromApi()).resolves.toEqual([]);
+  });
+
+  it("creates conversations from the API response", async () => {
+    global.fetch = vi.fn().mockResolvedValue(
+      jsonResponse({
+        conversation: {
+          id: "conv-9",
+          name: "Research",
+          createdAt: "2026-04-01T08:00:00.000Z",
+          updatedAt: "2026-04-01T08:00:00.000Z",
+          messageCount: 99,
+        },
+      })
+    ) as typeof fetch;
+
+    await expect(createConversationInApi("Research")).resolves.toEqual({
+      id: "conv-9",
+      name: "Research",
+      messages: [],
+      createdAt: new Date("2026-04-01T08:00:00.000Z"),
+      updatedAt: new Date("2026-04-01T08:00:00.000Z"),
+      messageCount: 0,
+    });
+  });
+
+  it("uses the shared API error reader when conversation creation fails", async () => {
+    global.fetch = vi.fn().mockResolvedValue(
+      jsonResponse(
+        {
+          error: "Unable to create conversation",
+          requestId: "req-create",
+        },
+        { status: 500 }
+      )
+    ) as typeof fetch;
+
+    await expect(createConversationInApi("Broken")).rejects.toThrow(
+      "Unable to create conversation (request req-create)"
+    );
   });
 });

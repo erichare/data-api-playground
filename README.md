@@ -2,6 +2,13 @@
 
 An interactive web app for exploring [DataStax Astra DB](https://www.datastax.com/products/datastax-astra) via the Data API. Connect to your database, chat with your data, inspect the underlying API calls, and ingest tabular or document data from the browser.
 
+<p align="center">
+  <img src="docs/screenshots/01-chat-dark.png" alt="Data API Playground chat view with collection-aware answers and pipeline tabs" width="49%" />
+  <img src="docs/screenshots/03-api-find-dark.png" alt="Data API Playground API explorer with generated request bodies and SDK snippets" width="49%" />
+</p>
+
+<p align="center"><em>Move between conversational exploration and API-first inspection without leaving the playground.</em></p>
+
 ## Highlights
 
 - Demo mode or live Astra DB connection
@@ -59,7 +66,7 @@ npm install
 cp .env.example .env.local
 ```
 
-Supported variables are documented in [.env.example](/Users/erichare/GitHub/data-api-playground/.env.example).
+Supported variables are documented in [`.env.example`](.env.example).
 
 You can also enter credentials at runtime:
 
@@ -160,5 +167,6 @@ npm run dev
 npm run build
 npm run lint
 npm run test
+npm run test:coverage
 npm run test:e2e
 ```
