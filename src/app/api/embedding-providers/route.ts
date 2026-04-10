@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
+import {
+  buildTsCall,
+  formatTsMethodCall,
+  recordAstraClientCall,
+} from "@/lib/astraClientLog";
 import { requireApiAuth } from "@/lib/auth";
 import { embeddingProvidersBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
@@ -24,6 +29,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const db = getAstraDb(token, endpoint, keyspace);
+    recordAstraClientCall({
+      label: "List Embedding Providers",
+      code: buildTsCall("db.admin()", [
+        formatTsMethodCall("findEmbeddingProviders", []),
+      ]),
+    });
     const { embeddingProviders } = await db.admin().findEmbeddingProviders();
 
     const models: ProviderModel[] = [];

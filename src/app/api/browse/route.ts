@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
+import {
+  buildTsCall,
+  formatTsMethodCall,
+  recordAstraClientCall,
+} from "@/lib/astraClientLog";
 import { requireApiAuth } from "@/lib/auth";
 import { browseBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
@@ -23,6 +28,19 @@ export async function POST(req: NextRequest) {
     const coll = db.collection(collection);
 
     const sortObj = sort ? { [sort.col]: sort.dir } : undefined;
+    const findOptions = {
+      limit: 20,
+      ...(sortObj ? { sort: sortObj } : {}),
+    };
+    const browseChain = [
+      formatTsMethodCall("find", [{}, findOptions]),
+      ...(pageState ? [formatTsMethodCall("initialPageState", [pageState])] : []),
+      formatTsMethodCall("fetchNextPage", []),
+    ];
+    recordAstraClientCall({
+      label: "Browse Collection",
+      code: buildTsCall(`db.collection(${JSON.stringify(collection)})`, browseChain),
+    });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let cursor = coll.find({}, { limit: 20, sort: sortObj as any });

@@ -1,4 +1,9 @@
 import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
+import {
+  buildTsCall,
+  formatTsMethodCall,
+  recordAstraClientCall,
+} from "@/lib/astraClientLog";
 import { getDb } from "@/lib/db";
 import type { Collection, IngestedDocumentSummary } from "@/lib/types";
 
@@ -74,14 +79,21 @@ export async function createCollectionInAstra(
 
   const db = getAstraDb(token, endpoint, keyspace);
   const hasVectorize = provider !== "none";
-
-  await db.createCollection(name, {
+  const vectorOptions = {
     vector: {
       dimension,
       metric: metric as "cosine" | "dot_product" | "euclidean",
       ...(hasVectorize ? { service: { provider, modelName: model } } : {}),
     },
+  };
+
+  recordAstraClientCall({
+    label: "Create Collection",
+    code: buildTsCall("db", [
+      formatTsMethodCall("createCollection", [name, vectorOptions]),
+    ]),
   });
+  await db.createCollection(name, vectorOptions);
 
   return {
     name,
@@ -104,6 +116,12 @@ export async function deleteCollectionInAstra(args: DeleteCollectionArgs) {
   }
 
   const db = getAstraDb(token, endpoint, keyspace);
+  recordAstraClientCall({
+    label: "Delete Collection",
+    code: buildTsCall("db", [
+      formatTsMethodCall("dropCollection", [args.name]),
+    ]),
+  });
   await db.dropCollection(args.name);
   return { dropped: true };
 }
@@ -123,6 +141,14 @@ export async function deleteIngestedDocument(
   if (token && endpoint) {
     try {
       const astraDb = getAstraDb(token, endpoint, keyspace);
+      recordAstraClientCall({
+        label: "Delete Ingested Document",
+        code: buildTsCall(`db.collection(${JSON.stringify(collection)})`, [
+          formatTsMethodCall("deleteMany", [
+            { "metadata.source_doc_id": { $eq: source_doc_id } },
+          ]),
+        ]),
+      });
       await astraDb
         .collection(collection)
         .deleteMany({ "metadata.source_doc_id": { $eq: source_doc_id } });

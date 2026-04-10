@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAstraDb, resolveAstraConnection, SYSTEM_FIELDS } from "@/lib/astra";
+import {
+  buildTsCall,
+  formatTsMethodCall,
+  recordAstraClientCall,
+} from "@/lib/astraClientLog";
 import { requireApiAuth } from "@/lib/auth";
 import { createRequestLogContext, jsonError, logError } from "@/lib/server/log";
 import { connectBodySchema } from "@/lib/validation/schemas";
@@ -22,12 +27,24 @@ export async function POST(req: NextRequest) {
   try {
     const db = getAstraDb(token, endpoint, keyspace);
 
+    recordAstraClientCall({
+      label: "Connect to Astra",
+      code: buildTsCall("db", [
+        formatTsMethodCall("listCollections", [{ nameOnly: false }]),
+      ]),
+    });
     const colls = await db.listCollections({ nameOnly: false });
 
     const collections = await Promise.all(
       colls.map(async (c) => {
         let count = 0;
         try {
+          recordAstraClientCall({
+            label: "Collection Estimated Count",
+            code: buildTsCall(`db.collection(${JSON.stringify(c.name)})`, [
+              formatTsMethodCall("estimatedDocumentCount", []),
+            ]),
+          });
           count = await db.collection(c.name).estimatedDocumentCount();
         } catch { /* leave count at 0 if unsupported */ }
         const vectorDef = c.definition?.vector;
@@ -46,6 +63,13 @@ export async function POST(req: NextRequest) {
     await Promise.all(
       collections.map(async (c) => {
         try {
+          recordAstraClientCall({
+            label: "Sample Collection Fields",
+            code: buildTsCall(`db.collection(${JSON.stringify(c.name)})`, [
+              formatTsMethodCall("find", [{}, { limit: 3 }]),
+              ".toArray()",
+            ]),
+          });
           const sample = await db.collection(c.name).find({}, { limit: 3 }).toArray();
           const fieldSet = new Set<string>();
           for (const doc of sample) {

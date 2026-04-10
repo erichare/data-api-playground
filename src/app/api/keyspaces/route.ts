@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
+import {
+  buildTsCall,
+  formatTsMethodCall,
+  recordAstraClientCall,
+} from "@/lib/astraClientLog";
 import { requireApiAuth } from "@/lib/auth";
 import { keyspacesBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
@@ -19,6 +24,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const admin = getAstraDb(token, endpoint).admin();
+    recordAstraClientCall({
+      label: "List Keyspaces",
+      code: buildTsCall("db.admin()", [
+        formatTsMethodCall("listKeyspaces", []),
+      ]),
+    });
     const keyspaces = await admin.listKeyspaces();
     return NextResponse.json({ keyspaces });
   } catch (err) {

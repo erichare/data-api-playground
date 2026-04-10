@@ -1,5 +1,6 @@
 import { embedMany, generateText, type EnsureModelProgress, type ResolvedAiBackend } from "@/lib/ai/service";
 import { getAstraDb, SYSTEM_FIELDS } from "@/lib/astra";
+import { recordAstraClientCall } from "@/lib/astraClientLog";
 import type { ChatCollectionInfo, SearchResult } from "@/lib/chat/types";
 
 export const ANALYZE_MAX_TOKENS = 300;
@@ -188,31 +189,55 @@ export async function searchCollections(args: {
     if (sortField) {
       const sortObj = { [sortField]: sortDir === "asc" ? 1 : -1 } as Record<string, 1 | -1>;
       cmd = `await db.collection("${colName}")\n  .find(${fStr}, { sort: { ${sortField}: ${sortDir === "asc" ? 1 : -1} }, limit: ${limit} })\n  .toArray()`;
+      recordAstraClientCall({
+        label: "Chat Search",
+        code: cmd,
+      });
       const docs = await coll.find(filter, { sort: sortObj, limit }).toArray();
       results = docs.map((d) => ({ id: String(d._id), similarity: 1, preview: docPreview(d as Record<string, unknown>), collection: colName }));
     } else if (isVec) {
       if (searchMode === "hybrid") {
         cmd = `await db.collection("${colName}")\n  .findAndRerank(${fStr}, { sort: { $hybrid: { $vectorize: query } }, limit: ${limit} })\n  .toArray()`;
         try {
+          recordAstraClientCall({
+            label: "Chat Search",
+            code: cmd,
+          });
           const cursor = coll.findAndRerank(filter, { sort: { $hybrid: { $vectorize: query } } as never, limit });
           const docs = await cursor.toArray();
           results = docs.map((d) => ({ id: String((d.document as Record<string, unknown>)._id), similarity: d.scores["$vector"] ?? d.scores["$reranker"] ?? 1, preview: docPreview(d.document as Record<string, unknown>), collection: colName }));
         } catch {
           cmd = `await db.collection("${colName}")\n  .find(${fStr}, { sort: { $vectorize: query }, limit: ${limit}, includeSimilarity: true })\n  .toArray()`;
+          recordAstraClientCall({
+            label: "Chat Search",
+            code: cmd,
+          });
           const docs = await coll.find(filter, { sort: { $vectorize: query }, limit, includeSimilarity: true }).toArray();
           results = docs.map((d) => ({ id: String(d._id), similarity: (d as { $similarity?: number }).$similarity ?? 1, preview: docPreview(d as Record<string, unknown>), collection: colName }));
         }
       } else {
         cmd = `await db.collection("${colName}")\n  .find(${fStr}, { sort: { $vectorize: query }, limit: ${limit}, includeSimilarity: true })\n  .toArray()`;
+        recordAstraClientCall({
+          label: "Chat Search",
+          code: cmd,
+        });
         const docs = await coll.find(filter, { sort: { $vectorize: query }, limit, includeSimilarity: true }).toArray();
         results = docs.map((d) => ({ id: String(d._id), similarity: (d as { $similarity?: number }).$similarity ?? 1, preview: docPreview(d as Record<string, unknown>), collection: colName }));
       }
     } else if (embeddingVector.length > 0) {
       cmd = `await db.collection("${colName}")\n  .find(${fStr}, { sort: { $vector: embedding }, limit: ${limit}, includeSimilarity: true })\n  .toArray()`;
+      recordAstraClientCall({
+        label: "Chat Search",
+        code: cmd,
+      });
       const docs = await coll.find(filter, { sort: { $vector: embeddingVector }, limit, includeSimilarity: true }).toArray();
       results = docs.map((d) => ({ id: String(d._id), similarity: (d as { $similarity?: number }).$similarity ?? 1, preview: docPreview(d as Record<string, unknown>), collection: colName }));
     } else {
       cmd = `await db.collection("${colName}")\n  .find(${fStr}, { limit: ${limit} })\n  .toArray()`;
+      recordAstraClientCall({
+        label: "Chat Search",
+        code: cmd,
+      });
       const docs = await coll.find(filter, { limit }).toArray();
       results = docs.map((d) => ({ id: String(d._id), similarity: 1, preview: docPreview(d as Record<string, unknown>), collection: colName }));
     }

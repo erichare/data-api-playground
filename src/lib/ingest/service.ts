@@ -6,6 +6,12 @@ import {
   type EnsureModelProgress,
   type ResolvedAiBackend,
 } from "@/lib/ai/service";
+import {
+  buildTsCall,
+  formatTsMethodCall,
+  rawTs,
+  recordAstraClientCall,
+} from "@/lib/astraClientLog";
 import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
 import { getDb } from "@/lib/db";
 import {
@@ -180,6 +186,18 @@ async function deleteDocumentsForOverwrite(args: {
     const collection = astraDb.collection(collectionName);
 
     for (const existingDocument of existingDocuments) {
+      recordAstraClientCall({
+        label: "Overwrite Ingested Document",
+        code: buildTsCall(`db.collection(${JSON.stringify(collectionName)})`, [
+          formatTsMethodCall("deleteMany", [
+            {
+              "metadata.source_doc_id": {
+                $eq: existingDocument.source_doc_id,
+              },
+            },
+          ]),
+        ]),
+      });
       await collection.deleteMany({
         "metadata.source_doc_id": { $eq: existingDocument.source_doc_id },
       });
@@ -369,6 +387,12 @@ export function streamCsvIngest(args: {
 
         const db = getAstraDb(token, endpoint, keyspace);
         const collectionRef = db.collection(collection);
+        recordAstraClientCall({
+          label: "Inspect Collection Config",
+          code: buildTsCall("db", [
+            formatTsMethodCall("listCollections", [{ nameOnly: false }]),
+          ]),
+        });
         const collectionDescriptions = (await db.listCollections({
           nameOnly: false,
         })) as CollectionDescription[];
@@ -447,6 +471,14 @@ export function streamCsvIngest(args: {
                 }));
               })();
 
+          recordAstraClientCall({
+            label: "Ingest CSV Batch",
+            code: buildTsCall(`db.collection(${JSON.stringify(collection)})`, [
+              formatTsMethodCall("insertMany", [
+                rawTs(`rowsBatch /* ${docs.length} rows */`),
+              ]),
+            ]),
+          });
           await collectionRef.insertMany(docs);
           processed += batch.length;
           send({ type: "progress", processed, total });
@@ -497,7 +529,7 @@ export async function parseDocumentUpload(formData: FormData) {
     (formData.get("huggingfaceApiKey") as string | null) ?? undefined;
   const nameConflictActionRaw =
     (formData.get("nameConflictAction") as string | null) ?? undefined;
-  const nameConflictAction =
+  const nameConflictAction: NameConflictAction | undefined =
     nameConflictActionRaw === "overwrite" || nameConflictActionRaw === "skip"
       ? nameConflictActionRaw
       : undefined;
@@ -697,6 +729,12 @@ export function streamDocumentIngest(args: {
 
         const db = getAstraDb(token, endpoint, keyspace);
         const collection = db.collection(collectionName);
+        recordAstraClientCall({
+          label: "Inspect Collection Config",
+          code: buildTsCall("db", [
+            formatTsMethodCall("listCollections", [{ nameOnly: false }]),
+          ]),
+        });
         const collectionDescriptions = (await db.listCollections({
           nameOnly: false,
         })) as CollectionDescription[];
@@ -776,6 +814,14 @@ export function streamDocumentIngest(args: {
             return doc;
           });
 
+          recordAstraClientCall({
+            label: "Ingest Knowledge",
+            code: buildTsCall(`db.collection(${JSON.stringify(collectionName)})`, [
+              formatTsMethodCall("insertMany", [
+                rawTs(`docsBatch /* ${docs.length} chunks */`),
+              ]),
+            ]),
+          });
           await collection.insertMany(docs);
           send({
             type: "chunk_progress",

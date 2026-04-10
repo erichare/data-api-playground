@@ -4,6 +4,11 @@ import {
   isAllowedAstraEndpoint,
   resolveAstraConnection,
 } from "@/lib/astra";
+import {
+  buildTsCall,
+  formatTsMethodCall,
+  recordAstraClientCall,
+} from "@/lib/astraClientLog";
 import { requireApiAuth } from "@/lib/auth";
 import { createRequestLogContext, jsonError, logError } from "@/lib/server/log";
 import { dataApiProxyBodySchema } from "@/lib/validation/schemas";
@@ -52,6 +57,13 @@ export async function POST(req: Request) {
           ...(args.options ?? {}),
           ...(args.sort ? { sort: args.sort } : {}),
         } as Parameters<typeof collectionRef.find>[1];
+        recordAstraClientCall({
+          label: "API Explorer: Find",
+          code: buildTsCall(`db.collection(${JSON.stringify(collection)})`, [
+            formatTsMethodCall("find", [args.filter ?? {}, options]),
+            ".toArray()",
+          ]),
+        });
         result = await collectionRef.find(args.filter ?? {}, options).toArray();
         break;
       }
@@ -60,11 +72,26 @@ export async function POST(req: Request) {
           filter?: Record<string, unknown>;
           options?: Record<string, unknown>;
         };
+        recordAstraClientCall({
+          label: "API Explorer: Find One",
+          code: buildTsCall(`db.collection(${JSON.stringify(collection)})`, [
+            formatTsMethodCall("findOne", [
+              args.filter ?? {},
+              args.options ?? {},
+            ]),
+          ]),
+        });
         result = await collectionRef.findOne(args.filter ?? {}, args.options ?? {});
         break;
       }
       case "insertMany": {
         const args = (payload ?? {}) as { documents?: Record<string, unknown>[] };
+        recordAstraClientCall({
+          label: "API Explorer: Insert Many",
+          code: buildTsCall(`db.collection(${JSON.stringify(collection)})`, [
+            formatTsMethodCall("insertMany", [args.documents ?? []]),
+          ]),
+        });
         result = await collectionRef.insertMany(args.documents ?? []);
         break;
       }
@@ -74,6 +101,16 @@ export async function POST(req: Request) {
           update?: Record<string, unknown>;
           options?: Record<string, unknown>;
         };
+        recordAstraClientCall({
+          label: "API Explorer: Update One",
+          code: buildTsCall(`db.collection(${JSON.stringify(collection)})`, [
+            formatTsMethodCall("updateOne", [
+              args.filter ?? {},
+              args.update ?? {},
+              args.options ?? {},
+            ]),
+          ]),
+        });
         result = await collectionRef.updateOne(
           args.filter ?? {},
           args.update ?? {},
@@ -83,10 +120,22 @@ export async function POST(req: Request) {
       }
       case "deleteOne": {
         const args = (payload ?? {}) as { filter?: Record<string, unknown> };
+        recordAstraClientCall({
+          label: "API Explorer: Delete One",
+          code: buildTsCall(`db.collection(${JSON.stringify(collection)})`, [
+            formatTsMethodCall("deleteOne", [args.filter ?? {}]),
+          ]),
+        });
         result = await collectionRef.deleteOne(args.filter ?? {});
         break;
       }
       case "estimatedDocumentCount":
+        recordAstraClientCall({
+          label: "API Explorer: Estimated Count",
+          code: buildTsCall(`db.collection(${JSON.stringify(collection)})`, [
+            formatTsMethodCall("estimatedDocumentCount", []),
+          ]),
+        });
         result = await collectionRef.estimatedDocumentCount();
         break;
       default:

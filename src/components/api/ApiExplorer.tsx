@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Play, Copy, Check } from "lucide-react";
 import type { Collection } from "@/lib/types";
@@ -389,6 +389,13 @@ interface ApiResponse {
   data: unknown;
 }
 
+interface ClientCallLogEntry {
+  id: string;
+  label: string;
+  code: string;
+  timestamp: string;
+}
+
 export function ApiExplorer({ collection, astraToken, astraEndpoint, keyspace }: ApiExplorerProps) {
   const [selectedOp, setSelectedOp] = useState<OpId>("find");
   const [body, setBody]             = useState(() => getDefaultBody("find", collection));
@@ -396,6 +403,8 @@ export function ApiExplorer({ collection, astraToken, astraEndpoint, keyspace }:
   const [response, setResponse]     = useState<ApiResponse | null>(null);
   const [running, setRunning]       = useState(false);
   const [bodyError, setBodyError]   = useState("");
+  const [clientCalls, setClientCalls] = useState<ClientCallLogEntry[]>([]);
+  const [clientCallsLoading, setClientCallsLoading] = useState(true);
 
   const colName = collection?.name ?? "";
   const ks      = keyspace || "default_keyspace";
@@ -408,6 +417,28 @@ export function ApiExplorer({ collection, astraToken, astraEndpoint, keyspace }:
     setBodyError("");
     setResponse(null);
   }, [collection]);
+
+  const loadClientCalls = useCallback(async () => {
+    try {
+      const res = await fetch("/api/typescript-client-calls?limit=40");
+      if (!res.ok) return;
+      const data = await res.json() as { calls?: ClientCallLogEntry[] };
+      setClientCalls(data.calls ?? []);
+    } catch {
+      // Best effort polling for the activity panel.
+    } finally {
+      setClientCallsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadClientCalls();
+    const intervalId = window.setInterval(() => {
+      void loadClientCalls();
+    }, 2000);
+
+    return () => window.clearInterval(intervalId);
+  }, [loadClientCalls]);
 
   const run = async () => {
     setBodyError("");
@@ -440,12 +471,14 @@ export function ApiExplorer({ collection, astraToken, astraEndpoint, keyspace }:
       setResponse({ status: 0, statusText: "Network Error", latencyMs: 0, data: { error: String(err) } });
     } finally {
       setRunning(false);
+      void loadClientCalls();
     }
   };
 
   const code        = getCode(selectedOp, colName, body, codeLang, ks);
   const responseJson = response ? JSON.stringify(response.data, null, 2) : null;
   const statusOk    = response && response.status >= 200 && response.status < 300;
+  const hasClientCalls = clientCalls.length > 0;
 
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -635,61 +668,155 @@ export function ApiExplorer({ collection, astraToken, astraEndpoint, keyspace }:
       <div
         className="flex flex-col border-l overflow-hidden"
         style={{
-          width: "380px",
-          minWidth: "280px",
+          width: "420px",
+          minWidth: "320px",
           borderColor: "var(--border-subtle)",
           backgroundColor: "var(--bg-panel)",
         }}
       >
-        {/* Response header */}
+        <div className="flex flex-col min-h-0" style={{ flex: "0 0 42%" }}>
+          {/* Response header */}
+          <div
+            className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b"
+            style={{ borderColor: "var(--border-subtle)" }}
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+              Response
+            </span>
+            {response && (
+              <div className="flex items-center gap-2">
+                <span
+                  className="text-[11px] font-semibold px-2 py-0.5 rounded"
+                  style={{
+                    backgroundColor: statusOk ? "rgba(34,197,94,0.1)" : "rgba(255,107,53,0.1)",
+                    color: statusOk ? "var(--step-respond)" : "var(--step-search)",
+                    fontFamily: "IBM Plex Mono, monospace",
+                  }}
+                >
+                  {response.status} {response.statusText}
+                </span>
+                {response.latencyMs > 0 && (
+                  <span
+                    className="text-[10px]"
+                    style={{ color: "var(--text-muted)", fontFamily: "IBM Plex Mono, monospace" }}
+                  >
+                    {response.latencyMs}ms
+                  </span>
+                )}
+                {responseJson && <CopyButton text={responseJson} />}
+              </div>
+            )}
+          </div>
+
+          {/* Response body */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
+            {!response ? (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-xs text-center" style={{ color: "var(--text-muted)" }}>
+                  {running ? "Running request…" : "Hit Run to see the response"}
+                </p>
+              </div>
+            ) : responseJson ? (
+              <pre
+                className="text-[11px] leading-relaxed whitespace-pre-wrap break-all"
+                style={{ fontFamily: "IBM Plex Mono, monospace" }}
+              >
+                <HighlightedJson json={responseJson} />
+              </pre>
+            ) : null}
+          </div>
+        </div>
+
         <div
-          className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b"
+          className="flex flex-col flex-1 min-h-0 border-t"
           style={{ borderColor: "var(--border-subtle)" }}
         >
-          <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
-            Response
-          </span>
-          {response && (
-            <div className="flex items-center gap-2">
+          <div
+            className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b"
+            style={{ borderColor: "var(--border-subtle)" }}
+          >
+            <div className="flex flex-col gap-0.5">
               <span
-                className="text-[11px] font-semibold px-2 py-0.5 rounded"
+                className="text-[10px] font-semibold uppercase tracking-widest"
+                style={{ color: "var(--text-muted)" }}
+              >
+                TypeScript Client Log
+              </span>
+              <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                Runtime `astra-db-ts` calls across the app
+              </span>
+            </div>
+            {hasClientCalls && (
+              <span
+                className="text-[10px] px-2 py-0.5 rounded"
                 style={{
-                  backgroundColor: statusOk ? "rgba(34,197,94,0.1)" : "rgba(255,107,53,0.1)",
-                  color: statusOk ? "var(--step-respond)" : "var(--step-search)",
+                  backgroundColor: "var(--bg-card)",
+                  color: "var(--text-muted)",
+                  border: "1px solid var(--border-subtle)",
                   fontFamily: "IBM Plex Mono, monospace",
                 }}
               >
-                {response.status} {response.statusText}
+                {clientCalls.length}
               </span>
-              {response.latencyMs > 0 && (
-                <span
-                  className="text-[10px]"
-                  style={{ color: "var(--text-muted)", fontFamily: "IBM Plex Mono, monospace" }}
-                >
-                  {response.latencyMs}ms
-                </span>
-              )}
-              {responseJson && <CopyButton text={responseJson} />}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
 
-        {/* Response body */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
-          {!response ? (
-            <div className="flex items-center justify-center h-full">
-              <p className="text-xs text-center" style={{ color: "var(--text-muted)" }}>
-                {running ? "Running request…" : "Hit Run to see the response"}
-              </p>
-            </div>
-          ) : responseJson ? (
-            <pre
-              className="text-[11px] leading-relaxed whitespace-pre-wrap break-all"
-              style={{ fontFamily: "IBM Plex Mono, monospace" }}
-            >
-              <HighlightedJson json={responseJson} />
-            </pre>
-          ) : null}
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
+            {!hasClientCalls ? (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-xs text-center" style={{ color: "var(--text-muted)" }}>
+                  {clientCallsLoading
+                    ? "Loading runtime call history…"
+                    : "Run API requests, chat, browse, or ingest to see live TypeScript client calls here."}
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {clientCalls.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="rounded-lg overflow-hidden"
+                    style={{
+                      border: "1px solid var(--border-subtle)",
+                      backgroundColor: "var(--bg-card)",
+                    }}
+                  >
+                    <div
+                      className="flex items-center justify-between gap-3 px-3 py-2 border-b"
+                      style={{ borderColor: "var(--border-subtle)" }}
+                    >
+                      <div className="min-w-0">
+                        <p
+                          className="text-[11px] font-medium truncate"
+                          style={{ color: "var(--text-primary)" }}
+                        >
+                          {entry.label}
+                        </p>
+                        <p
+                          className="text-[10px]"
+                          style={{
+                            color: "var(--text-muted)",
+                            fontFamily: "IBM Plex Mono, monospace",
+                          }}
+                        >
+                          {new Date(entry.timestamp).toLocaleTimeString()}
+                        </p>
+                      </div>
+                      <CopyButton text={entry.code} />
+                    </div>
+                    <div className="px-3 py-2 overflow-x-auto">
+                      <pre
+                        className="text-[11px] leading-relaxed whitespace-pre"
+                        style={{ fontFamily: "IBM Plex Mono, monospace" }}
+                      >
+                        <HighlightedCode code={entry.code} lang="ts" />
+                      </pre>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

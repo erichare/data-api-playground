@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
+import {
+  formatTsMethodCall,
+  recordAstraClientCall,
+} from "@/lib/astraClientLog";
 import { requireApiAuth } from "@/lib/auth";
 import { documentsChunksBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
@@ -22,6 +26,24 @@ export async function POST(req: NextRequest) {
   try {
     const db = getAstraDb(token, endpoint, keyspace);
     const coll = db.collection(collection);
+    const findCall = formatTsMethodCall("find", [
+      { "metadata.source_doc_id": { $eq: sourceDocId } },
+      {
+        projection: { content: 1, metadata: 1 },
+        limit: 1000,
+      },
+    ]);
+    recordAstraClientCall({
+      label: "Load Document Chunks",
+      code: [
+        `const cursor = db.collection(${JSON.stringify(collection)})`,
+        `  ${findCall};`,
+        "",
+        "for await (const doc of cursor) {",
+        "  // collect content and metadata",
+        "}",
+      ].join("\n"),
+    });
 
     const cursor = coll.find(
       { "metadata.source_doc_id": { $eq: sourceDocId } },
