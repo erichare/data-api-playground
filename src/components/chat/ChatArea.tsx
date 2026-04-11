@@ -6,7 +6,8 @@ import { Send, MessageSquare, RefreshCw, AlertCircle, X } from "lucide-react";
 import { MessageBubble } from "./MessageBubble";
 import { PipelineTrace } from "./PipelineTrace";
 import { SearchModeToggle } from "./SearchModeToggle";
-import type { Message, SearchMode, Conversation, PipelineStep, PipelineStepId } from "@/lib/types";
+import { useChatSession } from "@/components/chat/hooks/useChatSession";
+import type { Message, Conversation } from "@/lib/types";
 
 interface ChatAreaProps {
   conversations: Conversation[];
@@ -39,171 +40,58 @@ export function ChatArea({
   isConnected = false,
   initializing = false,
 }: ChatAreaProps) {
-  const [input, setInput] = useState("");
-  const [searchMode, setSearchMode] = useState<SearchMode>("hybrid");
-  const [streamingSteps, setStreamingSteps] = useState<PipelineStep[]>([]);
-  const [isStreaming, setIsStreaming] = useState(false);
   const [sendRipple, setSendRipple] = useState(false);
-  const [chatError, setChatError] = useState("");
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
   const activeConv = conversations.find((c) => c.id === activeConversationId);
+  const {
+    input,
+    setInput,
+    searchMode,
+    setSearchMode,
+    streamingSteps,
+    isStreaming,
+    chatError,
+    dismissChatError,
+    selectHint,
+    canSend,
+    sendMessage,
+  } = useChatSession({
+    messages,
+    onMessagesUpdate,
+    astraToken,
+    astraEndpoint,
+    keyspace,
+    collections,
+    activeCollection,
+    huggingfaceApiKey,
+    collectionFields,
+  });
 
   useEffect(() => {
     const el = messagesContainerRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, isStreaming, streamingSteps]);
 
-  const handleSend = async () => {
-    const text = input.trim();
-    if (!text || isStreaming) return;
-
-    setSendRipple(true);
-    setTimeout(() => setSendRipple(false), 600);
-
-    const userMsg: Message = {
-      id: `msg-${Date.now()}`,
-      role: "user",
-      content: text,
-      timestamp: new Date(),
-    };
-
-    const updated = [...messages, userMsg];
-    onMessagesUpdate(updated);
-    setInput("");
-    setIsStreaming(true);
-    setStreamingSteps([]);
-    setChatError("");
-
-    const liveSteps: PipelineStep[] = [];
-
-    const upsertStep = (partial: Partial<PipelineStep> & { id: PipelineStepId }) => {
-      const idx = liveSteps.findIndex((s) => s.id === partial.id);
-      if (idx >= 0) {
-        liveSteps[idx] = { ...liveSteps[idx], ...partial };
-      } else {
-        liveSteps.push({ status: "pending", ...partial } as PipelineStep);
-      }
-      setStreamingSteps([...liveSteps]);
-    };
-
-    let finalContent = "";
-    let finalSearchMode: string = searchMode;
-    let totalMs = 0;
-
-    abortRef.current?.abort();
-    abortRef.current = new AbortController();
-
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: abortRef.current.signal,
-        body: JSON.stringify({
-          query: text,
-          searchMode,
-          token: astraToken,
-          endpoint: astraEndpoint,
-          keyspace: keyspace || undefined,
-          collections: collections ?? [],
-          activeCollection: activeCollection ?? "",
-          huggingfaceApiKey: huggingfaceApiKey || undefined,
-          allCollectionFields: collectionFields ?? {},
-          history: messages
-            .filter((m) => m.role === "user" || m.role === "assistant")
-            .map((m) => ({
-              role: m.role,
-              content: m.role === "assistant" && m.sources && m.sources.length > 0
-                ? `${m.content}\n\n[Search results shown to user:]\n${m.sources.map((s, i) =>
-                    `[${i + 1}] ${Object.entries(s.preview).map(([k, v]) => `${k}: ${v}`).join(" | ")}`
-                  ).join("\n")}`
-                : m.content,
-            })),
-        }),
-      });
-
-      if (!res.body) throw new Error("No response body");
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          let event: any;
-          try { event = JSON.parse(line); } catch { continue; }
-
-          if (event.error && !event.step) {
-            const requestId = event.requestId ? ` (request ${event.requestId})` : "";
-            throw new Error(`${event.error}${requestId}`);
-          }
-
-          if (event.step && event.status) {
-            upsertStep({
-              id: event.step as PipelineStepId,
-              status: event.status,
-              latencyMs: event.latencyMs,
-              data: event.data,
-            });
-            if (event.status === "complete" && event.latencyMs) totalMs += event.latencyMs;
-            if (event.step === "analyze" && event.status === "complete" && event.data?.searchMode) {
-              finalSearchMode = String(event.data.searchMode);
-            }
-            if (event.step === "respond" && event.status === "complete" && event.data?.content) {
-              finalContent = String(event.data.content);
-            }
-            if (event.step === "respond" && event.status === "error") {
-              finalContent = `Error: ${event.data?.error ?? "Failed to generate response"}`;
-            }
-          }
-        }
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "An error occurred while processing your query.";
-      setChatError(message);
-      finalContent = `Error: ${message}`;
-    }
-
-    setIsStreaming(false);
-
-    const completedSteps = [...liveSteps];
-    const searchStep = completedSteps.find((s) => s.id === "search");
-    const rawResults = searchStep?.data?.results as Array<{ id: string; similarity: number; preview: Record<string, string | number>; collection?: string }> | undefined;
-    const searchCollection = String(searchStep?.data?.collection ?? "documents");
-    const sources = rawResults?.map((r) => ({
-      collection: r.collection ?? searchCollection,
-      id: r.id,
-      similarity: r.similarity,
-      preview: r.preview,
-    }));
-
-    const assistantMsg: Message = {
-      id: `msg-${Date.now() + 1}`,
-      role: "assistant",
-      content: finalContent || "I searched your collections and found relevant results based on your query.",
-      searchMode: finalSearchMode as SearchMode,
-      latencyMs: totalMs || undefined,
-      timestamp: new Date(),
-      pipelineSteps: completedSteps,
-      sources,
-    };
-    onMessagesUpdate([...updated, assistantMsg]);
-    setStreamingSteps([]);
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      void handleSend();
+      if (!canSend) {
+        return;
+      }
+      setSendRipple(true);
+      setTimeout(() => setSendRipple(false), 600);
+      void sendMessage();
     }
+  };
+
+  const handleSendClick = () => {
+    if (!canSend) {
+      return;
+    }
+    setSendRipple(true);
+    setTimeout(() => setSendRipple(false), 600);
+    void sendMessage();
   };
 
   const isEmpty = messages.length === 0;
@@ -227,7 +115,10 @@ export function ChatArea({
       <div ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
         {isEmpty ? (
           <EmptyState
-            onHintClick={(hint) => { setInput(hint); inputRef.current?.focus(); }}
+            onHintClick={(hint) => {
+              selectHint(hint);
+              inputRef.current?.focus();
+            }}
             isConnected={isConnected}
             initializing={initializing}
             collectionFields={collectionFields ?? {}}
@@ -294,7 +185,7 @@ export function ChatArea({
                 </span>
               </div>
               <button
-                onClick={() => setChatError("")}
+                onClick={dismissChatError}
                 style={{ color: "#fca5a5" }}
                 aria-label="Dismiss chat error"
               >
@@ -328,18 +219,18 @@ export function ChatArea({
               <SearchModeToggle value={searchMode} onChange={setSearchMode} />
 
               <motion.button
-                onClick={() => void handleSend()}
-                disabled={!input.trim() || isStreaming}
+                onClick={handleSendClick}
+                disabled={!canSend}
                 data-testid="chat-send-button"
                 className="relative flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold overflow-hidden transition-colors shrink-0"
                 style={{
-                  backgroundColor: input.trim() && !isStreaming ? "var(--interactive)" : "var(--bg-hover)",
-                  color: input.trim() && !isStreaming ? "#fff" : "var(--text-muted)",
-                  cursor: input.trim() && !isStreaming ? "pointer" : "not-allowed",
-                  boxShadow: input.trim() && !isStreaming ? "0 2px 8px var(--interactive-border)" : "none",
+                  backgroundColor: canSend ? "var(--interactive)" : "var(--bg-hover)",
+                  color: canSend ? "#fff" : "var(--text-muted)",
+                  cursor: canSend ? "pointer" : "not-allowed",
+                  boxShadow: canSend ? "0 2px 8px var(--interactive-border)" : "none",
                 }}
-                whileHover={input.trim() && !isStreaming ? { scale: 1.03 } : {}}
-                whileTap={input.trim() && !isStreaming ? { scale: 0.96 } : {}}
+                whileHover={canSend ? { scale: 1.03 } : {}}
+                whileTap={canSend ? { scale: 0.96 } : {}}
               >
                 {sendRipple && (
                   <motion.span
