@@ -3,7 +3,6 @@ import type { ResolvedAiBackend } from "@/lib/ai/service";
 
 const getAstraDbMock = vi.fn();
 const embedManyMock = vi.fn();
-const generateTextMock = vi.fn();
 
 vi.mock("@/lib/astra", () => ({
   getAstraDb: getAstraDbMock,
@@ -12,7 +11,6 @@ vi.mock("@/lib/astra", () => ({
 
 vi.mock("@/lib/ai/service", () => ({
   embedMany: embedManyMock,
-  generateText: generateTextMock,
 }));
 
 const huggingFaceBackend: ResolvedAiBackend = {
@@ -25,7 +23,7 @@ const huggingFaceBackend: ResolvedAiBackend = {
   ollamaBaseUrl: "http://127.0.0.1:11434",
 };
 
-describe("chat shared helpers", () => {
+describe("chat search helpers", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
@@ -36,7 +34,7 @@ describe("chat shared helpers", () => {
   });
 
   it("builds a compact document preview and skips system fields", async () => {
-    const { docPreview } = await import("./shared");
+    const { docPreview } = await import("./search");
 
     expect(
       docPreview({
@@ -63,7 +61,7 @@ describe("chat shared helpers", () => {
       model: huggingFaceBackend.embedModel,
     });
 
-    const { embedQuery } = await import("./shared");
+    const { embedQuery } = await import("./search");
     const result = await embedQuery({
       backend: huggingFaceBackend,
       query: "find the best customer",
@@ -78,7 +76,7 @@ describe("chat shared helpers", () => {
   });
 
   it("marks vectorize collections as Astra server-side embeddings", async () => {
-    const { embedQuery } = await import("./shared");
+    const { embedQuery } = await import("./search");
     const result = await embedQuery({
       backend: huggingFaceBackend,
       query: "find the best customer",
@@ -104,7 +102,7 @@ describe("chat shared helpers", () => {
       })),
     });
 
-    const { searchCollections } = await import("./shared");
+    const { searchCollections } = await import("./search");
 
     await expect(
       searchCollections({
@@ -114,8 +112,12 @@ describe("chat shared helpers", () => {
         isConnected: true,
         query: "show active records",
         collection: "orders",
-        collections: [{ name: "orders", isVectorize: false, vectorDimension: 768 }],
-        collectionsToSearch: [{ name: "orders", isVec: false, vectorDimension: 768 }],
+        collections: [
+          { name: "orders", isVectorize: false, vectorDimension: 768 },
+        ],
+        collectionsToSearch: [
+          { name: "orders", isVec: false, vectorDimension: 768 },
+        ],
         userCollections: ["orders"],
         searchMode: "vector",
         sortField: null,
@@ -128,50 +130,6 @@ describe("chat shared helpers", () => {
       })
     ).rejects.toThrow(
       'Embedding dimension mismatch for "orders": collection expects 768d but active model returned 3d'
-    );
-  });
-
-  it("sanitizes prior search dumps before generating a response", async () => {
-    generateTextMock.mockResolvedValueOnce({
-      content: "A concise answer.",
-      provider: "huggingface",
-      model: huggingFaceBackend.chatModel,
-    });
-
-    const { generateResponse } = await import("./shared");
-    const response = await generateResponse({
-      backend: huggingFaceBackend,
-      query: "Summarize the results",
-      skipSearch: true,
-      searchResults: [],
-      allCollections: false,
-      targetedCollections: null,
-      userCollections: ["orders"],
-      collection: "orders",
-      allCollectionFields: { orders: ["total_spend"] },
-      collectionFields: ["total_spend"],
-      history: [
-        {
-          role: "assistant",
-          content:
-            "Previous answer\n[Search results shown to user:]\n[1] total_spend: 500\n[End of Conversation]",
-        },
-      ],
-    });
-
-    expect(response.content).toBe("A concise answer.");
-    expect(generateTextMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        messages: expect.arrayContaining([
-          expect.objectContaining({ role: "assistant", content: "Previous answer" }),
-          expect.objectContaining({
-            role: "user",
-            content: expect.stringContaining(
-              "Reformat or continue your previous response accordingly."
-            ),
-          }),
-        ]),
-      })
     );
   });
 });

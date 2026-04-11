@@ -6,15 +6,25 @@ const searchCollectionsMock = vi.fn();
 const generateResponseMock = vi.fn();
 const generateTextMock = vi.fn();
 
-vi.mock("@/app/api/chat/shared", async () => {
-  const actual = await vi.importActual<typeof import("@/app/api/chat/shared")>(
-    "@/app/api/chat/shared"
+vi.mock("@/lib/chat/search", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/chat/search")>(
+    "@/lib/chat/search"
   );
 
   return {
     ...actual,
     embedQuery: embedQueryMock,
     searchCollections: searchCollectionsMock,
+  };
+});
+
+vi.mock("@/lib/chat/response", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/chat/response")>(
+    "@/lib/chat/response"
+  );
+
+  return {
+    ...actual,
     generateResponse: generateResponseMock,
   };
 });

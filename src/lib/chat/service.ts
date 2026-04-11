@@ -1,11 +1,10 @@
 import {
   ANALYZE_MAX_TOKENS,
-  buildAnalyzePrompt,
-  embedQuery,
-  generateResponse,
   MAX_LIMIT,
-  searchCollections,
-} from "@/app/api/chat/shared";
+} from "@/lib/chat/constants";
+import { buildAnalyzePrompt } from "@/lib/chat/prompt";
+import { generateResponse } from "@/lib/chat/response";
+import { embedQuery, searchCollections } from "@/lib/chat/search";
 import { generateText, type EnsureModelProgress, type ResolvedAiBackend } from "@/lib/ai/service";
 import type {
   AnalyzeDecision,
