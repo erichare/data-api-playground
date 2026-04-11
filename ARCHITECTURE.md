@@ -52,7 +52,7 @@ Default models:
 - the configured Ollama base URL
 - whether the active Ollama chat and embedding models are already installed
 
-If Ollama is active and a model is missing, `ensureModel` can stream progress from `/api/pull` into the app's `prepare` UI state.
+If Ollama is active and a model is missing, `ensureModel` streams progress from Ollama's `/api/pull` endpoint into the app's `prepare` UI state.
 
 ## Frontend
 
@@ -71,6 +71,7 @@ Important state split:
 
 - Astra connection and collection metadata live in `usePlaygroundConnection`
 - Conversations live in `useConversationState`
+- Theme lives in `useThemeState`
 - The manual Hugging Face key lives only in React state for the current page session
 - Connection state can come from env-backed Astra credentials even when no token is entered in the dialog
 
@@ -80,6 +81,9 @@ Infrastructure:
 
 - `/api/astra-status`
 - `/api/ai-status`
+- `/api/auth/status`
+- `/api/auth/login`
+- `/api/auth/logout`
 
 Core flows:
 
@@ -101,6 +105,7 @@ Core flows:
 - `/api/embedding-providers`
 - `/api/keyspaces`
 - `/api/data-api-proxy`
+- `/api/typescript-client-calls`
 
 ## Chat Pipeline
 
@@ -169,12 +174,16 @@ Stored locally in SQLite:
 Stored in browser React state only:
 
 - manual Hugging Face key
+- manual Astra token and endpoint
 - open dialog state
 - active view mode
 
-Stored in in-memory connection state:
+Stored in browser `localStorage`:
 
-- Astra token and endpoint when entered through the Connect dialog
+- theme preference
+
+Derived into in-memory connection state:
+
 - env-backed Astra availability flags from `/api/astra-status`
 
 ## Environment Variables
