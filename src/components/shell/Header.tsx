@@ -3,7 +3,7 @@
 import { Settings, Plug, PlugZap, LogOut, Sun, Moon } from "lucide-react";
 import { motion } from "framer-motion";
 
-interface HeaderProps {
+export interface HeaderProps {
   connected?: boolean;
   envReady?: boolean;
   onConnectionClick?: () => void;
