@@ -1,6 +1,6 @@
 # Architecture — Simple Overview
 
-Data API Playground is a **Next.js app** for exploring Astra DB collections, uploading data, and asking natural-language questions over that data with IBM Granite models.
+Data API Playground is a **Next.js app** for exploring Astra DB collections, uploading data, and asking natural-language questions over that data using either Hugging Face-hosted IBM Granite models or a local Ollama fallback.
 
 ---
 
@@ -14,22 +14,18 @@ Data API Playground is a **Next.js app** for exploring Astra DB collections, upl
 │  ─────────          ───────────────────       ─────────────        │
 │  Conversations      Chat / Ingest / API       Connect dialog       │
 │  Collections        Document library          New collection       │
-│  Keyspace switch    Raw collection browser    Quick start          │
+│  Create collection  Raw collection browser    Quick start          │
 │                                                                    │
 └────────────────────────────────────────────────────────────────────┘
                               │
                     Next.js API Routes
                     (server-side, Node.js)
                               │
-            ┌─────────────────┼──────────────────┐
-            ▼                 ▼                  ▼
-       Astra DB          IBM WatsonX        HuggingFace
-    (search + data)    (LLM + embed)     (embed fallback)
-                              │
-                              ▼
-                     Local SQLite (`data/app.db`)
-                 conversations + message history +
-                   ingested document summaries
+       ┌────────────────┬─────────────────┬────────────────┬────────────────┐
+       ▼                ▼                 ▼                ▼
+  Astra DB        Hugging Face       Local Ollama   Local SQLite (`data/app.db`)
+ (search + data)  (LLM + embed)      (LLM + embed)  conversations + messages +
+                                                    ingested document summaries
 ```
 
 ---
@@ -42,8 +38,9 @@ Data API Playground is a **Next.js app** for exploring Astra DB collections, upl
 User question
     │
     ▼
+Prepare?  → check or pull a required Ollama model
 Analyze   → decide collection, mode, filters, limits
-Embed     → create vector when needed
+Embed     → create a vector unless Astra server-side vectorize is active
 Search    → query Astra DB
 Respond   → turn results into a concise answer
 ```
@@ -84,9 +81,9 @@ Pick a collection from the sidebar and switch between:
 - current collection and conversation selection
 - streaming chat state
 - dialog open/close state
+- manual Astra credentials and optional manual Hugging Face key for the current page session
 
 ### Browser storage
-- `sessionStorage`: Astra credentials and optional watsonx credentials for the current tab
 - `localStorage`: theme preference
 
 ### Local SQLite

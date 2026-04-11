@@ -21,6 +21,9 @@
 src/
 ├── app/
 │   ├── api/                          # Next.js route handlers
+│   │   ├── ai-status/
+│   │   ├── astra-status/
+│   │   ├── auth/
 │   │   ├── chat/
 │   │   ├── conversations/
 │   │   ├── browse/
@@ -36,6 +39,7 @@ src/
 │
 ├── components/
 │   ├── api/
+│   ├── auth/
 │   ├── chat/
 │   ├── collection/
 │   ├── connection/
@@ -45,6 +49,7 @@ src/
 │   └── ui/
 │
 └── lib/
+    ├── ai/                          # AI provider resolution + model prep
     ├── astra.ts                      # Shared Astra connection helpers
     ├── chat/                         # Chat workflow service + types
     ├── collections/                  # Collection/document domain logic
@@ -53,6 +58,8 @@ src/
     ├── hooks/                        # Client-side orchestration hooks
     ├── playground/                   # Frontend API/client helpers
     ├── mock/
+    ├── server/                       # Logging and server-only helpers
+    ├── validation/                   # Request validation/parsing
     └── types.ts
 ```
 
@@ -78,16 +85,17 @@ page.tsx
 └── PlaygroundDialogs
     ├── AstraConnectDialog
     ├── NewCollectionDialog
-    ├── IngestDialog
     └── QuickStartGuide
 ```
 
 ### Feature composition
 
+- `PlaygroundMainPanel` switches between `ChatArea`, `IngestTab`, and `ApiExplorer`
 - `ChatArea` owns chat UI and streaming event consumption
 - `IngestTab` coordinates ingest upload, document library, and raw browsing
 - `CollectionViewer` owns collection browsing, sorting, export, and generated code
 - `Sidebar` owns conversation and collection navigation
+- `PlaygroundDialogs` centralizes the connect, quick-start, and new-collection overlays
 
 The page layer no longer owns every layout and modal concern inline.
 
@@ -101,22 +109,25 @@ State is no longer centralized in one giant hook.
 
 | Hook | Responsibility |
 |---|---|
-| `usePlaygroundState` | Top-level composition of app state |
-| `usePlaygroundConnection` | Astra credentials, theme, collections, keyspaces |
+| `usePlaygroundState` | Top-level composition of app state and grouped shell props |
+| `usePlaygroundConnection` | Astra credentials, collections, keyspaces |
 | `useConversationState` | Conversations, messages, persistence coordination |
+| `useThemeState` | Theme persistence and `<html>` class updates |
+| `usePlaygroundAuth` | Optional auth status and sign-out plumbing |
 | feature hooks | collection browse, document library, raw browser, ingest upload, etc. |
 
 ### Persistence
 
 | State | Storage |
 |---|---|
-| Astra token / endpoint | `sessionStorage` |
-| watsonx credentials | `sessionStorage` |
+| Astra token / endpoint entered in the dialog | React state only (current page session) |
+| Manual Hugging Face key | React state only (current page session) |
 | Theme | `localStorage` |
 | Conversations | local SQLite |
 | Messages | local SQLite |
 | Ingested document summaries | local SQLite |
-| Collection metadata | fetched from Astra on demand |
+| Collection metadata / keyspaces | fetched from Astra on demand |
+| Env-backed Astra availability | fetched from `/api/astra-status` and held in React state |
 
 ---
 
@@ -124,13 +135,16 @@ State is no longer centralized in one giant hook.
 
 The backend/domain logic is organized into service modules so route files stay thin.
 
-### Chat
+### AI + Chat
 
 | File | Role |
 |---|---|
+| `lib/ai/service.ts` | provider resolution, status checks, Ollama model prep, text generation, embeddings |
 | `lib/chat/service.ts` | orchestrates analyze → embed → search → respond |
 | `lib/chat/types.ts` | shared request/event/result types |
-| `app/api/chat/shared.ts` | lower-level prompt, embedding, search, response helpers |
+| `lib/chat/prompt.ts` | analyze-prompt construction |
+| `lib/chat/search.ts` | embedding/query execution helpers |
+| `lib/chat/response.ts` | final response generation helpers |
 
 ### Collections
 
@@ -156,6 +170,11 @@ All API routes run as Next.js route handlers on the Node.js runtime.
 
 | Route | Method | Purpose |
 |---|---|---|
+| `/api/ai-status` | `GET` | report AI backend and Ollama model status |
+| `/api/astra-status` | `GET` | report whether Astra env credentials are configured |
+| `/api/auth/status` | `GET` | report whether app auth is enabled and active |
+| `/api/auth/login` | `POST` | create the auth session cookie |
+| `/api/auth/logout` | `POST` | clear the auth session cookie |
 | `/api/chat` | `POST` | stream chat workflow events |
 | `/api/connect` | `POST` | validate credentials and discover collections |
 | `/api/keyspaces` | `POST` | list Astra keyspaces |
@@ -165,11 +184,16 @@ All API routes run as Next.js route handlers on the Node.js runtime.
 | `/api/delete-collection` | `POST` | drop a collection |
 | `/api/delete-documents` | `POST` | delete selected documents from a collection |
 | `/api/documents` | `GET/DELETE` | list or delete ingested document summaries |
+| `/api/documents/chunks` | `POST` | fetch chunk-level document details |
 | `/api/ingest` | `POST` | stream CSV ingest progress |
 | `/api/ingest-document` | `POST` | stream document extract/chunk/store progress |
+| `/api/embedding-providers` | `POST` | list Astra embedding providers/models |
+| `/api/data-api-proxy` | `POST` | proxy raw Data API requests through app auth/runtime limits |
+| `/api/typescript-client-calls` | `GET` | expose recorded Astra TypeScript client calls for the API explorer |
 | `/api/conversations` | `GET/POST` | list or create conversations |
 | `/api/conversations/[id]` | `PATCH/DELETE` | rename or delete a conversation |
 | `/api/conversations/[id]/messages` | `GET/POST` | fetch or append conversation messages |
+| `/api/conversations/title` | `POST` | best-effort title generation |
 
 ### Route design principle
 
@@ -189,14 +213,16 @@ Routes should not accumulate large amounts of feature logic.
 
 ### Stages
 
-1. **Analyze**
+1. **Prepare** (optional)
+   emitted when Ollama needs to verify or pull a local model before chat or embedding work continues
+2. **Analyze**
    chooses collection, search mode, limits, filters, and whether search should be skipped
-2. **Embed**
+3. **Embed**
    generates a vector when the target collection is not using Astra server-side vectorize
-3. **Search**
+4. **Search**
    queries Astra with sort, filter, vector, vectorize, or hybrid behavior
-4. **Respond**
-   uses watsonx Granite to produce the final natural-language answer
+5. **Respond**
+   uses the resolved Hugging Face or Ollama chat backend to produce the final natural-language answer
 
 ### Outputs
 
@@ -220,7 +246,8 @@ Flow:
 2. detect whether the collection uses server-side vectorize
 3. either send `$vectorize` text or create vectors client-side
 4. `insertMany` in batches
-5. stream progress events
+5. optionally emit `prepare` progress when Ollama needs a local embedding model
+6. stream progress events
 
 ### Document ingest
 
@@ -233,7 +260,10 @@ Flow:
 4. embed or vectorize per chunk
 5. store chunks in Astra
 6. store a summary record in local SQLite
-7. stream progress events back to the client
+7. optionally emit `prepare` progress when Ollama needs a local embedding model
+8. stream progress events back to the client
+
+Non-vectorize ingest fails fast on provider errors and validates embedding dimensions against collection metadata when Astra exposes them.
 
 ---
 
@@ -268,10 +298,11 @@ Credentials can come from:
 
 ### Current flow
 
-1. the browser stores user-entered credentials in `sessionStorage`
+1. the browser keeps user-entered Astra credentials and the optional manual Hugging Face key in React state for the current page session
 2. frontend code sends them to this app's API routes in request bodies
 3. server routes resolve body credentials first, then fall back to environment variables
-4. the browser never talks to Astra directly
+4. AI requests resolve the manual Hugging Face key first, then `HUGGINGFACE_API_KEY`, then local Ollama
+5. the browser never talks directly to Astra, Hugging Face, or Ollama
 
 Routes should avoid putting credentials in query strings.
 
@@ -283,14 +314,16 @@ The project uses `vitest` for lightweight unit and route/service boundary tests.
 
 Current coverage includes:
 - frontend helper utilities
-- collection helper logic
-- conversation hook behavior
+- AI provider and collection helper logic
+- composition hooks (`useConversationState`, `usePlaygroundConnection`, `usePlaygroundState`, `useThemeState`, `usePlaygroundAuth`)
 - route-handler boundaries
 - chat, collection, and ingest service modules
+- selective shell/component coverage (`page.tsx`, `Header`, `Sidebar`, `PlaygroundMainPanel`, `AstraConnectDialog`)
 
 The current testing strategy is intentionally focused on:
 - pure helpers
 - orchestration hooks
 - route/service seams
+- a small set of critical shell components
 
 rather than broad DOM-heavy component testing.
