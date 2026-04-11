@@ -5,9 +5,9 @@ import {
   getDefaultBody,
   getEndpointPath,
   normalizeProxyResponse,
-} from "./apiExplorerShared";
+} from "./apiExplorerConfig";
 
-describe("apiExplorerShared", () => {
+describe("apiExplorerConfig", () => {
   it("uses vectorize defaults when the collection has a vectorize service", () => {
     const body = JSON.parse(
       getDefaultBody("vectorSearch", {
