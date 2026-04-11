@@ -7,14 +7,16 @@ import {
   CODE_LANGS,
   LANG_META,
   OPS,
-  CopyButton,
-  HighlightedCode,
-  HighlightedJson,
   type ApiResponse,
   type ClientCallLogEntry,
   type CodeLang,
   type OpId,
-} from "./apiExplorerShared";
+} from "./apiExplorerConfig";
+import {
+  CopyButton,
+  HighlightedCode,
+  HighlightedJson,
+} from "./apiExplorerPresentation";
 
 interface ApiOperationsPanelProps {
   selectedOp: OpId;
