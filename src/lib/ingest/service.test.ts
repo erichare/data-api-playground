@@ -64,7 +64,7 @@ describe("ingest service", () => {
   });
 
   it("chunks long text into multiple ingest slices", async () => {
-    const { chunkText } = await import("./service");
+    const { chunkText } = await import("./text");
     const chunks = chunkText(
       "A".repeat(900) + "\n\n" + "B".repeat(900),
       1000,
