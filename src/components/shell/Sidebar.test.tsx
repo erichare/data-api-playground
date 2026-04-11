@@ -108,6 +108,75 @@ describe("Sidebar", () => {
     expect(props.onDeleteConversation).toHaveBeenCalledWith("conv-1");
   });
 
+  it("cancels rename edits and supports keyboard navigation", () => {
+    const props = makeSidebarProps({
+      conversations: [
+        {
+          id: "conv-1",
+          name: "First Conversation",
+          messages: [],
+          createdAt: new Date("2026-03-30T12:00:00.000Z"),
+          updatedAt: new Date("2026-03-30T12:00:00.000Z"),
+          messageCount: 2,
+        },
+      ],
+      viewMode: "ingest",
+    });
+    render(<Sidebar {...props} />);
+
+    fireEvent.keyDown(screen.getByRole("button", { name: /First Conversation/i }), {
+      key: "Enter",
+    });
+    expect(props.onConversationChange).toHaveBeenCalledWith("conv-1");
+
+    fireEvent.keyDown(screen.getByRole("button", { name: /orders/i }), {
+      key: "Enter",
+    });
+    expect(props.onSelectCollection).toHaveBeenCalledWith("orders");
+
+    fireEvent.doubleClick(screen.getByText("First Conversation"));
+    const input = screen.getByDisplayValue("First Conversation");
+    fireEvent.change(input, { target: { value: "Discarded Rename" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(props.onRenameConversation).not.toHaveBeenCalledWith(
+      "conv-1",
+      "Discarded Rename"
+    );
+    expect(screen.getByText("2 messages")).toBeTruthy();
+  });
+
+  it("creates and switches conversations from the collapsed sidebar", () => {
+    const props = makeSidebarProps({
+      conversations: [
+        {
+          id: "conv-1",
+          name: "First Conversation",
+          messages: [],
+          createdAt: new Date("2026-03-30T12:00:00.000Z"),
+          updatedAt: new Date("2026-03-30T12:00:00.000Z"),
+          messageCount: 1,
+        },
+        {
+          id: "conv-2",
+          name: "Second Conversation",
+          messages: [],
+          createdAt: new Date("2026-03-31T12:00:00.000Z"),
+          updatedAt: new Date("2026-03-31T12:00:00.000Z"),
+          messageCount: 0,
+        },
+      ],
+    });
+    render(<Sidebar {...props} />);
+
+    fireEvent.click(screen.getByTestId("new-conversation-button"));
+    expect(props.onNewConversation).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTitle("Collapse sidebar"));
+    fireEvent.click(screen.getByTitle("Second Conversation"));
+    expect(props.onConversationChange).toHaveBeenCalledWith("conv-2");
+  });
+
   it("disables the new-conversation button while a conversation is being created", () => {
     render(<Sidebar {...makeSidebarProps({ creatingConversation: true })} />);
 

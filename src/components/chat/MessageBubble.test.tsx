@@ -126,6 +126,28 @@ describe("MessageBubble", () => {
     expect(screen.queryByText("Trace")).toBeNull();
   });
 
+  it("renders assistant output without extra tabs when there is no search command or trace", () => {
+    render(
+      <MessageBubble
+        index={0}
+        message={makeMessage({
+          content: "Use `orders` for the next query.",
+          latencyMs: 320,
+          pipelineSteps: undefined,
+        })}
+      />
+    );
+
+    expect(
+      screen.getAllByText((_, element) =>
+        element?.textContent?.includes("Use orders for the next query.") ?? false
+      ).length
+    ).toBeGreaterThan(0);
+    expect(screen.getByText("320ms")).toBeTruthy();
+    expect(screen.queryByText("Code")).toBeNull();
+    expect(screen.queryByText("Trace")).toBeNull();
+  });
+
   it("switches assistant tabs and copies generated search code", async () => {
     render(<MessageBubble index={1} message={makeMessage()} />);
 
@@ -163,5 +185,93 @@ describe("MessageBubble", () => {
 
     fireEvent.click(screen.getByText("Trace"));
     expect(screen.getByTestId("pipeline-trace").textContent).toBe("analyze,search,respond");
+  });
+
+  it("renders vectorize search code variants", () => {
+    render(
+      <MessageBubble
+        index={1}
+        message={makeMessage({
+          pipelineSteps: [
+            {
+              id: "search",
+              status: "complete",
+              latencyMs: 8,
+              data: {
+                command:
+                  'await db.collection("docs")\n  .find({}, { sort: { $vectorize: query }, limit: 6 })',
+                collection: "docs",
+              },
+            },
+          ],
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByText("Code"));
+    fireEvent.click(screen.getByText("Python"));
+    expect(
+      screen.getAllByText((_, element) =>
+        element?.textContent?.includes('sort={"$vectorize": query}') ?? false
+      ).length
+    ).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByText("Java"));
+    expect(
+      screen.getAllByText((_, element) =>
+        element?.textContent?.includes("Sorts.vectorize(query)") ?? false
+      ).length
+    ).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByText("cURL"));
+    expect(
+      screen.getAllByText((_, element) =>
+        element?.textContent?.includes('"$vectorize": "<query>"') ?? false
+      ).length
+    ).toBeGreaterThan(0);
+  });
+
+  it("renders hybrid rerank code variants", () => {
+    render(
+      <MessageBubble
+        index={1}
+        message={makeMessage({
+          pipelineSteps: [
+            {
+              id: "search",
+              status: "complete",
+              latencyMs: 8,
+              data: {
+                command:
+                  'await db.collection("docs")\n  .findAndRerank({}, { sort: { $hybrid: { $vectorize: query } }, limit: 4 })',
+                collection: "docs",
+              },
+            },
+          ],
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByText("Code"));
+    fireEvent.click(screen.getByText("Python"));
+    expect(
+      screen.getAllByText((_, element) =>
+        element?.textContent?.includes("collection.find_and_rerank(") ?? false
+      ).length
+    ).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByText("Java"));
+    expect(
+      screen.getAllByText((_, element) =>
+        element?.textContent?.includes("FindOneAndRerankOptions") ?? false
+      ).length
+    ).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByText("cURL"));
+    expect(
+      screen.getAllByText((_, element) =>
+        element?.textContent?.includes('"findAndRerank"') ?? false
+      ).length
+    ).toBeGreaterThan(0);
   });
 });
