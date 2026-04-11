@@ -394,7 +394,7 @@
 <body>
 
 <h1>Data API Playground</h1>
-<p class="subtitle">Architecture overview — Next.js 16 · Astra DB · watsonx.ai</p>
+<p class="subtitle">Architecture overview — Next.js 16 · Astra DB · Hugging Face / Ollama</p>
 
 <div class="diagram">
 
@@ -427,8 +427,8 @@
         <div class="p-box">
           <div class="p-num">STEP 2</div>
           <div class="p-name">Embed</div>
-          <div class="p-desc">Generates a 768-dim query vector. Skipped for server-side vectorize collections.</div>
-          <div class="p-service">watsonx AI SDK · IBM Granite Embedding 125M</div>
+          <div class="p-desc">Generates a query vector when the target collection is not using server-side vectorize.</div>
+          <div class="p-service">Resolved AI backend · Hugging Face or local Ollama</div>
         </div>
       </div>
 
@@ -483,7 +483,7 @@
               Sidebar
               <span class="badge-new">updated</span>
             </div>
-            <div class="card-sub">Keyspace selector, collection list, <strong style="color:#fdba74;">conversation history list</strong> with create / rename / delete, view-mode toggle</div>
+            <div class="card-sub">Conversation history list with create / rename / delete, plus collection selection that drives the ingest and API workspaces</div>
           </div>
         </div>
       </div>
@@ -493,16 +493,16 @@
         <div class="group-cards">
           <div class="card">
             <div class="card-title">ChatArea</div>
-            <div class="card-sub">Conversation UI, search mode toggle (vector / hybrid / lexical), streaming pipeline trace. Persists messages to Astra on each turn.</div>
+            <div class="card-sub">Conversation UI, search mode toggle (vector / hybrid / lexical), streaming pipeline trace, and message persistence through the conversation API routes.</div>
             <span class="card-tag">+ PipelineTrace</span>
           </div>
           <div class="card">
-            <div class="card-title">CollectionViewer</div>
-            <div class="card-sub">Paginated document browser, sort, delete, CSV export</div>
+            <div class="card-title">IngestTab</div>
+            <div class="card-sub">Upload queue, document library, raw collection browser, and document viewer</div>
           </div>
           <div class="card">
-            <div class="card-title">IngestPanel</div>
-            <div class="card-sub">CSV drag-and-drop, streaming insert progress</div>
+            <div class="card-title">ApiExplorer</div>
+            <div class="card-sub">Request builder, SDK snippet generation, raw responses, and runtime TypeScript client-call log</div>
           </div>
         </div>
       </div>
@@ -512,7 +512,7 @@
         <div class="group-cards">
           <div class="card">
             <div class="card-title">AstraConnectDialog</div>
-            <div class="card-sub">Token, endpoint, watsonx.ai credentials — with env fallback detection</div>
+            <div class="card-sub">Astra token and endpoint, AI backend status, and optional in-memory Hugging Face key</div>
           </div>
           <div class="card">
             <div class="card-title">NewCollectionDialog</div>
@@ -539,8 +539,8 @@
     <div class="layer-body">
       <div class="card">
         <div class="card-title">Connection State</div>
-        <div class="card-sub">astraToken, astraEndpoint, astraFromEnv, ibmApiKey, watsonxProjectId</div>
-        <span class="card-tag">sessionStorage persistence</span>
+        <div class="card-sub">astraToken, astraEndpoint, astraFromEnv, connectError, and current AI backend status</div>
+        <span class="card-tag">React state + server status</span>
       </div>
       <div class="card">
         <div class="card-title">Collection State</div>
@@ -552,12 +552,12 @@
           Conversation State
           <span class="badge-new">updated</span>
         </div>
-        <div class="card-sub">conversations[], activeConversationId, messages[] — fetched from <strong style="color:#fdba74;">dap_conversations</strong> on connect; synced after each turn</div>
-        <span class="card-tag">Astra DB persistence</span>
+        <div class="card-sub">conversations[], activeConversationId, messages[] — loaded through conversation routes and persisted to local SQLite</div>
+        <span class="card-tag">SQLite via API routes</span>
       </div>
       <div class="card">
         <div class="card-title">UI State</div>
-        <div class="card-sub">viewMode, ingestCollapsed, dialogs open/close, initializing flag</div>
+        <div class="card-sub">viewMode, dialog open/close state, manual Hugging Face key, and initializing flag</div>
         <span class="card-tag">React state only</span>
       </div>
     </div>
@@ -605,6 +605,11 @@
         <span class="card-tag">POST · stream</span>
       </div>
       <div class="card">
+        <div class="card-title">/api/ingest-document</div>
+        <div class="card-sub">Extract, chunk, embed or vectorize, and store uploaded documents</div>
+        <span class="card-tag">POST · stream</span>
+      </div>
+      <div class="card">
         <div class="card-title">/api/create-collection</div>
         <div class="card-sub">Create vector or vectorize-enabled collection</div>
         <span class="card-tag">POST</span>
@@ -621,12 +626,12 @@
       </div>
       <div class="card">
         <div class="card-title">/api/chat</div>
-        <div class="card-sub">4-step RAG pipeline — streams NDJSON step events</div>
+        <div class="card-sub">Streams prepare? → analyze → embed? → search → respond step events</div>
         <span class="card-tag">POST · stream</span>
       </div>
       <div class="card">
-        <div class="card-title">/api/astra-status &amp; /api/watsonx-status</div>
-        <div class="card-sub">Check whether credentials are set in server environment</div>
+        <div class="card-title">/api/astra-status &amp; /api/ai-status</div>
+        <div class="card-sub">Check Astra env credentials plus Hugging Face and Ollama backend availability</div>
         <span class="card-tag">GET</span>
       </div>
 
@@ -676,24 +681,22 @@
           Schemaless document store with first-class vector support. Supports client-side vectors
           (<code style="font-size:10px;">$vector</code>), server-side vectorization
           (<code style="font-size:10px;">$vectorize</code>), hybrid, and lexical search.
-          Also stores conversation history in dedicated collections.
         </div>
         <span class="card-tag">astra-db-ts SDK</span>
       </div>
       <div class="card" style="flex: 2 1 240px;">
-        <div class="card-title">watsonx.ai — IBM</div>
+        <div class="card-title">Hugging Face</div>
         <div class="card-sub">
-          Hosts <strong>ibm/granite-3-8b-instruct</strong> (LLM) and <strong>ibm/slate-125m-english-rtrvr-v2</strong> (embeddings). Used for all four pipeline steps: analyze, embed, search (via Astra), and respond.
+          Primary hosted AI backend when a key is available. Provides Granite chat and embedding models for analyze, title generation, embeddings, and final response generation.
         </div>
-        <span class="card-tag">watsonx-ai SDK</span>
+        <span class="card-tag">router.huggingface.co</span>
       </div>
       <div class="card" style="flex: 1 1 200px;">
-        <div class="card-title">HuggingFace Inference API</div>
+        <div class="card-title">Local Ollama</div>
         <div class="card-sub">
-          Fallback embedding provider when watsonx is not configured. Uses IBM Granite Embedding 125M via <code style="font-size:10px;">router.huggingface.co</code>.
-          Skipped when the target collection uses server-side <code style="font-size:10px;">$vectorize</code>.
+          Automatic fallback when no Hugging Face key is available. Can pull missing Granite chat or embedding models on demand and exposes progress through the optional <code style="font-size:10px;">prepare</code> step.
         </div>
-        <span class="card-tag">REST · fallback</span>
+        <span class="card-tag">local HTTP API</span>
       </div>
     </div>
   </div>
@@ -713,16 +716,24 @@
         <div class="env-val">Astra DB endpoint URL — overridable in UI</div>
       </div>
       <div class="env-item">
-        <div class="env-key">WATSONX_API_KEY</div>
-        <div class="env-val">IBM Cloud API key for watsonx.ai — overridable in UI</div>
-      </div>
-      <div class="env-item">
-        <div class="env-key">WATSONX_PROJECT_ID</div>
-        <div class="env-val">watsonx.ai project ID — overridable in UI</div>
-      </div>
-      <div class="env-item">
         <div class="env-key">HUGGINGFACE_API_KEY <span class="badge-opt">optional</span></div>
-        <div class="env-val">Enables real 768-dim Granite embeddings; falls back to mock zeros</div>
+        <div class="env-val">Primary hosted AI backend for chat, titles, and embeddings</div>
+      </div>
+      <div class="env-item">
+        <div class="env-key">HUGGINGFACE_CHAT_MODEL</div>
+        <div class="env-val">Override the default Granite chat model</div>
+      </div>
+      <div class="env-item">
+        <div class="env-key">HUGGINGFACE_EMBED_MODEL</div>
+        <div class="env-val">Override the default Granite embedding model</div>
+      </div>
+      <div class="env-item">
+        <div class="env-key">OLLAMA_BASE_URL</div>
+        <div class="env-val">Local Ollama endpoint used when no Hugging Face key is available</div>
+      </div>
+      <div class="env-item">
+        <div class="env-key">OLLAMA_CHAT_MODEL / OLLAMA_EMBED_MODEL</div>
+        <div class="env-val">Local Granite model names for chat and embeddings</div>
       </div>
     </div>
   </div>
@@ -735,17 +746,17 @@
   <div class="layer layer-conv">
     <div class="layer-header">
       <span>💬</span>
-      Conversation History — Astra DB Collections
+      Local Persistence — SQLite Tables
       <span class="badge-new">new</span>
     </div>
     <div class="model-grid">
 
       <div class="model-card">
-        <div class="model-name">dap_conversations</div>
+        <div class="model-name">conversations</div>
         <div class="model-field">
-          <span class="field-key">_id</span>
+          <span class="field-key">id</span>
           <span class="field-type">string</span>
-          <span class="field-note">UUID</span>
+          <span class="field-note">primary key</span>
         </div>
         <div class="model-field">
           <span class="field-key">name</span>
@@ -753,38 +764,33 @@
           <span class="field-note">user-editable display name</span>
         </div>
         <div class="model-field">
-          <span class="field-key">createdAt</span>
+          <span class="field-key">created_at</span>
           <span class="field-type">string</span>
           <span class="field-note">ISO timestamp</span>
         </div>
         <div class="model-field">
-          <span class="field-key">updatedAt</span>
+          <span class="field-key">updated_at</span>
           <span class="field-type">string</span>
           <span class="field-note">updated on every new message</span>
         </div>
         <div class="model-field">
-          <span class="field-key">messageCount</span>
+          <span class="field-key">message_count</span>
           <span class="field-type">number</span>
           <span class="field-note">denormalized for sidebar display</span>
-        </div>
-        <div class="model-field">
-          <span class="field-key">activeCollection</span>
-          <span class="field-type">string</span>
-          <span class="field-note">last queried DB collection</span>
         </div>
       </div>
 
       <div class="model-card">
-        <div class="model-name">dap_messages</div>
+        <div class="model-name">messages</div>
         <div class="model-field">
-          <span class="field-key">_id</span>
+          <span class="field-key">id</span>
           <span class="field-type">string</span>
-          <span class="field-note">UUID</span>
+          <span class="field-note">primary key</span>
         </div>
         <div class="model-field">
-          <span class="field-key">conversationId</span>
+          <span class="field-key">conversation_id</span>
           <span class="field-type">string</span>
-          <span class="field-note">→ dap_conversations._id</span>
+          <span class="field-note">→ conversations.id</span>
         </div>
         <div class="model-field">
           <span class="field-key">role</span>
@@ -802,26 +808,49 @@
           <span class="field-note">ISO — sort key for ordering</span>
         </div>
         <div class="model-field">
-          <span class="field-key">searchMode</span>
+          <span class="field-key">search_mode</span>
           <span class="field-type">string</span>
           <span class="field-opt">optional · assistant only</span>
         </div>
         <div class="model-field">
-          <span class="field-key">pipelineSteps</span>
-          <span class="field-type">object[]</span>
-          <span class="field-opt">optional · full trace</span>
+          <span class="field-key">pipeline_steps</span>
+          <span class="field-type">JSON text</span>
+          <span class="field-opt">optional · full trace payload</span>
         </div>
         <div class="model-field">
           <span class="field-key">sources</span>
-          <span class="field-type">object[]</span>
+          <span class="field-type">JSON text</span>
           <span class="field-opt">optional · retrieved docs</span>
+        </div>
+      </div>
+
+      <div class="model-card">
+        <div class="model-name">ingested_documents</div>
+        <div class="model-field">
+          <span class="field-key">source_doc_id</span>
+          <span class="field-type">string</span>
+          <span class="field-note">primary key</span>
+        </div>
+        <div class="model-field">
+          <span class="field-key">source_filename</span>
+          <span class="field-type">string</span>
+          <span class="field-note">display name in the document library</span>
+        </div>
+        <div class="model-field">
+          <span class="field-key">collection</span>
+          <span class="field-type">string</span>
+          <span class="field-note">Astra collection that received the chunks</span>
+        </div>
+        <div class="model-field">
+          <span class="field-key">chunk_total</span>
+          <span class="field-type">number</span>
+          <span class="field-note">number of inserted chunk records</span>
         </div>
       </div>
 
     </div>
     <div style="padding: 0 16px 14px; font-size: 11px; color: #64748b;">
-      No vector fields needed — accessed by exact ID lookup and sorted by timestamp. Created automatically on first use. No schema migration required.
-      No auth system — the Astra token scopes all access.
+      The local database file stores conversations, messages, and ingested document summaries independently from Astra collections. Astra continues to hold user collections and chunked document content.
     </div>
   </div>
 

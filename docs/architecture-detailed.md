@@ -92,8 +92,9 @@ page.tsx
 
 - `PlaygroundMainPanel` switches between `ChatArea`, `IngestTab`, and `ApiExplorer`
 - `ChatArea` owns chat UI and streaming event consumption
-- `IngestTab` coordinates ingest upload, document library, and raw browsing
-- `CollectionViewer` owns collection browsing, sorting, export, and generated code
+- `IngestTab` coordinates ingest upload, the local document library, the raw collection browser, and the document viewer
+- `ApiExplorer` owns request editing, generated SDK snippets, raw response display, and the runtime TypeScript client-call log
+- `NewCollectionDialog` uses `useCollectionForm` plus `CollectionCodePreview` for collection creation and code previews
 - `Sidebar` owns conversation and collection navigation
 - `PlaygroundDialogs` centralizes the connect, quick-start, and new-collection overlays
 
@@ -114,7 +115,7 @@ State is no longer centralized in one giant hook.
 | `useConversationState` | Conversations, messages, persistence coordination |
 | `useThemeState` | Theme persistence and `<html>` class updates |
 | `usePlaygroundAuth` | Optional auth status and sign-out plumbing |
-| feature hooks | collection browse, document library, raw browser, ingest upload, etc. |
+| feature hooks | collection form, document library, raw browser, ingest upload, etc. |
 
 ### Persistence
 
@@ -314,10 +315,12 @@ The project uses `vitest` for lightweight unit and route/service boundary tests.
 
 Current coverage includes:
 - frontend helper utilities
+- `ApiExplorer` helpers and core interaction flows
 - AI provider and collection helper logic
 - composition hooks (`useConversationState`, `usePlaygroundConnection`, `usePlaygroundState`, `useThemeState`, `usePlaygroundAuth`)
 - route-handler boundaries
 - chat, collection, and ingest service modules
+- shell, ingest, and chat feature components
 - selective shell/component coverage (`page.tsx`, `Header`, `Sidebar`, `PlaygroundMainPanel`, `AstraConnectDialog`)
 
 The current testing strategy is intentionally focused on:

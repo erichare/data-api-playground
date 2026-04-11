@@ -295,8 +295,8 @@
       </div>
     </div>
     <div class="doc-meta">
-      <div class="doc-meta-label">Routes</div>
-      <div class="doc-meta-value">11 endpoints · 6 groups</div>
+      <div class="doc-meta-label">Overview</div>
+      <div class="doc-meta-value">Core route groups · current main architecture</div>
     </div>
   </header>
 
@@ -324,7 +324,7 @@
         <div class="client-chip">
           <!-- UploadCloud -->
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
-          IngestDialog
+          IngestTab
         </div>
         <div class="client-chip">
           <!-- Sidebar / layout -->
@@ -370,7 +370,7 @@
               <div class="group-icon">
                 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M11 17h2v-6h-2v6zm1-15C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zM11 9h2V7h-2v2z"/></svg>
               </div>
-              <div class="group-name">Connection &amp; Auth</div>
+              <div class="group-name">Connection &amp; Status</div>
               <div class="group-count">3 routes</div>
             </div>
             <div class="group-body">
@@ -384,7 +384,7 @@
               </div>
               <div class="route-row">
                 <span class="method-badge method-get">GET</span>
-                <span class="route-path">/watsonx-status</span>
+                <span class="route-path">/ai-status</span>
               </div>
             </div>
           </div>
@@ -396,12 +396,20 @@
                 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
               </div>
               <div class="group-name">Collections</div>
-              <div class="group-count">1 route</div>
+              <div class="group-count">3 routes</div>
             </div>
             <div class="group-body">
               <div class="route-row">
                 <span class="method-badge method-post">POST</span>
                 <span class="route-path">/create-collection</span>
+              </div>
+              <div class="route-row">
+                <span class="method-badge method-post">POST</span>
+                <span class="route-path">/delete-collection</span>
+              </div>
+              <div class="route-row">
+                <span class="method-badge method-post">POST</span>
+                <span class="route-path">/embedding-providers</span>
               </div>
             </div>
           </div>
@@ -420,6 +428,9 @@
                 <span class="method-badge method-post">POST</span>
                 <span class="route-path">/chat</span>
                 <span class="stream-pill stream-ai">stream</span>
+              </div>
+              <div class="route-note" style="margin-top:5px;">
+                <span class="route-note-text">Streams prepare? → analyze → embed? → search → respond events</span>
               </div>
               <div class="pipeline-steps">
                 <span class="pipe-step" style="background:rgba(139,131,255,0.12);color:var(--purple);">Analyze</span>
@@ -440,7 +451,7 @@
                 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
               </div>
               <div class="group-name">Documents</div>
-              <div class="group-count">2 routes</div>
+              <div class="group-count">4 routes</div>
             </div>
             <div class="group-body">
               <div class="route-row">
@@ -452,6 +463,15 @@
                 <span class="route-path">/ingest</span>
                 <span class="stream-pill stream-doc">stream</span>
               </div>
+              <div class="route-row">
+                <span class="method-badge method-post">POST</span>
+                <span class="route-path">/ingest-document</span>
+                <span class="stream-pill stream-doc">stream</span>
+              </div>
+              <div class="route-row">
+                <span class="method-badge method-multi">GET·DEL</span>
+                <span class="route-path">/documents</span>
+              </div>
             </div>
           </div>
 
@@ -462,7 +482,7 @@
                 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
               </div>
               <div class="group-name">Conversations</div>
-              <div class="group-count">3 routes</div>
+              <div class="group-count">4 routes</div>
             </div>
             <div class="group-body">
               <div class="route-row">
@@ -476,6 +496,10 @@
               <div class="route-row">
                 <span class="method-badge method-multi">GET·POST</span>
                 <span class="route-path">/conversations/[id]/messages</span>
+              </div>
+              <div class="route-row">
+                <span class="method-badge method-post">POST</span>
+                <span class="route-path">/conversations/title</span>
               </div>
             </div>
           </div>
@@ -498,7 +522,7 @@
                 <span class="route-note-text">Raw HTTP passthrough — powers the API Explorer tab</span>
               </div>
               <div class="route-note" style="margin-top:6px;">
-                <span style="font-size:10px; font-family:'IBM Plex Mono',monospace; color:var(--teal); background:rgba(45,212,191,0.08); padding:2px 7px; border-radius:4px; line-height:1.8;">find · findOne · insertMany · updateOne · deleteOne · estimatedDocumentCount</span>
+                <span style="font-size:10px; font-family:'IBM Plex Mono',monospace; color:var(--teal); background:rgba(45,212,191,0.08); padding:2px 7px; border-radius:4px; line-height:1.8;">find · findOne · insertMany · updateOne · deleteOne · estimatedDocumentCount · vector sort</span>
               </div>
             </div>
           </div>
@@ -536,16 +560,16 @@
         <div class="service-card">
           <div class="service-icon" style="background:rgba(52,211,153,0.08); border:1px solid rgba(52,211,153,0.15);">🤖</div>
           <div>
-            <div class="service-name">IBM watsonx.ai</div>
-            <div class="service-detail">granite-3-8b-instruct · Chat<br/>granite-embedding-125m-english · Embed</div>
+            <div class="service-name">Hugging Face</div>
+            <div class="service-detail">granite-3.3-8b-instruct · Chat<br/>granite-embedding-125m-english · Embed</div>
           </div>
         </div>
 
         <div class="service-card">
           <div class="service-icon" style="background:rgba(251,146,60,0.08); border:1px solid rgba(251,146,60,0.15);">🤗</div>
           <div>
-            <div class="service-name">HuggingFace</div>
-            <div class="service-detail">Inference API<br/>Fallback embedding generation</div>
+            <div class="service-name">Local Ollama</div>
+            <div class="service-detail">granite3.1-dense:8b · Chat<br/>granite-embedding:278m · Embed</div>
           </div>
         </div>
 
@@ -589,7 +613,7 @@
     <div>
       <div class="future-note-title">Upcoming: MCP Server Integration</div>
       <div class="future-note-body">
-        Once the Astra DB MCP server is available, the AI query assessment step (currently handled via watsonx in <code style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; background:rgba(139,131,255,0.15); color:var(--purple); padding:1px 6px; border-radius:3px;">/api/chat → Analyze</code>) will be augmented or replaced by the MCP server protocol. This will allow the AI pipeline to dynamically discover collection schemas, evaluate query intent, and select optimal search strategies through standardized tool-use, rather than relying solely on prompt engineering.
+        Once the Astra DB MCP server is available, the AI query assessment step (currently handled inside the shared AI backend flow at <code style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; background:rgba(139,131,255,0.15); color:var(--purple); padding:1px 6px; border-radius:3px;">/api/chat → Analyze</code>) can be augmented or replaced by the MCP server protocol. That would let the pipeline discover schemas and choose search strategies through standardized tool use rather than prompt-only inference.
       </div>
     </div>
   </div>

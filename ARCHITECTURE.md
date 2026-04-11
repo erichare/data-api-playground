@@ -61,11 +61,19 @@ Main composition:
 - `src/app/page.tsx`
 - `src/components/shell/Sidebar.tsx`
 - `src/components/shell/PlaygroundMainPanel.tsx`
+- `src/components/shell/PlaygroundDialogs.tsx`
 - `src/components/connection/AstraConnectDialog.tsx`
+- `src/components/api/ApiExplorer.tsx`
 - `src/components/chat/ChatArea.tsx`
 - `src/components/ingest/IngestTab.tsx`
 
 Top-level app state is composed in `src/lib/hooks/usePlaygroundState.ts`.
+
+Current view ownership:
+
+- `ChatArea` handles conversational search, streaming step updates, and assistant/source rendering
+- `IngestTab` combines the upload queue, document library, raw collection browser, and document viewer
+- `ApiExplorer` owns the request builder, generated SDK snippets, response pane, and TypeScript client-call activity log
 
 Important state split:
 

@@ -13,9 +13,11 @@ An interactive web app for exploring [DataStax Astra DB](https://www.datastax.co
 
 - Demo mode or live Astra DB connection
 - AI chat with a streaming pipeline trace
+- API explorer with generated request bodies, SDK snippets, and a live TypeScript client-call log
 - Hugging Face when a key is available
 - Local Ollama fallback when no Hugging Face key is configured
 - CSV and document ingest with streaming progress
+- Ingest workspace with a local document library and raw collection browser
 - Visible Ollama prepare and download steps during first-run model setup
 - Automatic server-side `$vectorize` support for vectorize-enabled collections
 - Persistent conversations and ingested-document metadata in local SQLite
@@ -101,8 +103,9 @@ Open [http://localhost:3000](http://localhost:3000).
 1. Connect to Astra DB with a token and endpoint.
 2. Optionally add a Hugging Face key in the Connect dialog.
 3. Chat with your collections and inspect the Output, Code, and Trace tabs.
-4. Ingest CSV or document files into a collection.
-5. If no Hugging Face key is available, make sure Ollama is running locally and let the app pull missing models on demand.
+4. Use the ingest workspace to upload CSV or document files, inspect ingested documents, and browse raw collection records.
+5. Switch to the API Explorer to run raw Data API requests and compare them with live `astra-db-ts` client calls.
+6. If no Hugging Face key is available, make sure Ollama is running locally and let the app pull missing models on demand.
 
 ## Ingest Behavior
 
@@ -138,18 +141,23 @@ src/
       ingest/
       ingest-document/
   components/
+    api/
     chat/
     collection/
     connection/
     ingest/
+    onboarding/
     shell/
   lib/
     ai/
     astra.ts
     chat/
+    collections/
     ingest/
     hooks/
+    playground/
     server/
+    validation/
 ```
 
 ## Notes

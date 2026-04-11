@@ -65,12 +65,19 @@ Insert into Astra DB
 Store document summary in local SQLite
 ```
 
-### Browse
+### Collection Workspace
 
-Pick a collection from the sidebar and switch between:
-- table-style output
-- generated code examples
-- raw collection/document inspection
+Pick a collection from the sidebar to open the ingest workspace, then use:
+- the upload queue for CSV and document ingest
+- the local document library for previously ingested files
+- the raw collection browser for live Astra document inspection
+
+### API Explorer
+
+Switch to the API view to:
+- run raw Data API requests against the active collection
+- compare generated TypeScript, Python, Java, and cURL snippets
+- inspect the runtime `astra-db-ts` client-call log side by side with the response
 
 ---
 
