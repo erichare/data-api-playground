@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import type { Collection, Conversation } from "@/lib/types";
 
-interface SidebarProps {
+export interface SidebarProps {
   collections: Collection[];
   activeCollection: string;
   onSelectCollection: (name: string) => void;

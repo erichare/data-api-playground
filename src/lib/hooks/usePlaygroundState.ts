@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { ViewMode } from "@/lib/types";
+import { usePlaygroundAuth } from "@/lib/hooks/usePlaygroundAuth";
 import { useConversationState } from "@/lib/hooks/useConversationState";
 import { usePlaygroundConnection } from "@/lib/hooks/usePlaygroundConnection";
+import { useThemeState } from "@/lib/hooks/useThemeState";
 
 // ── Hook ────────────────────────────────────────────────────────────────────
 
@@ -17,6 +19,8 @@ export function usePlaygroundState() {
   const handleHuggingfaceApiKeyChange = (key: string) => {
     setHuggingfaceApiKey(key);
   };
+  const authState = usePlaygroundAuth();
+  const themeState = useThemeState();
 
   const conversationState = useConversationState({
     huggingfaceApiKey,
@@ -29,56 +33,104 @@ export function usePlaygroundState() {
     onDisconnectViewReset: () => setViewMode("chat"),
   });
 
+  const handleConnectionClick = useCallback(() => {
+    if (connectionState.isConnected) {
+      connectionState.handleDisconnect();
+      return;
+    }
+
+    connectionState.setConnectDialogOpen(true);
+  }, [connectionState]);
+
+  const handleCloseConnect = useCallback(() => {
+    connectionState.setConnectDialogOpen(false);
+    connectionState.setConnectError("");
+  }, [connectionState]);
+
+  const handleSidebarCollectionSelect = useCallback(
+    (name: string) => {
+      connectionState.handleSelectCollection(name);
+      setViewMode("ingest");
+    },
+    [connectionState]
+  );
+
+  const handleSidebarConversationChange = useCallback(
+    async (id: string) => {
+      setViewMode("chat");
+      await conversationState.handleConversationChange(id);
+    },
+    [conversationState]
+  );
+
   return {
-    // Connection
-    astraToken: connectionState.astraToken,
-    astraEndpoint: connectionState.astraEndpoint,
-    astraFromEnv: connectionState.astraFromEnv,
-    huggingfaceApiKey,
-    handleHuggingfaceApiKeyChange,
-    envReady: connectionState.envReady,
-    initializing: connectionState.initializing,
-    isConnected: connectionState.isConnected,
-    connectDialogOpen: connectionState.connectDialogOpen,
-    setConnectDialogOpen: connectionState.setConnectDialogOpen,
-    connectError: connectionState.connectError,
-    setConnectError: connectionState.setConnectError,
-    handleConnect: connectionState.handleConnect,
-    handleDisconnect: connectionState.handleDisconnect,
-
-    // Theme
-    theme: connectionState.theme,
-    toggleTheme: connectionState.toggleTheme,
-
-    // Collections / keyspaces
-    collections: connectionState.collections,
-    setCollections: connectionState.setCollections,
-    collectionFields: connectionState.collectionFields,
-    activeCollection: connectionState.activeCollection,
-    activeCollectionObj: connectionState.activeCollectionObj,
-    keyspaces: connectionState.keyspaces,
-    selectedKeyspace: connectionState.selectedKeyspace,
-    handleSelectCollection: connectionState.handleSelectCollection,
-    handleKeyspaceChange: connectionState.handleKeyspaceChange,
-    handleCollectionCreated: connectionState.handleCollectionCreated,
-
-    // UI
-    viewMode,
-    setViewMode,
-    newCollectionOpen,
-    setNewCollectionOpen,
-    quickStartOpen,
-    setQuickStartOpen,
-
-    // Conversations
-    conversations: conversationState.conversations,
-    activeConversationId: conversationState.activeConversationId,
-    handleConversationChange: conversationState.handleConversationChange,
-    messages: conversationState.messages,
-    handleMessagesUpdate: conversationState.handleMessagesUpdate,
-    handleNewConversation: conversationState.handleNewConversation,
-    creatingConversation: conversationState.creatingConversation,
-    handleRenameConversation: conversationState.handleRenameConversation,
-    handleDeleteConversation: conversationState.handleDeleteConversation,
+    headerProps: {
+      connected: connectionState.isConnected,
+      envReady: connectionState.envReady && !connectionState.isConnected,
+      onConnectionClick: handleConnectionClick,
+      onSettingsClick: () => setQuickStartOpen(true),
+      authEnabled: authState.authEnabled,
+      onSignOut: authState.handleSignOut,
+      theme: themeState.theme,
+      onToggleTheme: themeState.toggleTheme,
+    },
+    sidebarProps: {
+      collections: connectionState.collections,
+      activeCollection: connectionState.activeCollection,
+      viewMode,
+      onSelectCollection: handleSidebarCollectionSelect,
+      onNewCollection: () => setNewCollectionOpen(true),
+      keyspaces: connectionState.keyspaces,
+      selectedKeyspace: connectionState.selectedKeyspace,
+      onKeyspaceChange: (keyspace: string) =>
+        void connectionState.handleKeyspaceChange(keyspace),
+      conversations: conversationState.conversations,
+      activeConversationId: conversationState.activeConversationId,
+      onConversationChange: (id: string) =>
+        void handleSidebarConversationChange(id),
+      onNewConversation: () => void conversationState.handleNewConversation(),
+      creatingConversation: conversationState.creatingConversation,
+      onRenameConversation: (id: string, name: string) =>
+        void conversationState.handleRenameConversation(id, name),
+      onDeleteConversation: (id: string) =>
+        void conversationState.handleDeleteConversation(id),
+    },
+    mainPanelProps: {
+      viewMode,
+      onViewModeChange: setViewMode,
+      activeCollection: connectionState.activeCollection,
+      activeCollectionObj: connectionState.activeCollectionObj,
+      collections: connectionState.collections,
+      collectionFields: connectionState.collectionFields,
+      conversations: conversationState.conversations,
+      activeConversationId: conversationState.activeConversationId,
+      messages: conversationState.messages,
+      onMessagesUpdate: conversationState.handleMessagesUpdate,
+      astraToken: connectionState.astraToken,
+      astraEndpoint: connectionState.astraEndpoint,
+      keyspace: connectionState.selectedKeyspace,
+      huggingfaceApiKey,
+      initializing: connectionState.initializing,
+      isConnected: connectionState.isConnected,
+    },
+    dialogsProps: {
+      newCollectionOpen,
+      onCloseNewCollection: () => setNewCollectionOpen(false),
+      onCollectionCreated: connectionState.handleCollectionCreated,
+      astraToken: connectionState.astraToken,
+      astraEndpoint: connectionState.astraEndpoint,
+      selectedKeyspace: connectionState.selectedKeyspace,
+      quickStartOpen,
+      onCloseQuickStart: () => setQuickStartOpen(false),
+      connectDialogOpen: connectionState.connectDialogOpen,
+      onCloseConnect: handleCloseConnect,
+      onConnect: connectionState.handleConnect,
+      onDisconnect: connectionState.handleDisconnect,
+      astraFromEnv: connectionState.astraFromEnv,
+      huggingfaceApiKey,
+      onHuggingfaceApiKeyChange: handleHuggingfaceApiKeyChange,
+      connectError: connectionState.connectError,
+      isConnected: connectionState.isConnected,
+    },
   };
 }

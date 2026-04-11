@@ -6,7 +6,7 @@ import { IngestTab } from "@/components/ingest/IngestTab";
 import { ViewModeSwitcher } from "@/components/shell/ViewModeSwitcher";
 import type { Collection, Conversation, Message, ViewMode } from "@/lib/types";
 
-interface PlaygroundMainPanelProps {
+export interface PlaygroundMainPanelProps {
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   activeCollection: string;

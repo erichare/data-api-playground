@@ -4,17 +4,32 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { usePlaygroundState } from "./usePlaygroundState";
 
-const { useConversationStateMock, usePlaygroundConnectionMock } = vi.hoisted(() => ({
+const {
+  useConversationStateMock,
+  usePlaygroundConnectionMock,
+  usePlaygroundAuthMock,
+  useThemeStateMock,
+} = vi.hoisted(() => ({
   useConversationStateMock: vi.fn(),
   usePlaygroundConnectionMock: vi.fn(),
+  usePlaygroundAuthMock: vi.fn(),
+  useThemeStateMock: vi.fn(),
 }));
 
 vi.mock("@/lib/hooks/useConversationState", () => ({
   useConversationState: useConversationStateMock,
 }));
 
+vi.mock("@/lib/hooks/usePlaygroundAuth", () => ({
+  usePlaygroundAuth: usePlaygroundAuthMock,
+}));
+
 vi.mock("@/lib/hooks/usePlaygroundConnection", () => ({
   usePlaygroundConnection: usePlaygroundConnectionMock,
+}));
+
+vi.mock("@/lib/hooks/useThemeState", () => ({
+  useThemeState: useThemeStateMock,
 }));
 
 describe("usePlaygroundState", () => {
@@ -35,6 +50,16 @@ describe("usePlaygroundState", () => {
       handleDeleteConversation: vi.fn(),
     }));
 
+    usePlaygroundAuthMock.mockImplementation(() => ({
+      authEnabled: true,
+      handleSignOut: vi.fn(),
+    }));
+
+    useThemeStateMock.mockImplementation(() => ({
+      theme: "dark",
+      toggleTheme: vi.fn(),
+    }));
+
     usePlaygroundConnectionMock.mockImplementation(() => ({
       astraToken: "",
       astraEndpoint: "",
@@ -48,8 +73,6 @@ describe("usePlaygroundState", () => {
       setConnectError: vi.fn(),
       handleConnect: vi.fn(),
       handleDisconnect: vi.fn(),
-      theme: "dark",
-      toggleTheme: vi.fn(),
       collections: [],
       setCollections: vi.fn(),
       collectionFields: {},
@@ -67,7 +90,7 @@ describe("usePlaygroundState", () => {
     const { result } = renderHook(() => usePlaygroundState());
 
     act(() => {
-      result.current.handleHuggingfaceApiKeyChange("hf-key");
+      result.current.dialogsProps.onHuggingfaceApiKeyChange("hf-key");
     });
 
     await waitFor(() => {
@@ -77,8 +100,6 @@ describe("usePlaygroundState", () => {
         })
       );
     });
-
-    expect(result.current.huggingfaceApiKey).toBe("hf-key");
   });
 
   it("returns to chat mode when the conversation hook activates a conversation", () => {
@@ -88,15 +109,15 @@ describe("usePlaygroundState", () => {
     };
 
     act(() => {
-      result.current.setViewMode("ingest");
+      result.current.mainPanelProps.onViewModeChange("ingest");
     });
-    expect(result.current.viewMode).toBe("ingest");
+    expect(result.current.mainPanelProps.viewMode).toBe("ingest");
 
     act(() => {
       firstCallArgs.onConversationActivated?.();
     });
 
-    expect(result.current.viewMode).toBe("chat");
+    expect(result.current.mainPanelProps.viewMode).toBe("chat");
   });
 
   it("returns to chat mode when the connection hook triggers a disconnect reset", () => {
@@ -106,14 +127,83 @@ describe("usePlaygroundState", () => {
     };
 
     act(() => {
-      result.current.setViewMode("api");
+      result.current.mainPanelProps.onViewModeChange("api");
     });
-    expect(result.current.viewMode).toBe("api");
+    expect(result.current.mainPanelProps.viewMode).toBe("api");
 
     act(() => {
       firstCallArgs.onDisconnectViewReset?.();
     });
 
-    expect(result.current.viewMode).toBe("chat");
+    expect(result.current.mainPanelProps.viewMode).toBe("chat");
+  });
+
+  it("builds shell-ready callbacks around the lower-level hooks", async () => {
+    const handleDisconnect = vi.fn();
+    const setConnectDialogOpen = vi.fn();
+    const setConnectError = vi.fn();
+    const handleSelectCollection = vi.fn();
+    const handleConversationChange = vi.fn().mockResolvedValue(undefined);
+
+    useConversationStateMock.mockImplementation(() => ({
+      conversations: [],
+      activeConversationId: "conv-1",
+      creatingConversation: false,
+      messages: [],
+      bootstrapConversations: vi.fn().mockResolvedValue("conv-1"),
+      resetConversationTracking: vi.fn(),
+      handleConversationChange,
+      handleMessagesUpdate: vi.fn(),
+      handleNewConversation: vi.fn(),
+      handleRenameConversation: vi.fn(),
+      handleDeleteConversation: vi.fn(),
+    }));
+
+    usePlaygroundConnectionMock.mockImplementation(() => ({
+      astraToken: "",
+      astraEndpoint: "",
+      astraFromEnv: false,
+      envReady: true,
+      initializing: false,
+      isConnected: false,
+      connectDialogOpen: false,
+      setConnectDialogOpen,
+      connectError: "Connection failed",
+      setConnectError,
+      handleConnect: vi.fn(),
+      handleDisconnect,
+      collections: [],
+      setCollections: vi.fn(),
+      collectionFields: {},
+      activeCollection: "",
+      activeCollectionObj: undefined,
+      keyspaces: [],
+      selectedKeyspace: "default_keyspace",
+      handleSelectCollection,
+      handleKeyspaceChange: vi.fn(),
+      handleCollectionCreated: vi.fn(),
+    }));
+
+    const { result } = renderHook(() => usePlaygroundState());
+
+    act(() => {
+      result.current.headerProps.onConnectionClick?.();
+    });
+    act(() => {
+      result.current.sidebarProps.onSelectCollection("orders");
+    });
+    await act(async () => {
+      await result.current.sidebarProps.onConversationChange("conv-2");
+    });
+    act(() => {
+      result.current.dialogsProps.onCloseConnect();
+    });
+
+    expect(setConnectDialogOpen).toHaveBeenCalledWith(true);
+    expect(handleSelectCollection).toHaveBeenCalledWith("orders");
+    expect(result.current.mainPanelProps.viewMode).toBe("chat");
+    expect(handleConversationChange).toHaveBeenCalledWith("conv-2");
+    expect(setConnectDialogOpen).toHaveBeenLastCalledWith(false);
+    expect(setConnectError).toHaveBeenCalledWith("");
   });
 });

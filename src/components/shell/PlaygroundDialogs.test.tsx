@@ -36,35 +36,6 @@ vi.mock("@/components/collection/NewCollectionDialog", () => ({
   ),
 }));
 
-vi.mock("@/components/collection/IngestDialog", () => ({
-  IngestDialog: ({
-    collection,
-    astraToken,
-    astraEndpoint,
-    huggingfaceApiKey,
-    isConnected,
-    onClose,
-  }: {
-    collection: { name: string };
-    astraToken: string;
-    astraEndpoint: string;
-    huggingfaceApiKey?: string;
-    isConnected: boolean;
-    onClose: () => void;
-  }) => (
-    <div data-testid="ingest-dialog">
-      {JSON.stringify({
-        collection: collection.name,
-        astraToken,
-        astraEndpoint,
-        huggingfaceApiKey,
-        isConnected,
-      })}
-      <button onClick={onClose}>Close Ingest</button>
-    </div>
-  ),
-}));
-
 vi.mock("@/components/onboarding/QuickStartGuide", () => ({
   QuickStartGuide: ({
     open,
@@ -131,12 +102,6 @@ function makeProps(overrides: Partial<Parameters<typeof PlaygroundDialogs>[0]> =
     astraToken: "AstraCS:secret",
     astraEndpoint: "https://db.apps.astra.datastax.com",
     selectedKeyspace: "default_keyspace",
-    ingestTarget: "orders",
-    collections: [
-      { name: "orders", count: 12, vectorDim: 768, vectorizeService: null },
-      { name: "customers", count: 4, vectorDim: 768, vectorizeService: null },
-    ],
-    onCloseIngestDialog: vi.fn(),
     quickStartOpen: true,
     onCloseQuickStart: vi.fn(),
     connectDialogOpen: true,
@@ -157,7 +122,7 @@ describe("PlaygroundDialogs", () => {
     cleanup();
   });
 
-  it("wires the matched ingest dialog and forwards explicit Astra credentials", async () => {
+  it("forwards explicit Astra credentials to the shell dialogs", async () => {
     const props = makeProps();
     render(<PlaygroundDialogs {...props} />);
 
@@ -167,15 +132,6 @@ describe("PlaygroundDialogs", () => {
         keyspace: "default_keyspace",
         astraToken: "AstraCS:secret",
         astraEndpoint: "https://db.apps.astra.datastax.com",
-        isConnected: true,
-      })
-    );
-    expect(screen.getByTestId("ingest-dialog").textContent).toContain(
-      JSON.stringify({
-        collection: "orders",
-        astraToken: "AstraCS:secret",
-        astraEndpoint: "https://db.apps.astra.datastax.com",
-        huggingfaceApiKey: "hf-key",
         isConnected: true,
       })
     );
@@ -193,7 +149,6 @@ describe("PlaygroundDialogs", () => {
 
     fireEvent.click(screen.getByText("Close New Collection"));
     fireEvent.click(screen.getByText("Create Collection"));
-    fireEvent.click(screen.getByText("Close Ingest"));
     fireEvent.click(screen.getByText("Close Quickstart"));
     fireEvent.click(screen.getByText("Close Connect"));
     fireEvent.click(screen.getByText("Disconnect"));
@@ -206,7 +161,6 @@ describe("PlaygroundDialogs", () => {
       count: 0,
       vectorDim: null,
     });
-    expect(props.onCloseIngestDialog).toHaveBeenCalled();
     expect(props.onCloseQuickStart).toHaveBeenCalled();
     expect(props.onCloseConnect).toHaveBeenCalled();
     expect(props.onDisconnect).toHaveBeenCalled();
@@ -214,19 +168,17 @@ describe("PlaygroundDialogs", () => {
     expect(props.onHuggingfaceApiKeyChange).toHaveBeenCalledWith("hf-next");
   });
 
-  it("hides the ingest dialog for unknown targets and blanks Astra credentials when env-backed", () => {
+  it("blanks Astra credentials when env-backed", () => {
     render(
       <PlaygroundDialogs
         {...makeProps({
           astraFromEnv: true,
-          ingestTarget: "missing",
           connectError: "",
           quickStartOpen: false,
         })}
       />
     );
 
-    expect(screen.queryByTestId("ingest-dialog")).toBeNull();
     expect(screen.getByTestId("quickstart-guide").textContent).toContain('{"open":false}');
     expect(screen.getByTestId("connect-dialog").textContent).toContain(
       JSON.stringify({

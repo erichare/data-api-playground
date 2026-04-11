@@ -24,28 +24,11 @@ export function usePlaygroundConnection({
   const [initializing, setInitializing] = useState(true);
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [connectError, setConnectError] = useState("");
-  const [theme, setThemeState] = useState<"dark" | "light">(() => {
-    if (typeof window === "undefined") return "dark";
-    return (localStorage.getItem("theme") as "dark" | "light" | null) ?? "dark";
-  });
   const [collections, setCollections] = useState<Collection[]>([]);
   const [collectionFields, setCollectionFields] = useState<Record<string, string[]>>({});
   const [activeCollection, setActiveCollection] = useState("");
   const [keyspaces, setKeyspaces] = useState<string[]>([]);
   const [selectedKeyspace, setSelectedKeyspace] = useState("default_keyspace");
-
-  const applyTheme = (t: "dark" | "light") => {
-    const html = document.documentElement;
-    if (t === "dark") html.classList.add("dark");
-    else html.classList.remove("dark");
-  };
-
-  const toggleTheme = () => {
-    const next = theme === "dark" ? "light" : "dark";
-    setThemeState(next);
-    applyTheme(next);
-    localStorage.setItem("theme", next);
-  };
 
   const applyConnectionResult = (
     result: Awaited<ReturnType<typeof fetchCollectionsFromApi>>,
@@ -71,10 +54,6 @@ export function usePlaygroundConnection({
     setActiveCollection(result.collections.find((c) => !c.name.startsWith("dap_"))?.name ?? result.collections[0]?.name ?? "");
     return result;
   }, []);
-
-  useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
 
   useEffect(() => {
     const restorePromise = (async () => {
@@ -163,8 +142,6 @@ export function usePlaygroundConnection({
     setConnectError,
     handleConnect,
     handleDisconnect,
-    theme,
-    toggleTheme,
     collections,
     setCollections,
     collectionFields,

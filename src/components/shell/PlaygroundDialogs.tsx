@@ -1,21 +1,17 @@
 "use client";
 
 import { AstraConnectDialog } from "@/components/connection/AstraConnectDialog";
-import { IngestDialog } from "@/components/collection/IngestDialog";
 import { NewCollectionDialog } from "@/components/collection/NewCollectionDialog";
 import { QuickStartGuide } from "@/components/onboarding/QuickStartGuide";
 import type { Collection } from "@/lib/types";
 
-interface PlaygroundDialogsProps {
+export interface PlaygroundDialogsProps {
   newCollectionOpen: boolean;
   onCloseNewCollection: () => void;
   onCollectionCreated: (collection: Collection) => void;
   astraToken: string;
   astraEndpoint: string;
   selectedKeyspace: string;
-  ingestTarget: string | null;
-  collections: Collection[];
-  onCloseIngestDialog: () => void;
   quickStartOpen: boolean;
   onCloseQuickStart: () => void;
   connectDialogOpen: boolean;
@@ -36,9 +32,6 @@ export function PlaygroundDialogs({
   astraToken,
   astraEndpoint,
   selectedKeyspace,
-  ingestTarget,
-  collections,
-  onCloseIngestDialog,
   quickStartOpen,
   onCloseQuickStart,
   connectDialogOpen,
@@ -51,10 +44,6 @@ export function PlaygroundDialogs({
   connectError,
   isConnected,
 }: PlaygroundDialogsProps) {
-  const ingestCollection = ingestTarget
-    ? collections.find((collection) => collection.name === ingestTarget) ?? null
-    : null;
-
   return (
     <>
       <NewCollectionDialog
@@ -66,17 +55,6 @@ export function PlaygroundDialogs({
         keyspace={selectedKeyspace}
         isConnected={isConnected}
       />
-
-      {ingestCollection && (
-        <IngestDialog
-          collection={ingestCollection}
-          astraToken={astraToken}
-          astraEndpoint={astraEndpoint}
-          huggingfaceApiKey={huggingfaceApiKey}
-          isConnected={isConnected}
-          onClose={onCloseIngestDialog}
-        />
-      )}
 
       <QuickStartGuide open={quickStartOpen} onClose={onCloseQuickStart} />
 
