@@ -4,7 +4,7 @@ import {
 } from "@/lib/chat/constants";
 import { buildAnalyzePrompt } from "@/lib/chat/prompt";
 import { generateResponse } from "@/lib/chat/response";
-import { embedQuery, searchCollections } from "@/lib/chat/search";
+import { embedQuery, searchCollections, sanitizeFilterField } from "@/lib/chat/search";
 import {
   generateText,
   type EnsureModelProgress,
@@ -342,7 +342,7 @@ async function analyzeChatRequest({
     if (parsed.limit && parsed.limit > 0) {
       limit = Math.min(parsed.limit, MAX_LIMIT);
     }
-    if (parsed.sortField) sortField = parsed.sortField;
+    if (parsed.sortField) sortField = sanitizeFilterField(parsed.sortField);
     if (parsed.sortDir === "asc" || parsed.sortDir === "desc") sortDir = parsed.sortDir;
     if (parsed.filterField && parsed.filterValue != null) {
       filterField = parsed.filterField;

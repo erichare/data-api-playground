@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { z } from "zod";
 import type { Conversation, Message } from "@/lib/types";
 import {
   createConversationInApi,
@@ -11,6 +12,29 @@ import {
   serializeMessage,
   UNTITLED_CONVERSATION_NAME,
 } from "@/lib/playground/client";
+
+const messageResponseSchema = z.object({
+  messages: z.array(z.object({
+    id: z.string(),
+    role: z.enum(["user", "assistant"]),
+    content: z.string(),
+    timestamp: z.string(),
+    searchMode: z.string().optional(),
+    latencyMs: z.number().optional(),
+    pipelineSteps: z.array(z.object({
+      id: z.string(),
+      status: z.string(),
+      latencyMs: z.number().optional(),
+      data: z.record(z.string(), z.unknown()).optional(),
+    })).optional(),
+    sources: z.array(z.object({
+      collection: z.string(),
+      id: z.string(),
+      similarity: z.number(),
+      preview: z.record(z.string(), z.union([z.string(), z.number()])),
+    })).optional(),
+  })).default([]),
+});
 
 interface UseConversationStateArgs {
   huggingfaceApiKey: string;
@@ -47,16 +71,16 @@ export function useConversationState({
         loadedConvIds.current.delete(convId);
         return;
       }
-      const data = await res.json() as { messages: Record<string, unknown>[] };
-      const messages: Message[] = (data.messages ?? []).map((m) => ({
-        id: m.id as string,
-        role: m.role as "user" | "assistant",
-        content: m.content as string,
-        timestamp: new Date(m.timestamp as string),
+      const data = messageResponseSchema.parse(await res.json());
+      const messages: Message[] = data.messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        timestamp: new Date(m.timestamp),
         searchMode: m.searchMode as Message["searchMode"],
-        latencyMs: m.latencyMs as number | undefined,
+        latencyMs: m.latencyMs,
         pipelineSteps: m.pipelineSteps as Message["pipelineSteps"],
-        sources: m.sources as Message["sources"],
+        sources: m.sources,
       }));
       messages.forEach((m) => persistedMessageIds.current.add(m.id));
       setConversations((prev) =>
@@ -64,6 +88,11 @@ export function useConversationState({
       );
     } catch {
       loadedConvIds.current.delete(convId);
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === convId ? { ...c, loadError: "Failed to load messages" } : c
+        )
+      );
     }
   }, []);
 
@@ -135,20 +164,15 @@ export function useConversationState({
           setConversations([newConv]);
           setActiveConversationId(newConv.id);
         } catch {
-          // If replacement creation fails, the UI will show an empty state.
+          setConversations([makeBlankConversation()]);
+          setActiveConversationId("");
         }
       }
     }
 
-    try {
-      await fetch(`/api/conversations/${id}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-    } catch {
+    void fetch(`/api/conversations/${id}`, { method: "DELETE" }).catch(() => {
       // Best-effort server deletion — local removal already applied above.
-    }
+    });
   }, [loadConversationMessages]);
 
   const handleMessagesUpdate = useCallback((updated: Message[]) => {

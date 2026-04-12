@@ -1,7 +1,7 @@
 import { requireApiAuth } from "@/lib/auth";
 import { parseDocumentUpload, streamDocumentIngest } from "@/lib/ingest/service";
 import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
-import { createRequestLogContext, logError } from "@/lib/server/log";
+import { createRequestLogContext, logError, sanitizeErrorForClient } from "@/lib/server/log";
 import { assertRequestBodySize } from "@/lib/validation/parse";
 
 export const runtime = "nodejs";
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "No file provided";
+    const message = sanitizeErrorForClient(err, "No file provided");
     logError(logContext, "ingest.document.failed", err);
     return new Response(
       JSON.stringify({ error: message, requestId: logContext.requestId }),
