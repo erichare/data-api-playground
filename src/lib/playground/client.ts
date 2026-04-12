@@ -35,19 +35,17 @@ export async function fetchCollectionsFromApi(
   token: string,
   endpoint: string,
   keyspace?: string
-): Promise<{ collections: Collection[]; fields: Record<string, string[]>; keyspaces: string[] }> {
-  const [connectRes, ksRes] = await Promise.all([
-    fetch("/api/connect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, endpoint, keyspace }),
-    }),
-    fetch("/api/keyspaces", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, endpoint }),
-    }),
-  ]);
+): Promise<{
+  collections: Collection[];
+  fields: Record<string, string[]>;
+  keyspaces: string[];
+  keyspacesError?: string;
+}> {
+  const connectRes = await fetch("/api/connect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, endpoint, keyspace }),
+  });
 
   const data = await connectRes.json() as {
     collections?: Collection[];
@@ -60,14 +58,40 @@ export async function fetchCollectionsFromApi(
     throw new Error(data.requestId ? `${message} (request ${data.requestId})` : message);
   }
 
-  const ksData = ksRes.ok
-    ? await ksRes.json() as { keyspaces?: string[]; error?: string }
-    : { keyspaces: [] as string[] };
+  let keyspaces: string[] = [];
+  let keyspacesError: string | undefined;
+
+  const keyspacesRes = await fetch("/api/keyspaces", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, endpoint }),
+  });
+
+  if (!keyspacesRes.ok) {
+    keyspacesError = await readApiErrorMessage(
+      keyspacesRes,
+      "Failed to list keyspaces"
+    );
+  } else {
+    const keyspacesData = await keyspacesRes.json() as {
+      keyspaces?: string[];
+      error?: string;
+      requestId?: string;
+    };
+    if (keyspacesData.error) {
+      keyspacesError = keyspacesData.requestId
+        ? `${keyspacesData.error} (request ${keyspacesData.requestId})`
+        : keyspacesData.error;
+    } else {
+      keyspaces = keyspacesData.keyspaces ?? [];
+    }
+  }
 
   return {
     collections: data.collections ?? [],
     fields: data.fields ?? {},
-    keyspaces: ksData.keyspaces ?? [],
+    keyspaces,
+    ...(keyspacesError ? { keyspacesError } : {}),
   };
 }
 

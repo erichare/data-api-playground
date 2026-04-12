@@ -71,6 +71,77 @@ describe("useConversationState", () => {
     });
   });
 
+  it("retries loading a conversation after a non-ok response", async () => {
+    let messageAttempts = 0;
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/conversations" && (!init || init.method === undefined)) {
+        return {
+          ok: true,
+          json: async () => ({
+            conversations: [
+              {
+                id: "conv-1",
+                name: "Untitled",
+                createdAt: "2026-03-30T12:00:00.000Z",
+                updatedAt: "2026-03-30T12:00:00.000Z",
+                messageCount: 1,
+              },
+            ],
+          }),
+        } as Response;
+      }
+
+      if (url === "/api/conversations/conv-1/messages") {
+        messageAttempts += 1;
+        if (messageAttempts === 1) {
+          return {
+            ok: false,
+            json: async () => ({ error: "temporary failure" }),
+          } as Response;
+        }
+
+        return {
+          ok: true,
+          json: async () => ({
+            messages: [
+              {
+                id: "m1",
+                role: "user",
+                content: "retried",
+                timestamp: "2026-03-30T12:05:00.000Z",
+              },
+            ],
+          }),
+        } as Response;
+      }
+
+      throw new Error(`Unhandled fetch: ${url}`);
+    }) as typeof fetch;
+
+    const { result } = renderHook(() =>
+      useConversationState({
+        huggingfaceApiKey: "",
+      })
+    );
+
+    await act(async () => {
+      await result.current.bootstrapConversations();
+    });
+
+    expect(result.current.messages).toEqual([]);
+
+    await act(async () => {
+      await result.current.handleConversationChange("conv-1");
+    });
+
+    await waitFor(() => {
+      expect(result.current.messages).toHaveLength(1);
+      expect(result.current.messages[0]?.content).toBe("retried");
+    });
+  });
+
   it("does not create a new conversation when loading the conversation list fails", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);

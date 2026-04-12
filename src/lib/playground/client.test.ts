@@ -133,7 +133,7 @@ describe("playground client helpers", () => {
     ).resolves.toBe("Fallback");
   });
 
-  it("fetches collections and tolerates a failing keyspaces request", async () => {
+  it("fetches collections and surfaces a degraded keyspaces request without failing connect", async () => {
     global.fetch = vi
       .fn()
       .mockResolvedValueOnce(
@@ -150,7 +150,12 @@ describe("playground client helpers", () => {
           },
         })
       )
-      .mockResolvedValueOnce(new Response(null, { status: 500 })) as typeof fetch;
+      .mockResolvedValueOnce(
+        jsonResponse(
+          { error: "Failed to list keyspaces", requestId: "req-keyspaces" },
+          { status: 500 }
+        )
+      ) as typeof fetch;
 
     await expect(
       fetchCollectionsFromApi("token-123", "https://db.example.com", "analytics")
@@ -166,6 +171,7 @@ describe("playground client helpers", () => {
         movies: ["title", "genre"],
       },
       keyspaces: [],
+      keyspacesError: "Failed to list keyspaces (request req-keyspaces)",
     });
 
     expect(global.fetch).toHaveBeenNthCalledWith(1, "/api/connect", {
@@ -198,12 +204,12 @@ describe("playground client helpers", () => {
           },
           { status: 401 }
         )
-      )
-      .mockResolvedValueOnce(jsonResponse({ keyspaces: ["default_keyspace"] })) as typeof fetch;
+      ) as typeof fetch;
 
     await expect(
       fetchCollectionsFromApi("token-123", "https://db.example.com")
     ).rejects.toThrow("Connection failed (request req-connect)");
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
   it("maps remote conversation payloads into local conversation models", async () => {

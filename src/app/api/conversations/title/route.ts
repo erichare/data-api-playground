@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateText, resolveBackend } from "@/lib/ai/service";
 import { requireApiAuth } from "@/lib/auth";
+import { createRequestLogContext, logError } from "@/lib/server/log";
 import { conversationTitleBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
+  const logContext = createRequestLogContext(req, "/api/conversations/title");
   const authError = requireApiAuth(req);
   if (authError) return authError;
 
@@ -32,7 +34,8 @@ export async function POST(req: NextRequest) {
     const title =
       response.content.trim().replace(/^["']|["']$/g, "").slice(0, 60) || null;
     return NextResponse.json({ title });
-  } catch {
+  } catch (err) {
+    logError(logContext, "conversations.title.failed", err);
     return NextResponse.json({ title: null });
   }
 }

@@ -165,6 +165,55 @@ describe("usePlaygroundConnection", () => {
     expect(bootstrapConversations).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps a successful connect but surfaces keyspace listing degradation", async () => {
+    global.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ hasToken: false, hasEndpoint: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    ) as typeof fetch;
+    fetchCollectionsFromApiMock.mockResolvedValueOnce(
+      makeConnectionResult({
+        keyspaces: [],
+        keyspacesError: "Failed to list keyspaces (request req-keyspaces)",
+      })
+    );
+
+    const bootstrapConversations = vi.fn().mockResolvedValue("conv-1");
+    const resetConversationTracking = vi.fn();
+
+    const { result } = renderHook(() =>
+      usePlaygroundConnection({
+        bootstrapConversations,
+        resetConversationTracking,
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.initializing).toBe(false);
+    });
+
+    await act(async () => {
+      await expect(
+        result.current.handleConnect(
+          "AstraCS:secret",
+          "https://db-id-us-east1.apps.astra.datastax.com"
+        )
+      ).rejects.toThrow(
+        "Connected, but keyspaces could not be listed. Failed to list keyspaces (request req-keyspaces)"
+      );
+    });
+
+    expect(result.current.isConnected).toBe(true);
+    expect(result.current.activeCollection).toBe("orders");
+    expect(result.current.keyspaces).toEqual([]);
+    expect(result.current.connectError).toBe(
+      "Connected, but keyspaces could not be listed. Failed to list keyspaces (request req-keyspaces)"
+    );
+    expect(resetConversationTracking).toHaveBeenCalledTimes(1);
+    expect(bootstrapConversations).toHaveBeenCalledTimes(2);
+  });
+
   it("surfaces connection errors and preserves the failure message", async () => {
     global.fetch = vi.fn(async () =>
       new Response(JSON.stringify({ hasToken: false, hasEndpoint: false }), {

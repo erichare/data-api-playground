@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireApiAuth } from "@/lib/auth";
 import { deleteCollectionInAstra, ValidationError } from "@/lib/collections/service";
 import { createRequestLogContext, logError, sanitizeErrorForClient } from "@/lib/server/log";
@@ -7,7 +7,7 @@ import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
 export const runtime = "nodejs";
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   const logContext = createRequestLogContext(req, "/api/delete-collection");
   const authError = requireApiAuth(req);
   if (authError) return authError;

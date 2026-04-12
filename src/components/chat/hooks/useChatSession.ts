@@ -170,17 +170,19 @@ export function useChatSession({
     setStreamingResponseText("");
     setChatError("");
 
-    const liveSteps: PipelineStep[] = [];
+    let liveSteps: PipelineStep[] = [];
     const upsertStep = (partial: Partial<PipelineStep> & { id: PipelineStepId }) => {
       const existingIndex = liveSteps.findIndex((step) => step.id === partial.id);
 
       if (existingIndex >= 0) {
-        liveSteps[existingIndex] = { ...liveSteps[existingIndex], ...partial };
+        liveSteps = liveSteps.map((step, i) =>
+          i === existingIndex ? { ...step, ...partial } : step
+        );
       } else {
-        liveSteps.push({ status: "pending", ...partial } as PipelineStep);
+        liveSteps = [...liveSteps, { status: "pending", ...partial } as PipelineStep];
       }
 
-      setStreamingSteps([...liveSteps]);
+      setStreamingSteps(liveSteps);
     };
 
     let finalContent = "";

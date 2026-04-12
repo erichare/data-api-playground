@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   getAstraDb,
   isAllowedAstraEndpoint,
@@ -15,7 +15,9 @@ import { createRequestLogContext, jsonError, logError, sanitizeErrorForClient } 
 import { dataApiProxyBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
-export async function POST(req: Request) {
+export const runtime = "nodejs";
+
+export async function POST(req: NextRequest) {
   const logContext = createRequestLogContext(req, "/api/data-api-proxy");
   const authError = requireApiAuth(req);
   if (authError) return authError;

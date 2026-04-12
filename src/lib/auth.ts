@@ -79,13 +79,29 @@ export function createSessionToken() {
   return `${expiresAt}.${nonce}.${hmac}`;
 }
 
+const HEX_64_RE = /^[0-9a-f]{64}$/;
+
 export function verifySessionToken(token: string): boolean {
   if (!isAuthEnabled()) return true;
-  const [expiresAtRaw, nonce, hmac] = token.split(".");
+
+  // Split using indexOf to tolerate future encoding changes safely.
+  const firstDot = token.indexOf(".");
+  const lastDot = token.lastIndexOf(".");
+  if (firstDot === -1 || firstDot === lastDot) return false;
+
+  const expiresAtRaw = token.slice(0, firstDot);
+  const nonce = token.slice(firstDot + 1, lastDot);
+  const hmac = token.slice(lastDot + 1);
+
   if (!expiresAtRaw || !nonce || !hmac) return false;
+
+  // Validate HMAC format before allocating buffers in safeEqual.
+  if (!HEX_64_RE.test(hmac)) return false;
+
   const expiresAt = Number.parseInt(expiresAtRaw, 10);
   if (!Number.isFinite(expiresAt)) return false;
   if (expiresAt <= Math.floor(Date.now() / 1000)) return false;
+
   const expected = createHmac("sha256", getAuthSecret())
     .update(`${expiresAt}.${nonce}`)
     .digest("hex");

@@ -27,7 +27,7 @@ describe("/api/delete-collection route", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "docs" }),
-      })
+      }) as never
     );
 
     expect(await response.json()).toEqual({ dropped: true });
@@ -41,7 +41,7 @@ describe("/api/delete-collection route", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "" }),
-      })
+      }) as never
     );
 
     expect(response.status).toBe(400);
@@ -60,7 +60,7 @@ describe("/api/delete-collection route", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "docs" }),
-      })
+      }) as never
     );
 
     expect(response.status).toBe(500);

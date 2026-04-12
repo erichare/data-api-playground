@@ -334,13 +334,16 @@ async function analyzeChatRequest({
     ) {
       collection = parsed.collection;
     }
-    searchMode = parsed.searchMode ?? searchMode;
+    const VALID_SEARCH_MODES = new Set(["vector", "hybrid", "lexical"]);
+    if (parsed.searchMode && VALID_SEARCH_MODES.has(parsed.searchMode)) {
+      searchMode = parsed.searchMode;
+    }
     intent = parsed.intent ?? intent;
     if (parsed.limit && parsed.limit > 0) {
       limit = Math.min(parsed.limit, MAX_LIMIT);
     }
     if (parsed.sortField) sortField = parsed.sortField;
-    if (parsed.sortDir === "asc") sortDir = "asc";
+    if (parsed.sortDir === "asc" || parsed.sortDir === "desc") sortDir = parsed.sortDir;
     if (parsed.filterField && parsed.filterValue != null) {
       filterField = parsed.filterField;
       filterOp = parsed.filterOp ?? "$eq";

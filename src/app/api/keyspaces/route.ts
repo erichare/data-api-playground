@@ -7,7 +7,7 @@ import {
   withRequestLog,
 } from "@/lib/astraClientLog";
 import { requireApiAuth } from "@/lib/auth";
-import { createRequestLogContext, logError, sanitizeErrorForClient } from "@/lib/server/log";
+import { createRequestLogContext, jsonError, logError, sanitizeErrorForClient } from "@/lib/server/log";
 import { keyspacesBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   const { token, endpoint } = resolveAstraConnection(result);
 
   if (!token || !endpoint) {
-    return NextResponse.json({ error: "token and endpoint are required" }, { status: 400 });
+    return jsonError(logContext, 400, "token and endpoint are required");
   }
 
   return withRequestLog(async () => {
@@ -35,12 +35,16 @@ export async function POST(req: NextRequest) {
         ]),
       });
       const keyspaces = await admin.listKeyspaces();
-      return NextResponse.json({ keyspaces });
+      return NextResponse.json(
+        { keyspaces },
+        { headers: { "X-Request-Id": logContext.requestId } }
+      );
     } catch (err) {
       logError(logContext, "keyspaces.failed", err);
-      return NextResponse.json(
-        { error: sanitizeErrorForClient(err, "Failed to list keyspaces") },
-        { status: 400 }
+      return jsonError(
+        logContext,
+        400,
+        sanitizeErrorForClient(err, "Failed to list keyspaces")
       );
     }
   });

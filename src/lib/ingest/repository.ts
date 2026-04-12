@@ -50,29 +50,9 @@ export async function deleteDocumentsForOverwrite(args: {
   const { collectionName, token, endpoint, keyspace, existingDocuments } = args;
   if (existingDocuments.length === 0) return;
 
-  if (token && endpoint) {
-    const astraDb = getAstraDb(token, endpoint, keyspace);
-    const collection = astraDb.collection(collectionName);
-
-    for (const existingDocument of existingDocuments) {
-      recordAstraClientCall({
-        label: "Overwrite Ingested Document",
-        code: buildTsCall(`db.collection(${JSON.stringify(collectionName)})`, [
-          formatTsMethodCall("deleteMany", [
-            {
-              "metadata.source_doc_id": {
-                $eq: existingDocument.source_doc_id,
-              },
-            },
-          ]),
-        ]),
-      });
-      await collection.deleteMany({
-        "metadata.source_doc_id": { $eq: existingDocument.source_doc_id },
-      });
-    }
-  }
-
+  // Delete from SQLite first — local metadata is the authoritative record.
+  // This ensures that even if the remote Astra cleanup fails, the local
+  // state is consistent and a retry won't see stale conflict records.
   const db = getDb();
   const deleteStmt = db.prepare(
     "DELETE FROM ingested_documents WHERE source_doc_id = ?"
@@ -86,6 +66,39 @@ export async function deleteDocumentsForOverwrite(args: {
   deleteTransaction(
     existingDocuments.map((existingDocument) => existingDocument.source_doc_id)
   );
+
+  // Then clean up remote Astra chunks — non-fatal if this fails.
+  // Orphaned chunks in Astra are harmless; orphaned SQLite records
+  // pointing to deleted Astra chunks would break overwrite retries.
+  if (token && endpoint) {
+    const astraDb = getAstraDb(token, endpoint, keyspace);
+    const collection = astraDb.collection(collectionName);
+
+    for (const existingDocument of existingDocuments) {
+      try {
+        recordAstraClientCall({
+          label: "Overwrite Ingested Document",
+          code: buildTsCall(`db.collection(${JSON.stringify(collectionName)})`, [
+            formatTsMethodCall("deleteMany", [
+              {
+                "metadata.source_doc_id": {
+                  $eq: existingDocument.source_doc_id,
+                },
+              },
+            ]),
+          ]),
+        });
+        await collection.deleteMany({
+          "metadata.source_doc_id": { $eq: existingDocument.source_doc_id },
+        });
+      } catch (err) {
+        console.error(
+          `[deleteDocumentsForOverwrite] Astra deleteMany failed for "${collectionName}" / "${existingDocument.source_doc_id}":`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+  }
 }
 
 export function insertIngestedDocumentRecord(args: {

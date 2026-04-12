@@ -123,7 +123,8 @@ describe("collection service", () => {
         { collection: "notes", document_count: 1 },
       ],
     });
-    getAstraDbMock.mockReturnValueOnce({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (getAstraDbMock as any).mockReturnValueOnce({
       listCollections: vi.fn().mockResolvedValue([
         {
           name: "docs",
@@ -356,7 +357,7 @@ describe("collection service", () => {
     });
   });
 
-  it("treats the local delete as authoritative when Astra cleanup fails", async () => {
+  it("fails the delete when Astra cleanup fails and preserves local metadata", async () => {
     const runMock = vi.fn();
     prepareMock.mockReturnValueOnce({ run: runMock });
     resolveAstraConnectionMock.mockReturnValue({
@@ -375,14 +376,15 @@ describe("collection service", () => {
         endpoint: "endpoint",
         keyspace: "ks1",
       })
-    ).resolves.toEqual({ ok: true });
+    ).rejects.toThrow("boom");
 
-    expect(runMock).toHaveBeenCalledWith("doc-8");
+    expect(runMock).not.toHaveBeenCalled();
   });
 
   it("skips remote cleanup when Astra credentials are unavailable", async () => {
     const runMock = vi.fn();
-    prepareMock.mockReturnValueOnce({ run: runMock });
+    prepareMock.mockReset();
+    prepareMock.mockReturnValue({ run: runMock });
     resolveAstraConnectionMock.mockReturnValue({
       token: "",
       endpoint: "",

@@ -11,6 +11,8 @@ import { createRequestLogContext, logError, sanitizeErrorForClient } from "@/lib
 import { countBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
+export const runtime = "nodejs";
+
 export async function POST(req: NextRequest) {
   const logContext = createRequestLogContext(req, "/api/count");
   const authError = requireApiAuth(req);

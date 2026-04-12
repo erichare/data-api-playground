@@ -43,7 +43,10 @@ export function useConversationState({
     loadedConvIds.current.add(convId);
     try {
       const res = await fetch(`/api/conversations/${convId}/messages`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        loadedConvIds.current.delete(convId);
+        return;
+      }
       const data = await res.json() as { messages: Record<string, unknown>[] };
       const messages: Message[] = (data.messages ?? []).map((m) => ({
         id: m.id as string,

@@ -316,6 +316,36 @@ describe("useDocumentLibrary", () => {
       expect(result.current.documents).toHaveLength(0);
       expect(fetch).not.toHaveBeenCalled();
     });
+
+    it("keeps the document and surfaces an error when deletion fails", async () => {
+      const docs = [makeDoc("doc-1"), makeDoc("doc-2")];
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ documents: docs }),
+        } as unknown as Response)
+        .mockResolvedValueOnce({
+          ok: false,
+          json: vi.fn().mockResolvedValue({
+            error: "Delete failed",
+            requestId: "req-delete",
+          }),
+        } as unknown as Response);
+
+      const { result } = renderHook(() => useDocumentLibrary(defaultArgs));
+
+      await waitFor(() => expect(result.current.loadingDocs).toBe(false));
+
+      await act(async () => {
+        await result.current.handleDelete(docs[0]);
+      });
+
+      expect(result.current.documents).toHaveLength(2);
+      expect(result.current.loadError).toBe(
+        "Delete failed (request req-delete)"
+      );
+      expect(result.current.deletingId).toBeNull();
+    });
   });
 
   describe("prependDocument", () => {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { IngestFileType, IngestedDocumentSummary } from "@/lib/types";
 import { getMockDocuments } from "@/components/ingest/ingestShared";
+import { readApiErrorMessage } from "@/lib/playground/client";
 
 interface UseDocumentLibraryArgs {
   isConnected: boolean;
@@ -64,9 +65,10 @@ export function useDocumentLibrary({
 
   const handleDelete = useCallback(async (doc: IngestedDocumentSummary) => {
     setDeletingId(doc.source_doc_id);
+    setLoadError("");
     try {
       if (isConnected) {
-        await fetch("/api/documents", {
+        const response = await fetch("/api/documents", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -77,8 +79,18 @@ export function useDocumentLibrary({
             keyspace,
           }),
         });
+
+        if (!response.ok) {
+          throw new Error(
+            await readApiErrorMessage(response, "Failed to delete document")
+          );
+        }
       }
       setDocuments((prev) => prev.filter((d) => d.source_doc_id !== doc.source_doc_id));
+    } catch (err) {
+      setLoadError(
+        err instanceof Error ? err.message : "Failed to delete document"
+      );
     } finally {
       setDeletingId(null);
     }

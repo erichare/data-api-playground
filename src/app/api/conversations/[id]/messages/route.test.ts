@@ -3,8 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const allMessagesMock = vi.fn();
 const insertMessageMock = vi.fn();
 const updateConversationMock = vi.fn();
+const getConversationMock = vi.fn();
 
 const prepareMock = vi.fn((sql: string) => {
+  if (sql.includes("SELECT id FROM conversations")) {
+    return { get: getConversationMock };
+  }
+
   if (sql.includes("SELECT * FROM messages")) {
     return { all: allMessagesMock };
   }
@@ -33,7 +38,21 @@ describe("/api/conversations/[id]/messages route", () => {
     delete process.env.PLAYGROUND_AUTH_PASSWORD;
   });
 
+  it("returns 404 when the conversation does not exist", async () => {
+    getConversationMock.mockReturnValueOnce(undefined);
+
+    const { GET } = await import("./route");
+    const response = await GET(
+      new Request("http://localhost/api/conversations/nonexistent/messages"),
+      { params: Promise.resolve({ id: "nonexistent" }) }
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "Conversation not found" });
+  });
+
   it("returns stored messages with parsed pipeline metadata", async () => {
+    getConversationMock.mockReturnValueOnce({ id: "conv-1" });
     allMessagesMock.mockReturnValueOnce([
       {
         id: "msg-1",

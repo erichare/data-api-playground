@@ -22,7 +22,7 @@ function makeRequest(body: Record<string, unknown>) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-  });
+  }) as never;
 }
 
 describe("/api/data-api-proxy route", () => {
@@ -57,7 +57,7 @@ describe("/api/data-api-proxy route", () => {
       requestBody: { find: { filter: {} } },
     });
 
-    const response = await POST(request);
+    const response = await POST(request as never);
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({
@@ -79,7 +79,7 @@ describe("/api/data-api-proxy route", () => {
       requestBody: { find: { filter: { topic: "security" }, options: { limit: 5 } } },
     });
 
-    const response = await POST(request);
+    const response = await POST(request as never);
     const payload = await response.json();
 
     expect(response.status).toBe(200);

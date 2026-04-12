@@ -38,7 +38,7 @@ export const embeddingProvidersBodySchema = astraConnectionSchema;
 export const createCollectionBodySchema = astraConnectionSchema.extend({
   name: z.string().min(1),
   dimension: z.number().int().positive(),
-  metric: z.string().min(1),
+  metric: z.enum(["cosine", "dot_product", "euclidean"]),
   provider: z.string().min(1),
   model: z.string().min(1),
 });
@@ -111,7 +111,7 @@ export const conversationTitleBodySchema = z.object({
 // ── Chat ─────────────────────────────────────────────────────────────
 export const chatBodySchema = astraConnectionSchema.extend({
   query: z.string().min(1),
-  searchMode: z.string().min(1),
+  searchMode: z.enum(["vector", "hybrid", "lexical"]),
   collections: z
     .array(
       z.object({

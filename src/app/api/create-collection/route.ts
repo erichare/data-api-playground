@@ -5,6 +5,8 @@ import { createRequestLogContext, logError, sanitizeErrorForClient } from "@/lib
 import { createCollectionBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
+export const runtime = "nodejs";
+
 export async function POST(req: NextRequest) {
   const logContext = createRequestLogContext(req, "/api/create-collection");
   const authError = requireApiAuth(req);

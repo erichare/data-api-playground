@@ -11,6 +11,8 @@ import { createRequestLogContext, logError, sanitizeErrorForClient } from "@/lib
 import { embeddingProvidersBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
+export const runtime = "nodejs";
+
 export interface ProviderModel {
   provider: string;
   providerDisplayName: string;

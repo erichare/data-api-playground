@@ -54,6 +54,8 @@ export function resolveAstraConnection(
 }
 
 const CLIENT_CACHE_TTL_MS = 5 * 60 * 1000;
+const CLIENT_CACHE_MAX_SIZE = 50;
+const CLIENT_CACHE_CLEANUP_INTERVAL_MS = 60 * 1000;
 const clientCache = new Map<string, { client: DataAPIClient; createdAt: number }>();
 
 /** @internal Exposed for test cleanup only. */
@@ -61,11 +63,38 @@ export function clearClientCache() {
   clientCache.clear();
 }
 
+/** Evict expired entries from the client cache. */
+function evictExpiredClients() {
+  const now = Date.now();
+  for (const [key, entry] of clientCache) {
+    if (now - entry.createdAt >= CLIENT_CACHE_TTL_MS) {
+      clientCache.delete(key);
+    }
+  }
+}
+
+// Proactively clean up expired clients on a timer (unref to avoid blocking shutdown).
+if (typeof setInterval !== "undefined") {
+  const timer = setInterval(evictExpiredClients, CLIENT_CACHE_CLEANUP_INTERVAL_MS);
+  if (typeof timer === "object" && "unref" in timer) timer.unref();
+}
+
 function getOrCreateClient(token: string): DataAPIClient {
   const cached = clientCache.get(token);
   if (cached && Date.now() - cached.createdAt < CLIENT_CACHE_TTL_MS) {
     return cached.client;
   }
+
+  // Evict oldest entries if the cache is at capacity.
+  if (clientCache.size >= CLIENT_CACHE_MAX_SIZE) {
+    evictExpiredClients();
+    // If still at capacity after eviction, drop the oldest entry.
+    if (clientCache.size >= CLIENT_CACHE_MAX_SIZE) {
+      const oldestKey = clientCache.keys().next().value;
+      if (oldestKey !== undefined) clientCache.delete(oldestKey);
+    }
+  }
+
   const client = new DataAPIClient(token);
   clientCache.set(token, { client, createdAt: Date.now() });
   return client;

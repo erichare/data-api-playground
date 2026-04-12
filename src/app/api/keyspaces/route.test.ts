@@ -41,8 +41,9 @@ describe("/api/keyspaces route", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       error: "token and endpoint are required",
+      requestId: expect.any(String),
     });
   });
 
@@ -61,6 +62,7 @@ describe("/api/keyspaces route", () => {
     expect(await response.json()).toEqual({
       keyspaces: ["default_keyspace", "analytics"],
     });
+    expect(response.headers.get("X-Request-Id")).toEqual(expect.any(String));
     expect(getAstraDbMock).toHaveBeenCalledWith(
       "AstraCS:secret",
       "https://db.apps.astra.datastax.com"
@@ -80,8 +82,9 @@ describe("/api/keyspaces route", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       error: "boom",
+      requestId: expect.any(String),
     });
   });
 });

@@ -25,7 +25,7 @@ type CollectionConnectionArgs = {
 type CreateCollectionArgs = CollectionConnectionArgs & {
   name: string;
   dimension: number;
-  metric: string;
+  metric: "cosine" | "dot_product" | "euclidean";
   provider: string;
   model: string;
 };
@@ -218,7 +218,7 @@ export async function createCollectionInAstra(
   const vectorOptions = {
     vector: {
       dimension,
-      metric: metric as "cosine" | "dot_product" | "euclidean",
+      metric,
       ...(hasVectorize ? { service: { provider, modelName: model } } : {}),
     },
   };
@@ -267,36 +267,27 @@ export async function deleteIngestedDocument(
   args: DeleteIngestedDocumentArgs
 ): Promise<{ ok: true }> {
   const { source_doc_id, collection } = args;
-  const db = getDb();
-
-  db.prepare("DELETE FROM ingested_documents WHERE source_doc_id = ?").run(source_doc_id);
-
   const { token, endpoint, keyspace } = resolveAstraConnection(args, {
     includeDefaultKeyspace: true,
   });
 
   if (token && endpoint) {
-    try {
-      const astraDb = getAstraDb(token, endpoint, keyspace);
-      recordAstraClientCall({
-        label: "Delete Ingested Document",
-        code: buildTsCall(`db.collection(${JSON.stringify(collection)})`, [
-          formatTsMethodCall("deleteMany", [
-            { "metadata.source_doc_id": { $eq: source_doc_id } },
-          ]),
+    const astraDb = getAstraDb(token, endpoint, keyspace);
+    recordAstraClientCall({
+      label: "Delete Ingested Document",
+      code: buildTsCall(`db.collection(${JSON.stringify(collection)})`, [
+        formatTsMethodCall("deleteMany", [
+          { "metadata.source_doc_id": { $eq: source_doc_id } },
         ]),
-      });
-      await astraDb
-        .collection(collection)
-        .deleteMany({ "metadata.source_doc_id": { $eq: source_doc_id } });
-    } catch (err) {
-      // Local metadata delete is the authoritative operation; remote failure is non-fatal.
-      console.error(
-        `[deleteIngestedDocument] Astra deleteMany failed for "${collection}" / "${source_doc_id}":`,
-        err instanceof Error ? err.message : err
-      );
-    }
+      ]),
+    });
+    await astraDb
+      .collection(collection)
+      .deleteMany({ "metadata.source_doc_id": { $eq: source_doc_id } });
   }
+
+  const db = getDb();
+  db.prepare("DELETE FROM ingested_documents WHERE source_doc_id = ?").run(source_doc_id);
 
   return { ok: true };
 }

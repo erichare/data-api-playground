@@ -11,7 +11,12 @@ const SCHEMA_VERSION = 1;
 
 type TableInfoRow = { name: string };
 
+const KNOWN_TABLES = new Set(["ingested_documents", "conversations", "messages"]);
+
 function getColumnNames(db: Database.Database, table: string) {
+  if (!KNOWN_TABLES.has(table)) {
+    throw new Error(`Unknown table: ${table}`);
+  }
   return new Set(
     ((db.pragma(`table_info(${table})`) as TableInfoRow[]) ?? []).map((row) =>
       String(row.name)

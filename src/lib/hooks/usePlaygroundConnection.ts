@@ -30,7 +30,15 @@ export function usePlaygroundConnection({
   const [keyspaces, setKeyspaces] = useState<string[]>([]);
   const [selectedKeyspace, setSelectedKeyspace] = useState("default_keyspace");
 
-  const applyConnectionResult = (
+  const formatKeyspacesWarning = useCallback(
+    (message: string, source: "manual" | "env" = "manual") =>
+      source === "env"
+        ? `Connected using environment credentials, but keyspaces could not be listed. ${message}`
+        : `Connected, but keyspaces could not be listed. ${message}`,
+    []
+  );
+
+  const applyConnectionResult = useCallback((
     result: Awaited<ReturnType<typeof fetchCollectionsFromApi>>,
     fromEnv: boolean,
     token: string,
@@ -45,7 +53,7 @@ export function usePlaygroundConnection({
     setActiveCollection(firstUserCollection);
     setKeyspaces(result.keyspaces);
     if (result.keyspaces.length > 0) setSelectedKeyspace(result.keyspaces[0]);
-  };
+  }, []);
 
   const fetchCollections = useCallback(async (token: string, endpoint: string, keyspace?: string) => {
     const result = await fetchCollectionsFromApi(token, endpoint, keyspace);
@@ -66,7 +74,12 @@ export function usePlaygroundConnection({
         setEnvReady(status.hasToken && status.hasEndpoint);
         if (status.hasToken && status.hasEndpoint) {
           await fetchCollectionsFromApi("", "")
-            .then((result) => applyConnectionResult(result, true, "", ""))
+            .then((result) => {
+              applyConnectionResult(result, true, "", "");
+              if (result.keyspacesError) {
+                setConnectError(formatKeyspacesWarning(result.keyspacesError, "env"));
+              }
+            })
             .catch(() => {
               // Env-based auto-connect failed; user can connect manually via dialog.
             });
@@ -77,9 +90,9 @@ export function usePlaygroundConnection({
     })();
 
     void restorePromise.finally(() => setInitializing(false));
-  }, [bootstrapConversations]);
+  }, [applyConnectionResult, bootstrapConversations, formatKeyspacesWarning]);
 
-  const handleConnect = async (token: string, endpoint: string) => {
+  const handleConnect = useCallback(async (token: string, endpoint: string) => {
     setConnectError("");
     const fromEnv = !token && !endpoint;
     try {
@@ -93,11 +106,16 @@ export function usePlaygroundConnection({
       await bootstrapConversations().catch(() => {
         // A conversation refresh failure should not block a successful Astra connect.
       });
+      if (result.keyspacesError) {
+        const warning = formatKeyspacesWarning(result.keyspacesError);
+        setConnectError(warning);
+        throw new Error(warning);
+      }
     } catch (err) {
       setConnectError(err instanceof Error ? err.message : "Connection failed");
       throw err;
     }
-  };
+  }, [bootstrapConversations, formatKeyspacesWarning, fetchCollections, resetConversationTracking]);
 
   const handleDisconnect = () => {
     setAstraToken("");
@@ -119,7 +137,7 @@ export function usePlaygroundConnection({
     setActiveCollection(name);
   };
 
-  const handleKeyspaceChange = async (keyspace: string) => {
+  const handleKeyspaceChange = useCallback(async (keyspace: string) => {
     if (!astraFromEnv && (!astraToken || !astraEndpoint)) {
       setSelectedKeyspace(keyspace);
       return;
@@ -132,15 +150,23 @@ export function usePlaygroundConnection({
       );
       setKeyspaces(result.keyspaces);
       setSelectedKeyspace(keyspace);
+      setConnectError(
+        result.keyspacesError
+          ? formatKeyspacesWarning(
+              result.keyspacesError,
+              astraFromEnv ? "env" : "manual"
+            )
+          : ""
+      );
     } catch {
       // Keep the previous keyspace selection and collection snapshot in sync.
     }
-  };
+  }, [astraEndpoint, astraFromEnv, astraToken, fetchCollections, formatKeyspacesWarning]);
 
-  const handleCollectionCreated = (collection: Collection) => {
+  const handleCollectionCreated = useCallback((collection: Collection) => {
     setCollections((prev) => [...prev, collection]);
     setActiveCollection(collection.name);
-  };
+  }, []);
 
   const isConnected = astraFromEnv || !!astraToken;
   const activeCollectionObj = collections.find((c) => c.name === activeCollection) ?? collections[0];
