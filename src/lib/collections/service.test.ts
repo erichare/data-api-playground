@@ -123,8 +123,7 @@ describe("collection service", () => {
         { collection: "notes", document_count: 1 },
       ],
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (getAstraDbMock as any).mockReturnValueOnce({
+    (getAstraDbMock as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce({
       listCollections: vi.fn().mockResolvedValue([
         {
           name: "docs",

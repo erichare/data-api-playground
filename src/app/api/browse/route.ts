@@ -46,9 +46,7 @@ export async function POST(req: NextRequest) {
         code: buildTsCall(`db.collection(${JSON.stringify(collection)})`, browseChain),
       });
 
-      // Sort key is user-provided so it can't satisfy the SDK's schema-parameterized sort type.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let cursor = coll.find({}, { limit: 20, sort: sortObj as any });
+      let cursor = coll.find({}, { limit: 20, sort: sortObj as Record<string, 1 | -1> });
       if (pageState) {
         cursor = cursor.initialPageState(pageState);
       }
