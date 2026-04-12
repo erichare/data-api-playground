@@ -2,11 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getAstraDbMock = vi.fn();
 const resolveAstraConnectionMock = vi.fn();
+const prepareMock = vi.fn();
+const getDbMock = vi.fn(() => ({
+  prepare: prepareMock,
+}));
 
 vi.mock("@/lib/astra", () => ({
   getAstraDb: getAstraDbMock,
   resolveAstraConnection: resolveAstraConnectionMock,
   SYSTEM_FIELDS: new Set(["_id", "$vector"]),
+}));
+
+vi.mock("@/lib/db", () => ({
+  getDb: getDbMock,
 }));
 
 describe("/api/connect route", () => {
@@ -22,6 +30,9 @@ describe("/api/connect route", () => {
       token: "AstraCS:secret-token",
       endpoint: "https://db-id-us-east1.apps.astra.datastax.com",
       keyspace: "default_keyspace",
+    });
+    prepareMock.mockReturnValue({
+      all: () => [{ collection: "docs", document_count: 3 }],
     });
     getAstraDbMock.mockReturnValue({
       listCollections: vi.fn().mockResolvedValue([
@@ -83,6 +94,7 @@ describe("/api/connect route", () => {
         {
           name: "docs",
           count: 12,
+          documentCount: 3,
           vectorDim: 1024,
         },
       ],
@@ -139,6 +151,7 @@ describe("/api/connect route", () => {
     expect(payload.collections[11]).toMatchObject({ name: "docs_12", count: 12 });
     expect(payload.collections[12]).toMatchObject({ name: "docs_13", count: null });
     expect(payload.collections[13]).toMatchObject({ name: "docs_14", count: null });
+    expect(payload.collections[0]).toMatchObject({ documentCount: 0 });
     expect(payload.fields.docs_1).toEqual(["docs_1"]);
     expect(payload.fields.docs_12).toEqual(["docs_12"]);
     expect(payload.fields.docs_13).toBeUndefined();

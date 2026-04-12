@@ -43,8 +43,8 @@ vi.mock("framer-motion", () => {
 function makeSidebarProps(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}) {
   return {
     collections: [
-      { name: "orders", count: 12, vectorDim: 768, vectorizeService: null },
-      { name: "dap_internal", count: 3, vectorDim: 768, vectorizeService: null },
+      { name: "orders", count: 12, documentCount: 3, vectorDim: 768, vectorizeService: null },
+      { name: "dap_internal", count: 3, documentCount: 1, vectorDim: 768, vectorizeService: null },
     ],
     activeCollection: "orders",
     onSelectCollection: vi.fn(),
@@ -81,6 +81,7 @@ describe("Sidebar", () => {
 
     expect(screen.queryByText("dap_internal")).toBeNull();
     expect(screen.getByText("orders")).toBeTruthy();
+    expect(screen.getByText("3 docs, 12 chunks")).toBeTruthy();
 
     fireEvent.click(screen.getByTitle("Collapse sidebar"));
 

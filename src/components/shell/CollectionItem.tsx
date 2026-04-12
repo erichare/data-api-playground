@@ -15,10 +15,15 @@ export function CollectionItem({
   onClick,
 }: CollectionItemProps) {
   const [hovered, setHovered] = useState(false);
-  const countLabel =
+  const countParts = [
+    typeof collection.documentCount === "number"
+      ? `${collection.documentCount.toLocaleString()} docs`
+      : null,
     typeof collection.count === "number"
-      ? `${collection.count.toLocaleString()} docs`
-      : "Count not sampled";
+      ? `${collection.count.toLocaleString()} chunks`
+      : null,
+  ].filter((part): part is string => part !== null);
+  const countLabel = countParts.length > 0 ? countParts.join(", ") : "Count not sampled";
 
   return (
     <div

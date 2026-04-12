@@ -50,6 +50,11 @@ type DocRow = {
   ingested_at: string;
 };
 
+type DocumentCountRow = {
+  collection: string;
+  document_count: number;
+};
+
 export function listIngestedDocuments(collection?: string): IngestedDocumentSummary[] {
   const db = getDb();
   const rows = (collection
@@ -74,6 +79,17 @@ export function listIngestedDocuments(collection?: string): IngestedDocumentSumm
   }));
 }
 
+function getIngestedDocumentCountsByCollection(): Map<string, number> {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      "SELECT collection, COUNT(*) AS document_count FROM ingested_documents GROUP BY collection"
+    )
+    .all() as DocumentCountRow[];
+
+  return new Map(rows.map((row) => [row.collection, row.document_count]));
+}
+
 const CONNECT_METADATA_SAMPLE_LIMIT = 12;
 const CONNECT_METADATA_CONCURRENCY = 4;
 const CONNECT_FIELD_SAMPLE_SIZE = 1;
@@ -91,6 +107,7 @@ export async function fetchCollectionMetadata(args: {
 }): Promise<{ collections: Collection[]; fields: Record<string, string[]> }> {
   const { token, endpoint, keyspace } = args;
   const db = getAstraDb(token, endpoint, keyspace);
+  const ingestedDocumentCounts = getIngestedDocumentCountsByCollection();
 
   recordAstraClientCall({
     label: "Connect to Astra",
@@ -110,6 +127,7 @@ export async function fetchCollectionMetadata(args: {
         ? { provider: svc.provider, modelName: svc.modelName }
         : null,
       count: null,
+      documentCount: ingestedDocumentCounts.get(c.name) ?? 0,
     };
   });
 
@@ -216,6 +234,7 @@ export async function createCollectionInAstra(
   return {
     name,
     count: 0,
+    documentCount: 0,
     vectorDim: dimension,
     vectorizeService: hasVectorize ? { provider, modelName: model } : null,
   };

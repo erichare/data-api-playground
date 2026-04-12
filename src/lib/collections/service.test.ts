@@ -20,6 +20,7 @@ const getDbMock = vi.fn(() => ({
 vi.mock("@/lib/astra", () => ({
   getAstraDb: getAstraDbMock,
   resolveAstraConnection: resolveAstraConnectionMock,
+  SYSTEM_FIELDS: new Set(["_id", "$vector"]),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -56,6 +57,7 @@ describe("collection service", () => {
     ).resolves.toEqual({
       name: "docs",
       count: 0,
+      documentCount: 0,
       vectorDim: 1024,
       vectorizeService: {
         provider: "nvidia",
@@ -107,6 +109,78 @@ describe("collection service", () => {
     expect(prepareMock).toHaveBeenCalledWith(
       "SELECT * FROM ingested_documents WHERE collection = ? ORDER BY ingested_at DESC LIMIT 500"
     );
+  });
+
+  it("merges sqlite document counts with Astra chunk counts for collection metadata", async () => {
+    const estimatedDocumentCountMock = vi.fn().mockResolvedValue(12);
+    const findMock = vi.fn(() => ({
+      toArray: vi.fn().mockResolvedValue([{ _id: "1", title: "A" }]),
+    }));
+
+    prepareMock.mockReturnValueOnce({
+      all: () => [
+        { collection: "docs", document_count: 3 },
+        { collection: "notes", document_count: 1 },
+      ],
+    });
+    getAstraDbMock.mockReturnValueOnce({
+      listCollections: vi.fn().mockResolvedValue([
+        {
+          name: "docs",
+          definition: { vector: { dimension: 1024 } },
+        },
+        {
+          name: "images",
+          definition: { vector: { dimension: 512 } },
+        },
+      ]),
+      collection: vi.fn((name: string) => ({
+        estimatedDocumentCount:
+          name === "docs" ? estimatedDocumentCountMock : vi.fn().mockResolvedValue(7),
+        find:
+          name === "docs"
+            ? findMock
+            : vi.fn(() => ({
+                toArray: vi.fn().mockResolvedValue([{ _id: "2", caption: "Sunset" }]),
+              })),
+      })),
+    });
+
+    const { fetchCollectionMetadata } = await import("./service");
+    await expect(
+      fetchCollectionMetadata({
+        token: "token",
+        endpoint: "endpoint",
+        keyspace: "ks1",
+      })
+    ).resolves.toEqual({
+      collections: [
+        {
+          name: "docs",
+          count: 12,
+          documentCount: 3,
+          vectorDim: 1024,
+          vectorizeService: null,
+        },
+        {
+          name: "images",
+          count: 7,
+          documentCount: 0,
+          vectorDim: 512,
+          vectorizeService: null,
+        },
+      ],
+      fields: {
+        docs: ["title"],
+        images: ["caption"],
+      },
+    });
+
+    expect(prepareMock).toHaveBeenCalledWith(
+      "SELECT collection, COUNT(*) AS document_count FROM ingested_documents GROUP BY collection"
+    );
+    expect(estimatedDocumentCountMock).toHaveBeenCalledOnce();
+    expect(findMock).toHaveBeenCalledOnce();
   });
 
   it("lists ingested documents across collections when no collection filter is provided", async () => {
@@ -165,6 +239,7 @@ describe("collection service", () => {
     ).resolves.toEqual({
       name: "plain_docs",
       count: 0,
+      documentCount: 0,
       vectorDim: 384,
       vectorizeService: null,
     });
