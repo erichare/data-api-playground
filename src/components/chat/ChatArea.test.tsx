@@ -43,8 +43,20 @@ vi.mock("framer-motion", () => {
 });
 
 vi.mock("./MessageBubble", () => ({
-  MessageBubble: ({ message }: { message: { content: string } }) => (
-    <div data-testid="message-bubble">{message.content}</div>
+  MessageBubble: ({
+    message,
+    streaming,
+  }: {
+    message: { id: string; content: string };
+    streaming?: boolean;
+  }) => (
+    <div
+      data-testid="message-bubble"
+      data-message-id={message.id}
+      data-streaming={streaming ? "true" : "false"}
+    >
+      {message.content}
+    </div>
   ),
 }));
 
@@ -293,6 +305,14 @@ describe("ChatArea", () => {
     });
     fireEvent.click(screen.getByTestId("chat-send-button"));
 
+    await waitFor(() => {
+      const bubbles = screen.getAllByTestId("message-bubble");
+      expect(bubbles).toHaveLength(2);
+      expect(
+        bubbles.some((bubble) => bubble.getAttribute("data-streaming") === "true")
+      ).toBe(true);
+    });
+
     act(() => {
       controllerRef?.enqueue(
         encoder.encode(
@@ -308,6 +328,15 @@ describe("ChatArea", () => {
     await waitFor(() => {
       expect(screen.getByText("Hello")).toBeTruthy();
     });
+    expect(screen.queryByTestId("pipeline-trace")).toBeNull();
+
+    const streamingAssistantBubble = screen
+      .getAllByTestId("message-bubble")
+      .find((bubble) => bubble.getAttribute("data-streaming") === "true");
+    const streamingAssistantId =
+      streamingAssistantBubble?.getAttribute("data-message-id");
+
+    expect(streamingAssistantId).toBeTruthy();
 
     act(() => {
       controllerRef?.enqueue(
@@ -321,6 +350,17 @@ describe("ChatArea", () => {
         )
       );
       controllerRef?.close();
+    });
+
+    await waitFor(() => {
+      const assistantBubble = screen
+        .getAllByTestId("message-bubble")
+        .findLast((bubble) => bubble.textContent === "Hello");
+
+      expect(assistantBubble?.getAttribute("data-message-id")).toBe(
+        streamingAssistantId
+      );
+      expect(assistantBubble?.getAttribute("data-streaming")).toBe("false");
     });
   });
 });

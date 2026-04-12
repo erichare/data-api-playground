@@ -1,12 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Code2, MessageSquare, Copy, Check, Activity } from "lucide-react";
+import {
+  Code2,
+  MessageSquare,
+  Copy,
+  Check,
+  Activity,
+  ChevronDown,
+} from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { PipelineTrace } from "./PipelineTrace";
-import type { Message, PipelineStep } from "@/lib/types";
+import type {
+  Message,
+  PipelineStep,
+  PipelineStepId,
+  PipelineStepStatus,
+} from "@/lib/types";
+import { StepDataPreview } from "./PipelineTrace";
 
 interface MessageBubbleProps {
   message: Message;
@@ -22,6 +34,22 @@ const LANG_SDK: Record<CodeLang, string> = {
   python: "astrapy",
   java: "astra-db-java",
   curl: "Data API",
+};
+
+const PIPELINE_SUMMARY_ORDER: PipelineStepId[] = [
+  "prepare",
+  "analyze",
+  "embed",
+  "search",
+  "respond",
+];
+
+const PIPELINE_SUMMARY_LABELS: Record<PipelineStepId, string> = {
+  prepare: "Prep",
+  analyze: "Analyze",
+  embed: "Embed",
+  search: "Search",
+  respond: "Respond",
 };
 
 // ── Code generators ──────────────────────────────────────────────────────────
@@ -152,6 +180,125 @@ function CopyButton({ text }: { text: string }) {
       {copied ? <Check size={10} /> : <Copy size={10} />}
       {copied ? "Copied" : "Copy"}
     </button>
+  );
+}
+
+function getPipelineTone(status: PipelineStepStatus) {
+  switch (status) {
+    case "complete":
+      return {
+        backgroundColor: "rgba(34,197,94,0.12)",
+        color: "#22c55e",
+        dotClassName: "",
+      };
+    case "running":
+      return {
+        backgroundColor: "var(--interactive-light)",
+        color: "var(--interactive)",
+        dotClassName: "animate-pulse",
+      };
+    case "error":
+      return {
+        backgroundColor: "rgba(239,68,68,0.12)",
+        color: "#ef4444",
+        dotClassName: "",
+      };
+    default:
+      return {
+        backgroundColor: "var(--bg-hover)",
+        color: "var(--text-muted)",
+        dotClassName: "",
+      };
+  }
+}
+
+function hasStepDetails(step: PipelineStep) {
+  return !!step.data && Object.keys(step.data).length > 0;
+}
+
+function PipelineSummary(args: {
+  steps: PipelineStep[];
+  activeStepId: PipelineStepId | null;
+  onToggleStep: (stepId: PipelineStepId) => void;
+}) {
+  const { steps, activeStepId, onToggleStep } = args;
+  if (steps.length === 0) return null;
+
+  const stepMap = new Map(steps.map((step) => [step.id, step]));
+  const visibleSteps = PIPELINE_SUMMARY_ORDER.filter((stepId) => stepMap.has(stepId));
+
+  if (visibleSteps.length === 0) return null;
+
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+      <div className="flex items-center gap-1">
+        <Activity size={11} style={{ color: "var(--text-muted)" }} />
+        <span
+          className="text-[10px] font-semibold uppercase tracking-[0.18em]"
+          style={{ color: "var(--text-muted)" }}
+        >
+          Pipeline
+        </span>
+      </div>
+      {visibleSteps.map((stepId) => {
+        const step = stepMap.get(stepId);
+        if (!step) return null;
+        const tone = getPipelineTone(step.status);
+        const isActive = activeStepId === stepId;
+        const isInteractive = hasStepDetails(step);
+
+        if (!isInteractive) {
+          return (
+            <span
+              key={stepId}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium"
+              style={{
+                backgroundColor: tone.backgroundColor,
+                color: tone.color,
+              }}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${tone.dotClassName}`}
+                style={{ backgroundColor: tone.color }}
+              />
+              {PIPELINE_SUMMARY_LABELS[stepId]}
+            </span>
+          );
+        }
+
+        return (
+          <button
+            key={stepId}
+            type="button"
+            onClick={() => onToggleStep(stepId)}
+            aria-pressed={isActive}
+            className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium transition-all"
+            style={{
+              backgroundColor: tone.backgroundColor,
+              color: tone.color,
+              border: `1px solid ${
+                isActive ? tone.color : "rgba(255,255,255,0.06)"
+              }`,
+              boxShadow: isActive ? `0 0 0 1px ${tone.backgroundColor}` : "none",
+            }}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${tone.dotClassName}`}
+              style={{ backgroundColor: tone.color }}
+            />
+            {PIPELINE_SUMMARY_LABELS[stepId]}
+            <ChevronDown
+              size={10}
+              className="transition-transform"
+              style={{
+                color: tone.color,
+                transform: isActive ? "rotate(180deg)" : "rotate(0deg)",
+              }}
+            />
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -306,17 +453,58 @@ export function MessageBubble({
   streaming = false,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
-  const [activeTab, setActiveTab] = useState<"output" | "code" | "trace">("output");
+  const [activeTab, setActiveTab] = useState<"output" | "code">("output");
+  const [activePipelineStepId, setActivePipelineStepId] =
+    useState<PipelineStepId | null>(null);
+  const expandedStepPanelRef = useRef<HTMLDivElement | null>(null);
 
   const searchStep = message.pipelineSteps?.find((s) => s.id === "search");
   const hasSearchCode = !!searchStep?.data?.command;
   const hasPipelineSteps = !!message.pipelineSteps?.length;
+  const resolvedActivePipelineStepId =
+    activePipelineStepId &&
+    message.pipelineSteps?.some((step) => step.id === activePipelineStepId)
+      ? activePipelineStepId
+      : null;
+  const activePipelineStep =
+    message.pipelineSteps?.find((step) => step.id === resolvedActivePipelineStepId) ?? null;
+  const responseContent =
+    message.content.trim().length > 0
+      ? message.content
+      : streaming
+        ? "Working through the pipeline..."
+        : "";
+  const showFooter = hasPipelineSteps || hasSearchCode || !!message.latencyMs;
+
+  const togglePipelineStep = (stepId: PipelineStepId) => {
+    setActivePipelineStepId((current) => (current === stepId ? null : stepId));
+  };
+
+  useEffect(() => {
+    if (!resolvedActivePipelineStepId) return;
+
+    const timeoutId = window.setTimeout(() => {
+      expandedStepPanelRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+        inline: "nearest",
+      });
+    }, 120);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [resolvedActivePipelineStepId]);
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12, scale: 0.97 }}
+      initial={streaming ? false : { opacity: 0, y: 12, scale: 0.97 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.25, ease: "easeOut", delay: index * 0.04 }}
+      transition={
+        streaming
+          ? { duration: 0.12, ease: "easeOut" }
+          : { duration: 0.25, ease: "easeOut", delay: index * 0.04 }
+      }
       className={`flex gap-3 ${isUser ? "flex-row-reverse" : "flex-row"} max-w-full`}
     >
       {/* Avatar */}
@@ -360,58 +548,16 @@ export function MessageBubble({
           </div>
         )}
 
-        {/* Assistant response with tabs */}
+        {/* Assistant response with an inline pipeline footer */}
         {!isUser && (
-          <div className="w-full flex flex-col gap-2">
-            {/* Tab bar */}
-            {(hasSearchCode || hasPipelineSteps) && (
-              <div
-                className="flex items-center gap-0.5 p-0.5 rounded-lg self-start"
-                style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}
-              >
-                <button
-                  onClick={() => setActiveTab("output")}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
-                  style={{
-                    backgroundColor: activeTab === "output" ? "var(--bg-panel)" : "transparent",
-                    color: activeTab === "output" ? "var(--text-primary)" : "var(--text-muted)",
-                    boxShadow: activeTab === "output" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                  }}
-                >
-                  <MessageSquare size={11} />
-                  Output
-                </button>
-                {hasSearchCode && (
-                  <button
-                    onClick={() => setActiveTab("code")}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
-                    style={{
-                      backgroundColor: activeTab === "code" ? "var(--bg-panel)" : "transparent",
-                      color: activeTab === "code" ? "var(--interactive)" : "var(--text-muted)",
-                      boxShadow: activeTab === "code" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                    }}
-                  >
-                    <Code2 size={11} />
-                    Code
-                  </button>
-                )}
-                {hasPipelineSteps && (
-                  <button
-                    onClick={() => setActiveTab("trace")}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
-                    style={{
-                      backgroundColor: activeTab === "trace" ? "var(--bg-panel)" : "transparent",
-                      color: activeTab === "trace" ? "var(--step-analyze)" : "var(--text-muted)",
-                      boxShadow: activeTab === "trace" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                    }}
-                  >
-                    <Activity size={11} />
-                    Trace
-                  </button>
-                )}
-              </div>
-            )}
-
+          <div
+            className="w-full overflow-hidden rounded-[24px]"
+            style={{
+              backgroundColor: "var(--bg-card)",
+              border: "1px solid var(--border-subtle)",
+              boxShadow: "0 14px 32px rgba(0,0,0,0.14)",
+            }}
+          >
             <AnimatePresence mode="wait" initial={false}>
               {activeTab === "output" ? (
                 <motion.div
@@ -420,12 +566,11 @@ export function MessageBubble({
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.15 }}
-                  className="flex flex-col gap-2"
+                  className="flex flex-col"
                 >
-                  {/* Response bubble */}
                   <div
-                    className="px-4 py-3 rounded-2xl rounded-tl-sm text-sm leading-relaxed"
-                    style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)", color: "var(--text-primary)" }}
+                    className="px-4 py-3.5 text-sm leading-relaxed"
+                    style={{ color: "var(--text-primary)" }}
                   >
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
@@ -458,7 +603,7 @@ export function MessageBubble({
                         td: ({ children }) => <td className="px-3 py-1.5" style={{ color: "var(--text-secondary)" }}>{children}</td>,
                       }}
                     >
-                      {message.content}
+                      {responseContent}
                     </ReactMarkdown>
                     {streaming && (
                       <span
@@ -467,49 +612,132 @@ export function MessageBubble({
                         style={{ backgroundColor: "var(--interactive)", verticalAlign: "text-bottom" }}
                       />
                     )}
-                    {message.latencyMs && !streaming && (
-                      <div className="flex justify-end mt-1.5">
-                        <span
-                          className="text-[10px]"
-                          style={{
-                            color: "var(--text-muted)",
-                            fontFamily: "IBM Plex Mono, monospace",
-                            opacity: 0.6,
-                          }}
-                        >
-                          {message.latencyMs < 1000
-                            ? `${message.latencyMs}ms`
-                            : `${(message.latencyMs / 1000).toFixed(1)}s`}
-                        </span>
-                      </div>
-                    )}
                   </div>
-
                 </motion.div>
-              ) : activeTab === "code" ? (
+              ) : (
                 <motion.div
                   key="code"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.15 }}
-                  className="w-full"
+                  className="w-full p-3"
                 >
                   <CodeTab searchStep={searchStep} />
                 </motion.div>
-              ) : (
-                <motion.div
-                  key="trace"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="w-full flex flex-col gap-3"
-                >
-                  <PipelineTrace steps={message.pipelineSteps ?? []} defaultExpanded={true} />
-                </motion.div>
               )}
             </AnimatePresence>
+
+            {showFooter && (
+              <div
+                className="border-t"
+                style={{
+                  backgroundColor: "rgba(255,255,255,0.02)",
+                  borderColor: "var(--border-subtle)",
+                }}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                    {hasPipelineSteps && (
+                      <PipelineSummary
+                        steps={message.pipelineSteps ?? []}
+                        activeStepId={resolvedActivePipelineStepId}
+                        onToggleStep={togglePipelineStep}
+                      />
+                    )}
+                    {message.latencyMs && !streaming && (
+                      <span
+                        className="text-[10px]"
+                        style={{
+                          color: "var(--text-muted)",
+                          fontFamily: "IBM Plex Mono, monospace",
+                          opacity: 0.8,
+                        }}
+                      >
+                        {message.latencyMs < 1000
+                          ? `${message.latencyMs}ms`
+                          : `${(message.latencyMs / 1000).toFixed(1)}s`}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    {hasSearchCode && (
+                      <div
+                        className="flex items-center gap-0.5 rounded-full p-0.5"
+                        style={{
+                          backgroundColor: "var(--bg-panel)",
+                          border: "1px solid var(--border-subtle)",
+                        }}
+                      >
+                        <button
+                          onClick={() => setActiveTab("output")}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors"
+                          style={{
+                            backgroundColor:
+                              activeTab === "output" ? "var(--bg-hover)" : "transparent",
+                            color:
+                              activeTab === "output"
+                                ? "var(--text-primary)"
+                                : "var(--text-muted)",
+                          }}
+                        >
+                          <MessageSquare size={11} />
+                          Output
+                        </button>
+                        <button
+                          onClick={() => setActiveTab("code")}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors"
+                          style={{
+                            backgroundColor:
+                              activeTab === "code" ? "var(--bg-hover)" : "transparent",
+                            color:
+                              activeTab === "code"
+                                ? "var(--interactive)"
+                                : "var(--text-muted)",
+                          }}
+                        >
+                          <Code2 size={11} />
+                          Code
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <AnimatePresence initial={false}>
+                  {activePipelineStep?.data && hasStepDetails(activePipelineStep) && (
+                    <motion.div
+                      key={activePipelineStep.id}
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.18, ease: "easeOut" }}
+                      style={{ overflow: "hidden" }}
+                    >
+                      <div
+                        ref={expandedStepPanelRef}
+                        className="px-3 pb-3"
+                        style={{ scrollMarginBottom: "24px" }}
+                      >
+                        <div
+                          className="rounded-2xl px-3 py-2.5"
+                          style={{
+                            backgroundColor: "var(--bg-panel)",
+                            border: "1px solid var(--border-subtle)",
+                          }}
+                        >
+                          <StepDataPreview
+                            stepId={activePipelineStep.id}
+                            data={activePipelineStep.data}
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
           </div>
         )}
       </div>

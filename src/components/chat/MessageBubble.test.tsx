@@ -46,6 +46,17 @@ vi.mock("./PipelineTrace", () => ({
   PipelineTrace: ({ steps }: { steps: Array<{ id: string }> }) => (
     <div data-testid="pipeline-trace">{steps.map((step) => step.id).join(",")}</div>
   ),
+  StepDataPreview: ({
+    stepId,
+    data,
+  }: {
+    stepId: string;
+    data: Record<string, unknown>;
+  }) => (
+    <div data-testid="step-data-preview">
+      {stepId}:{String(data.message ?? data.content ?? data.searchMode ?? "details")}
+    </div>
+  ),
 }));
 
 const SEARCH_COMMAND = 'await db.collection("orders")\n  .find({}, { sort: { total_spend: -1 }, limit: 3 })';
@@ -87,7 +98,9 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
 
 describe("MessageBubble", () => {
   const originalClipboard = navigator.clipboard;
+  const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
   const writeText = vi.fn(async () => undefined);
+  const scrollIntoView = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -95,6 +108,10 @@ describe("MessageBubble", () => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText },
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
     });
   });
 
@@ -104,6 +121,10 @@ describe("MessageBubble", () => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: originalClipboard,
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: originalScrollIntoView,
     });
   });
 
@@ -124,6 +145,66 @@ describe("MessageBubble", () => {
     expect(screen.queryByText("Output")).toBeNull();
     expect(screen.queryByText("Code")).toBeNull();
     expect(screen.queryByText("Trace")).toBeNull();
+  });
+
+  it("shows pipeline details inline when a step chip is toggled", () => {
+    render(
+      <MessageBubble
+        index={1}
+        message={makeMessage({
+          pipelineSteps: [
+            {
+              id: "prepare",
+              status: "complete",
+              latencyMs: 3,
+              data: {
+                provider: "ollama",
+                model: "granite",
+                message: "Model already installed",
+              },
+            },
+            {
+              id: "analyze",
+              status: "complete",
+              latencyMs: 5,
+              data: { searchMode: "hybrid" },
+            },
+            {
+              id: "search",
+              status: "complete",
+              latencyMs: 8,
+              data: {
+                command: SEARCH_COMMAND,
+                collection: "orders",
+              },
+            },
+          ],
+        })}
+      />
+    );
+
+    expect(screen.queryByTestId("step-data-preview")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /prep/i }));
+    expect(screen.getByTestId("step-data-preview").textContent).toContain(
+      "prepare:Model already installed"
+    );
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "end",
+      inline: "nearest",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /analyze/i }));
+    expect(screen.getByTestId("step-data-preview").textContent).toContain(
+      "analyze:hybrid"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /analyze/i }));
+    expect(screen.queryByTestId("step-data-preview")).toBeNull();
   });
 
   it("renders assistant output without extra tabs when there is no search command or trace", () => {
@@ -153,6 +234,9 @@ describe("MessageBubble", () => {
 
     expect(screen.getByText("Top customers")).toBeTruthy();
     expect(screen.getByText("1.5s")).toBeTruthy();
+    expect(screen.getByText("Analyze")).toBeTruthy();
+    expect(screen.getByText("Search")).toBeTruthy();
+    expect(screen.queryByText("Trace")).toBeNull();
 
     fireEvent.click(screen.getByText("Code"));
 
@@ -183,8 +267,8 @@ describe("MessageBubble", () => {
       ).length
     ).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByText("Trace"));
-    expect(screen.getByTestId("pipeline-trace").textContent).toBe("analyze,search,respond");
+    fireEvent.click(screen.getByText("Output"));
+    expect(screen.queryByTestId("pipeline-trace")).toBeNull();
   });
 
   it("renders vectorize search code variants", () => {

@@ -5,7 +5,12 @@ import {
 import { buildAnalyzePrompt } from "@/lib/chat/prompt";
 import { generateResponse } from "@/lib/chat/response";
 import { embedQuery, searchCollections } from "@/lib/chat/search";
-import { generateText, type EnsureModelProgress, type ResolvedAiBackend } from "@/lib/ai/service";
+import {
+  generateText,
+  type EnsureModelProgress,
+  type EnsureModelResult,
+  type ResolvedAiBackend,
+} from "@/lib/ai/service";
 import type {
   AnalyzeDecision,
   ChatRequestPayload,
@@ -66,12 +71,13 @@ export async function runChatWorkflow({
     } = await withPrepareTracking({
       kind: "embed",
       send,
-      task: (onPrepareProgress) =>
+      task: (onPrepareProgress, onPrepared) =>
         embedQuery({
           backend,
           query: payload.query,
           isVectorize,
           onPrepareProgress,
+          onPrepared,
         }),
     });
 
@@ -134,7 +140,7 @@ export async function runChatWorkflow({
   const response = await withPrepareTracking({
     kind: "chat",
     send,
-    task: (onPrepareProgress) =>
+    task: (onPrepareProgress, onPrepared) =>
       generateResponse({
         backend,
         query: payload.query,
@@ -148,6 +154,7 @@ export async function runChatWorkflow({
         collectionFields: decision.collectionFields,
         history: payload.history,
         onPrepareProgress,
+        onPrepared,
         onTextChunk: (chunk) => {
           send({
             step: "respond",
@@ -294,12 +301,13 @@ async function analyzeChatRequest({
     const analysis = await withPrepareTracking({
       kind: "chat",
       send,
-      task: (onPrepareProgress) =>
+      task: (onPrepareProgress, onPrepared) =>
         generateText({
           backend,
           messages: [{ role: "user", content: analyzePrompt }],
           maxTokens: ANALYZE_MAX_TOKENS,
           onPrepareProgress,
+          onPrepared,
         }),
     });
     analysisProvider = analysis.provider;
@@ -416,14 +424,34 @@ async function analyzeChatRequest({
 async function withPrepareTracking<T>(args: {
   kind: "chat" | "embed";
   send: (event: StepEvent) => void;
-  task: (onPrepareProgress: (progress: EnsureModelProgress) => void) => Promise<T>;
+  task: (
+    onPrepareProgress: (progress: EnsureModelProgress) => void,
+    onPrepared: (result: EnsureModelResult) => void
+  ) => Promise<T>;
 }): Promise<T> {
   const { kind, send, task } = args;
   const prepareStart = Date.now();
   let sawProgress = false;
+  let completed = false;
   let downloaded = false;
   let finalProvider = "ollama";
   let finalModel = "";
+
+  const finalizePrepare = (result?: EnsureModelResult) => {
+    if (!sawProgress || completed) return;
+    completed = true;
+    send({
+      step: "prepare",
+      status: "complete",
+      latencyMs: Date.now() - prepareStart,
+      data: {
+        provider: finalProvider,
+        model: result?.model ?? finalModel,
+        kind,
+        downloaded: result?.downloaded ?? downloaded,
+      },
+    });
+  };
 
   const onPrepareProgress = (progress: EnsureModelProgress) => {
     sawProgress = true;
@@ -445,21 +473,8 @@ async function withPrepareTracking<T>(args: {
     });
   };
 
-  const result = await task(onPrepareProgress);
-
-  if (sawProgress) {
-    send({
-      step: "prepare",
-      status: "complete",
-      latencyMs: Date.now() - prepareStart,
-      data: {
-        provider: finalProvider,
-        model: finalModel,
-        kind,
-        downloaded,
-      },
-    });
-  }
+  const result = await task(onPrepareProgress, finalizePrepare);
+  finalizePrepare();
 
   return result;
 }

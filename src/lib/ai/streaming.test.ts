@@ -264,7 +264,6 @@ describe("consumeChatCompletionStream", () => {
 
     it("skips SSE comment lines starting with ':'", async () => {
       const comment = `: this is a comment\n`;
-      const event = `data: ${JSON.stringify({ choices: [{ delta: { content: "value" } }] })}\n\n`;
 
       // Comment embedded inside an event block (same double-newline-delimited segment)
       const combined = `${comment}data: ${JSON.stringify({ choices: [{ delta: { content: "value" } }] })}\n\n`;

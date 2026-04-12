@@ -131,7 +131,13 @@ function SearchStepPreview({ results, collections }: {
   );
 }
 
-function StepDataPreview({ stepId, data }: { stepId: PipelineStepId; data: Record<string, unknown> }) {
+export function StepDataPreview({
+  stepId,
+  data,
+}: {
+  stepId: PipelineStepId;
+  data: Record<string, unknown>;
+}) {
   if (stepId === "prepare") {
     const provider = data.provider ? String(data.provider) : null;
     const model = data.model ? String(data.model) : null;

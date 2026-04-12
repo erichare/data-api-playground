@@ -166,6 +166,7 @@ export async function generateText(args: {
   maxTokens: number;
   allowPull?: boolean;
   onPrepareProgress?: (progress: EnsureModelProgress) => void;
+  onPrepared?: (result: EnsureModelResult) => void;
 }) {
   const {
     backend,
@@ -173,6 +174,7 @@ export async function generateText(args: {
     maxTokens,
     allowPull = true,
     onPrepareProgress,
+    onPrepared,
   } = args;
 
   if (backend.provider === "huggingface") {
@@ -211,12 +213,13 @@ export async function generateText(args: {
     };
   }
 
-  await ensureModel({
+  const preparedModel = await ensureModel({
     backend,
     kind: "chat",
     allowPull,
     onProgress: onPrepareProgress,
   });
+  onPrepared?.(preparedModel);
 
   const response = await fetch(`${backend.ollamaBaseUrl}/v1/chat/completions`, {
     method: "POST",
@@ -257,6 +260,7 @@ export async function streamText(args: {
   maxTokens: number;
   allowPull?: boolean;
   onPrepareProgress?: (progress: EnsureModelProgress) => void;
+  onPrepared?: (result: EnsureModelResult) => void;
   onChunk: (chunk: TextGenerationChunk) => void;
 }) {
   const {
@@ -265,6 +269,7 @@ export async function streamText(args: {
     maxTokens,
     allowPull = true,
     onPrepareProgress,
+    onPrepared,
     onChunk,
   } = args;
 
@@ -310,12 +315,13 @@ export async function streamText(args: {
     };
   }
 
-  await ensureModel({
+  const preparedModel = await ensureModel({
     backend,
     kind: "chat",
     allowPull,
     onProgress: onPrepareProgress,
   });
+  onPrepared?.(preparedModel);
 
   const response = await fetch(`${backend.ollamaBaseUrl}/v1/chat/completions`, {
     method: "POST",
@@ -361,6 +367,7 @@ export async function embedMany(args: {
   allowPull?: boolean;
   skipEnsure?: boolean;
   onPrepareProgress?: (progress: EnsureModelProgress) => void;
+  onPrepared?: (result: EnsureModelResult) => void;
 }): Promise<EmbeddingResult> {
   const {
     backend,
@@ -368,6 +375,7 @@ export async function embedMany(args: {
     allowPull = true,
     skipEnsure = false,
     onPrepareProgress,
+    onPrepared,
   } = args;
 
   if (backend.provider === "huggingface") {
@@ -412,12 +420,13 @@ export async function embedMany(args: {
   }
 
   if (!skipEnsure) {
-    await ensureModel({
+    const preparedModel = await ensureModel({
       backend,
       kind: "embed",
       allowPull,
       onProgress: onPrepareProgress,
     });
+    onPrepared?.(preparedModel);
   }
 
   const response = await fetch(`${backend.ollamaBaseUrl}/api/embed`, {

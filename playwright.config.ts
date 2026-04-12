@@ -23,8 +23,6 @@ export default defineConfig({
       ...process.env,
       ASTRA_DB_APPLICATION_TOKEN: "",
       ASTRA_DB_API_ENDPOINT: "",
-      WATSONX_API_KEY: "",
-      WATSONX_PROJECT_ID: "",
       HUGGINGFACE_API_KEY: "",
       DATA_API_PLAYGROUND_DB_PATH: E2E_DB_PATH,
       PLAYGROUND_AUTH_PASSWORD: "playwright-secret",

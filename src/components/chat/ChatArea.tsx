@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Send, MessageSquare, RefreshCw, AlertCircle, X } from "lucide-react";
 import { MessageBubble } from "./MessageBubble";
-import { PipelineTrace } from "./PipelineTrace";
 import { SearchModeToggle } from "./SearchModeToggle";
 import { useChatSession } from "@/components/chat/hooks/useChatSession";
 import type { Message, Conversation } from "@/lib/types";
@@ -49,6 +48,7 @@ export function ChatArea({
     setInput,
     searchMode,
     setSearchMode,
+    streamingMessageId,
     streamingSteps,
     streamingResponseText,
     isStreaming,
@@ -96,6 +96,22 @@ export function ChatArea({
   };
 
   const isEmpty = messages.length === 0;
+  const showStreamingDraft =
+    isStreaming &&
+    !!streamingMessageId &&
+    !messages.some((message) => message.id === streamingMessageId);
+  const displayMessages = showStreamingDraft
+    ? [
+        ...messages,
+        {
+          id: streamingMessageId,
+          role: "assistant" as const,
+          content: streamingResponseText,
+          timestamp: new Date(),
+          pipelineSteps: streamingSteps,
+        },
+      ]
+    : messages;
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0" style={{ backgroundColor: "var(--bg-primary)" }}>
@@ -128,53 +144,14 @@ export function ChatArea({
           />
         ) : (
           <div className="flex flex-col gap-6 max-w-3xl mx-auto">
-            {messages.map((msg, i) => (
-              <MessageBubble key={msg.id} message={msg} index={i} />
+            {displayMessages.map((msg, i) => (
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                index={i}
+                streaming={isStreaming && msg.id === streamingMessageId}
+              />
             ))}
-            <AnimatePresence>
-              {isStreaming &&
-                (streamingSteps.length > 0 || streamingResponseText.length > 0) && (
-                <motion.div
-                  key="pipeline-live"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  className="flex flex-col gap-4"
-                >
-                  <MessageBubble
-                    index={messages.length}
-                    streaming={true}
-                    message={{
-                      id: "msg-streaming",
-                      role: "assistant",
-                      content: streamingResponseText,
-                      timestamp: new Date(),
-                    }}
-                  />
-                  {streamingSteps.length > 0 && (
-                    <div className="flex gap-3">
-                      <div className="flex flex-col items-center gap-1 shrink-0">
-                        <div
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold"
-                          style={{ background: "linear-gradient(135deg, var(--step-analyze), var(--step-embed))", color: "#fff" }}
-                        >
-                          AI
-                        </div>
-                        <div
-                          className="text-[8px] font-bold px-1 rounded"
-                          style={{ backgroundColor: "var(--interactive-light)", color: "var(--interactive)", fontFamily: "IBM Plex Mono, monospace", lineHeight: "1.4" }}
-                        >
-                          IBM
-                        </div>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <PipelineTrace steps={streamingSteps} defaultExpanded={true} />
-                      </div>
-                    </div>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
         )}
       </div>

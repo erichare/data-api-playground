@@ -89,15 +89,16 @@ function getMessageSources(steps: PipelineStep[]) {
 }
 
 function buildAssistantMessage(args: {
+  id: string;
   steps: PipelineStep[];
   content: string;
   searchMode: SearchMode;
   latencyMs: number;
 }): Message {
-  const { steps, content, searchMode, latencyMs } = args;
+  const { id, steps, content, searchMode, latencyMs } = args;
 
   return {
-    id: `msg-${crypto.randomUUID()}`,
+    id,
     role: "assistant",
     content:
       content ||
@@ -125,6 +126,7 @@ export function useChatSession({
   const [searchMode, setSearchMode] = useState<SearchMode>("hybrid");
   const [streamingSteps, setStreamingSteps] = useState<PipelineStep[]>([]);
   const [streamingResponseText, setStreamingResponseText] = useState("");
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [chatError, setChatError] = useState("");
   const abortRef = useRef<AbortController | null>(null);
@@ -159,9 +161,11 @@ export function useChatSession({
     };
 
     const updatedMessages = [...messages, userMessage];
+    const assistantMessageId = `msg-${crypto.randomUUID()}`;
     onMessagesUpdate(updatedMessages);
     setInput("");
     setIsStreaming(true);
+    setStreamingMessageId(assistantMessageId);
     setStreamingSteps([]);
     setStreamingResponseText("");
     setChatError("");
@@ -266,17 +270,13 @@ export function useChatSession({
       if (!finalContent.trim()) {
         finalContent = `Error: ${message}`;
       }
-    } finally {
-      setIsStreaming(false);
-      if (abortRef.current === controller) {
-        abortRef.current = null;
-      }
     }
 
     const completedSteps = [...liveSteps];
     onMessagesUpdate([
       ...updatedMessages,
       buildAssistantMessage({
+        id: assistantMessageId,
         steps: completedSteps,
         content: finalContent,
         searchMode: resolvedSearchMode,
@@ -285,6 +285,11 @@ export function useChatSession({
     ]);
     setStreamingSteps([]);
     setStreamingResponseText("");
+    setIsStreaming(false);
+    setStreamingMessageId(null);
+    if (abortRef.current === controller) {
+      abortRef.current = null;
+    }
   }, [
     activeCollection,
     astraEndpoint,
@@ -305,6 +310,7 @@ export function useChatSession({
     setInput,
     searchMode,
     setSearchMode,
+    streamingMessageId,
     streamingSteps,
     streamingResponseText,
     isStreaming,

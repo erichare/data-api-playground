@@ -7,6 +7,43 @@ const DB_PATH = process.env.DATA_API_PLAYGROUND_DB_PATH || path.join(DATA_DIR, "
 const DB_DIR = path.dirname(DB_PATH);
 
 let _db: Database.Database | null = null;
+const SCHEMA_VERSION = 1;
+
+type TableInfoRow = { name: string };
+
+function getColumnNames(db: Database.Database, table: string) {
+  return new Set(
+    ((db.pragma(`table_info(${table})`) as TableInfoRow[]) ?? []).map((row) =>
+      String(row.name)
+    )
+  );
+}
+
+function runMigrations(db: Database.Database) {
+  const currentVersion = Number(
+    db.pragma("user_version", { simple: true }) ?? 0
+  );
+
+  if (currentVersion < 1) {
+    const ingestedDocumentColumns = getColumnNames(db, "ingested_documents");
+    if (
+      ingestedDocumentColumns.has("md5_hash") &&
+      !ingestedDocumentColumns.has("content_hash")
+    ) {
+      db.exec(
+        "ALTER TABLE ingested_documents RENAME COLUMN md5_hash TO content_hash"
+      );
+    }
+
+    db.exec("DROP INDEX IF EXISTS idx_docs_collection_md5");
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_docs_ingested_at ON ingested_documents(ingested_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_docs_collection_hash ON ingested_documents(collection, content_hash);
+      CREATE INDEX IF NOT EXISTS idx_docs_collection_filename ON ingested_documents(collection, source_filename);
+    `);
+    db.pragma(`user_version = ${SCHEMA_VERSION}`);
+  }
+}
 
 export function getDb(): Database.Database {
   if (_db) return _db;
@@ -50,19 +87,8 @@ export function getDb(): Database.Database {
       ingested_at     TEXT NOT NULL,
       metadata        TEXT NOT NULL DEFAULT '{}'
     );
-
-    CREATE INDEX IF NOT EXISTS idx_docs_ingested_at ON ingested_documents(ingested_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_docs_collection_hash ON ingested_documents(collection, content_hash);
-    CREATE INDEX IF NOT EXISTS idx_docs_collection_filename ON ingested_documents(collection, source_filename);
   `);
-
-  // Migrate existing databases: rename md5_hash → content_hash
-  try {
-    _db.exec("ALTER TABLE ingested_documents RENAME COLUMN md5_hash TO content_hash");
-  } catch {
-    // Column already renamed or table was created with new schema
-  }
-  _db.exec("DROP INDEX IF EXISTS idx_docs_collection_md5");
+  runMigrations(_db);
 
   return _db;
 }

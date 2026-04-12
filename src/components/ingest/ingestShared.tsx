@@ -2,7 +2,7 @@
 
 import { Braces, FileCode, FileText, Table } from "lucide-react";
 import type { IngestFileType, IngestedDocumentSummary } from "@/lib/types";
-import { mockIngestedDocuments } from "@/lib/mock/data";
+import { mockIngestedDocuments } from "@/lib/mock/ingestedDocuments";
 
 export const ACCEPTED = ".pdf,.txt,.md,.csv,.json,.docx,.xlsx";
 export const ACCEPTED_LABEL = "PDF · TXT · MD · DOCX · CSV · XLSX · JSON";

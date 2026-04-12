@@ -1,6 +1,7 @@
 import {
   embedMany,
   type EnsureModelProgress,
+  type EnsureModelResult,
   type ResolvedAiBackend,
 } from "@/lib/ai/service";
 import { getAstraDb, SYSTEM_FIELDS } from "@/lib/astra";
@@ -78,8 +79,9 @@ export async function embedQuery(args: {
   query: string;
   isVectorize: boolean;
   onPrepareProgress?: (progress: EnsureModelProgress) => void;
+  onPrepared?: (result: EnsureModelResult) => void;
 }): Promise<EmbedResult> {
-  const { backend, query, isVectorize, onPrepareProgress } = args;
+  const { backend, query, isVectorize, onPrepareProgress, onPrepared } = args;
 
   if (isVectorize) {
     return {
@@ -95,6 +97,7 @@ export async function embedQuery(args: {
     backend,
     input: [query],
     onPrepareProgress,
+    onPrepared,
   });
   const embeddingVector = result.embeddings[0] ?? [];
   if (embeddingVector.length === 0) {

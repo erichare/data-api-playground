@@ -50,6 +50,15 @@ const huggingFaceBackend: ResolvedAiBackend = {
   ollamaBaseUrl: "http://127.0.0.1:11434",
 };
 
+const ollamaBackend: ResolvedAiBackend = {
+  provider: "ollama",
+  source: "local",
+  huggingFaceKeyPresent: false,
+  chatModel: "granite3.1-dense:8b",
+  embedModel: "granite-embedding:278m",
+  ollamaBaseUrl: "http://127.0.0.1:11434",
+};
+
 describe("runChatWorkflow", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -304,5 +313,77 @@ describe("runChatWorkflow", () => {
         }),
       })
     );
+  });
+
+  it("completes prepare before streamed response chunks arrive", async () => {
+    generateTextMock.mockResolvedValueOnce({
+      content: JSON.stringify({
+        collection: "orders",
+        searchMode: "hybrid",
+        intent: "Find spending data",
+        limit: 3,
+      }),
+      provider: "ollama",
+      model: ollamaBackend.chatModel,
+    });
+
+    generateResponseMock.mockImplementationOnce(
+      async ({ onPrepareProgress, onPrepared, onTextChunk }) => {
+        onPrepareProgress?.({
+          provider: "ollama",
+          kind: "chat",
+          model: ollamaBackend.chatModel,
+          status: "Model already installed",
+          determinate: false,
+        });
+        onPrepared?.({
+          downloaded: false,
+          model: ollamaBackend.chatModel,
+        });
+        onTextChunk?.({
+          content: "Here is the answer.",
+          delta: "Here is the answer.",
+          provider: "ollama",
+          model: ollamaBackend.chatModel,
+        });
+
+        return {
+          content: "Here is the answer.",
+          provider: "ollama",
+          model: ollamaBackend.chatModel,
+        };
+      }
+    );
+
+    const send = vi.fn();
+    const { runChatWorkflow } = await import("./service");
+    await runChatWorkflow({
+      payload: {
+        query: "Show top spend by customer",
+        searchMode: "hybrid",
+        activeCollection: "orders",
+        collections: [{ name: "orders", isVectorize: false }],
+        allCollectionFields: { orders: ["total_spend"] },
+        history: [],
+      },
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      backend: ollamaBackend,
+      send,
+    });
+
+    const events = send.mock.calls.map(([event]) => event);
+    const prepareCompleteIndex = events.findIndex(
+      (event) =>
+        event.step === "prepare" &&
+        event.status === "complete" &&
+        event.data?.kind === "chat"
+    );
+    const respondRunningIndex = events.findIndex(
+      (event) => event.step === "respond" && event.status === "running" && event.data?.delta
+    );
+
+    expect(prepareCompleteIndex).toBeGreaterThanOrEqual(0);
+    expect(respondRunningIndex).toBeGreaterThan(prepareCompleteIndex);
   });
 });

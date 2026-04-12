@@ -1,5 +1,6 @@
 import {
   generateText,
+  type EnsureModelResult,
   streamText,
   type EnsureModelProgress,
   type ResolvedAiBackend,
@@ -21,6 +22,7 @@ export async function generateResponse(args: {
   collectionFields: string[];
   history?: { role: "user" | "assistant"; content: string }[];
   onPrepareProgress?: (progress: EnsureModelProgress) => void;
+  onPrepared?: (result: EnsureModelResult) => void;
   onTextChunk?: (chunk: TextGenerationChunk) => void;
 }) {
   const {
@@ -36,6 +38,7 @@ export async function generateResponse(args: {
     collectionFields,
     history,
     onPrepareProgress,
+    onPrepared,
     onTextChunk,
   } = args;
 
@@ -104,6 +107,7 @@ export async function generateResponse(args: {
       messages,
       maxTokens: RESPOND_MAX_TOKENS,
       onPrepareProgress,
+      onPrepared,
       onChunk: onTextChunk,
     });
   }
@@ -113,5 +117,6 @@ export async function generateResponse(args: {
     messages,
     maxTokens: RESPOND_MAX_TOKENS,
     onPrepareProgress,
+    onPrepared,
   });
 }

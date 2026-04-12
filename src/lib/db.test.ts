@@ -25,6 +25,24 @@ describe("getDb", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
+    pragmaMock.mockImplementation((statement: string) => {
+      if (statement === "user_version") return 0;
+      if (statement === "user_version = 1") return undefined;
+      if (statement === "table_info(ingested_documents)") {
+        return [
+          { name: "source_doc_id" },
+          { name: "source_filename" },
+          { name: "file_type" },
+          { name: "file_size" },
+          { name: "md5_hash" },
+          { name: "chunk_total" },
+          { name: "collection" },
+          { name: "ingested_at" },
+          { name: "metadata" },
+        ];
+      }
+      return undefined;
+    });
   });
 
   afterEach(() => {
@@ -51,6 +69,41 @@ describe("getDb", () => {
     );
     expect(pragmaMock).toHaveBeenCalledWith("journal_mode = WAL");
     expect(pragmaMock).toHaveBeenCalledWith("foreign_keys = ON");
-    expect(execMock).toHaveBeenCalledTimes(3);
+    expect(execMock).toHaveBeenCalledTimes(4);
+    expect(execMock).toHaveBeenNthCalledWith(
+      2,
+      "ALTER TABLE ingested_documents RENAME COLUMN md5_hash TO content_hash"
+    );
+    expect(execMock).toHaveBeenNthCalledWith(
+      3,
+      "DROP INDEX IF EXISTS idx_docs_collection_md5"
+    );
+    expect(execMock).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining("CREATE INDEX IF NOT EXISTS idx_docs_collection_hash")
+    );
+    expect(pragmaMock).toHaveBeenCalledWith("table_info(ingested_documents)");
+    expect(pragmaMock).toHaveBeenCalledWith("user_version", { simple: true });
+    expect(pragmaMock).toHaveBeenCalledWith("user_version = 1");
+  });
+
+  it("skips migrations when the schema version is already current", async () => {
+    process.env.DATA_API_PLAYGROUND_DB_PATH = "/tmp/data-api-playground/current/app.db";
+    pragmaMock.mockImplementation((statement: string) => {
+      if (statement === "user_version") return 1;
+      return undefined;
+    });
+
+    const { getDb } = await import("./db");
+
+    getDb();
+
+    expect(execMock).toHaveBeenCalledTimes(1);
+    expect(execMock).not.toHaveBeenCalledWith(
+      "ALTER TABLE ingested_documents RENAME COLUMN md5_hash TO content_hash"
+    );
+    expect(pragmaMock).toHaveBeenCalledWith("user_version", { simple: true });
+    expect(pragmaMock).not.toHaveBeenCalledWith("table_info(ingested_documents)");
+    expect(pragmaMock).not.toHaveBeenCalledWith("user_version = 1");
   });
 });
