@@ -4,13 +4,14 @@ import fs from "fs";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DB_PATH = process.env.DATA_API_PLAYGROUND_DB_PATH || path.join(DATA_DIR, "app.db");
+const DB_DIR = path.dirname(DB_PATH);
 
 let _db: Database.Database | null = null;
 
 export function getDb(): Database.Database {
   if (_db) return _db;
 
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.mkdirSync(DB_DIR, { recursive: true });
   _db = new Database(DB_PATH);
   _db.pragma("journal_mode = WAL");
   _db.pragma("foreign_keys = ON");

@@ -1,7 +1,9 @@
 import {
   generateText,
+  streamText,
   type EnsureModelProgress,
   type ResolvedAiBackend,
+  type TextGenerationChunk,
 } from "@/lib/ai/service";
 import { RESPOND_MAX_TOKENS } from "@/lib/chat/constants";
 import type { SearchResult } from "@/lib/chat/types";
@@ -19,6 +21,7 @@ export async function generateResponse(args: {
   collectionFields: string[];
   history?: { role: "user" | "assistant"; content: string }[];
   onPrepareProgress?: (progress: EnsureModelProgress) => void;
+  onTextChunk?: (chunk: TextGenerationChunk) => void;
 }) {
   const {
     backend,
@@ -33,6 +36,7 @@ export async function generateResponse(args: {
     collectionFields,
     history,
     onPrepareProgress,
+    onTextChunk,
   } = args;
 
   const searchWasRun = !skipSearch;
@@ -82,19 +86,31 @@ export async function generateResponse(args: {
           ? `The user is asking a follow-up or requesting a different format: "${query}"\n\nReformat or continue your previous response accordingly. Do not search the database again.`
           : query;
 
+  const messages = [
+    { role: "system", content: systemPrompt } as const,
+    ...(history ?? []).slice(-10).map((message) => ({
+      ...message,
+      content: message.content
+        .replace(/\n?\[Search results shown to user:\][\s\S]*/g, "")
+        .replace(/\[End of Conversation\]/g, "")
+        .trim(),
+    })),
+    { role: "user", content: userContent } as const,
+  ];
+
+  if (onTextChunk) {
+    return streamText({
+      backend,
+      messages,
+      maxTokens: RESPOND_MAX_TOKENS,
+      onPrepareProgress,
+      onChunk: onTextChunk,
+    });
+  }
+
   return generateText({
     backend,
-    messages: [
-      { role: "system", content: systemPrompt },
-      ...(history ?? []).slice(-10).map((message) => ({
-        ...message,
-        content: message.content
-          .replace(/\n?\[Search results shown to user:\][\s\S]*/g, "")
-          .replace(/\[End of Conversation\]/g, "")
-          .trim(),
-      })),
-      { role: "user", content: userContent },
-    ],
+    messages,
     maxTokens: RESPOND_MAX_TOKENS,
     onPrepareProgress,
   });

@@ -136,9 +136,12 @@ export function streamCsvIngest(args: {
               _ingested_at: new Date().toISOString(),
             }))
           : await (async () => {
+              if (!backend) {
+                throw new Error("AI backend is required for non-vectorize collections");
+              }
               const embeddings = (
                 await embedMany({
-                  backend: backend!,
+                  backend,
                   input: texts,
                   allowPull: false,
                   skipEnsure: true,
@@ -369,16 +372,20 @@ export function streamDocumentIngest(args: {
       for (let index = 0; index < chunks.length; index += DOCUMENT_BATCH_SIZE) {
         const batch = chunks.slice(index, index + DOCUMENT_BATCH_SIZE);
 
-        const embeddings = collectionConfig.useVectorize
-          ? null
-          : (
-              await embedMany({
-                backend: backend!,
-                input: batch,
-                allowPull: false,
-                skipEnsure: true,
-              })
-            ).embeddings;
+        let embeddings: number[][] | null = null;
+        if (!collectionConfig.useVectorize) {
+          if (!backend) {
+            throw new Error("AI backend is required for non-vectorize collections");
+          }
+          embeddings = (
+            await embedMany({
+              backend,
+              input: batch,
+              allowPull: false,
+              skipEnsure: true,
+            })
+          ).embeddings;
+        }
 
         if (embeddings) {
           validateVectorDimension({
@@ -403,7 +410,7 @@ export function streamDocumentIngest(args: {
           if (collectionConfig.useVectorize) {
             doc.$vectorize = content;
           } else {
-            doc.$vector = embeddings![batchIndex];
+            doc.$vector = embeddings?.[batchIndex];
           }
 
           return doc;

@@ -49,7 +49,7 @@ describe("ApiExplorer", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(window, "setInterval").mockReturnValue(1 as unknown as number);
+    vi.spyOn(window, "setInterval").mockReturnValue(1 as unknown as ReturnType<typeof setInterval>);
   });
 
   afterEach(() => {

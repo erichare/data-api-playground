@@ -92,6 +92,10 @@ export const LANG_META: Record<CodeLang, { label: string; badge: string }> = {
   curl: { label: "cURL", badge: "Data API" },
 };
 
+type VectorSnippetMode =
+  | { mode: "vector"; vector: number[] }
+  | { mode: "vectorize"; query: string };
+
 export function getDefaultBody(op: OpId, collection?: Collection): string {
   const hasVectorize = Boolean(collection?.vectorizeService);
   const vectorDimension = collection?.vectorDim ?? 3;
@@ -130,6 +134,37 @@ export function getDefaultBody(op: OpId, collection?: Collection): string {
   return JSON.stringify(bodies[op], null, 2);
 }
 
+function getVectorSnippetMode(body: string): VectorSnippetMode {
+  try {
+    const parsed = JSON.parse(body) as {
+      find?: {
+        sort?: {
+          $vector?: unknown;
+          $vectorize?: unknown;
+        };
+      };
+    };
+    const sort = parsed.find?.sort;
+
+    if (Array.isArray(sort?.$vector)) {
+      const vector = sort.$vector.filter(
+        (value): value is number => typeof value === "number"
+      );
+      if (vector.length > 0) {
+        return { mode: "vector", vector };
+      }
+    }
+
+    if (typeof sort?.$vectorize === "string" && sort.$vectorize.trim()) {
+      return { mode: "vectorize", query: sort.$vectorize };
+    }
+  } catch {
+    // Fall back to the vectorize example while the editor body is invalid JSON.
+  }
+
+  return { mode: "vectorize", query: "sample query text" };
+}
+
 export function getCode(
   op: OpId,
   collectionName: string,
@@ -139,12 +174,13 @@ export function getCode(
 ): string {
   const collection = collectionName || "my_collection";
   const resolvedKeyspace = keyspace || "default_keyspace";
+  const vectorSnippet = getVectorSnippetMode(body);
 
   if (lang === "curl") {
     return (
       `curl -sS -X POST \\\n` +
-      `  "$ASTRA_DB_ENDPOINT/api/json/v1/${resolvedKeyspace}/${collection}" \\\n` +
-      `  -H "Token: $ASTRA_DB_TOKEN" \\\n` +
+      `  "$ASTRA_DB_API_ENDPOINT/api/json/v1/${resolvedKeyspace}/${collection}" \\\n` +
+      `  -H "Token: $ASTRA_DB_APPLICATION_TOKEN" \\\n` +
       `  -H "Content-Type: application/json" \\\n` +
       `  -d '${body}'`
     );
@@ -154,21 +190,21 @@ export function getCode(
     find: {
       ts: `import { DataAPIClient } from "@datastax/astra-db-ts";
 
-const client = new DataAPIClient(process.env.ASTRA_DB_TOKEN!);
-const db = client.db(process.env.ASTRA_DB_ENDPOINT!);
+const client = new DataAPIClient(process.env.ASTRA_DB_APPLICATION_TOKEN!);
+const db = client.db(process.env.ASTRA_DB_API_ENDPOINT!);
 const col = db.collection("${collection}");
 
 const docs = await col.find({}, { limit: 10 }).toArray();`,
       python: `from astrapy import DataAPIClient
 import os
 
-client = DataAPIClient(os.environ["ASTRA_DB_TOKEN"])
-db = client.get_database(os.environ["ASTRA_DB_ENDPOINT"])
+client = DataAPIClient(os.environ["ASTRA_DB_APPLICATION_TOKEN"])
+db = client.get_database(os.environ["ASTRA_DB_API_ENDPOINT"])
 col = db.get_collection("${collection}")
 
 docs = list(col.find({}, limit=10))`,
-      java: `DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_TOKEN"));
-Database db = client.getDatabase(System.getenv("ASTRA_DB_ENDPOINT"));
+      java: `DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_APPLICATION_TOKEN"));
+Database db = client.getDatabase(System.getenv("ASTRA_DB_API_ENDPOINT"));
 Collection<Document> col = db.getCollection("${collection}");
 
 List<Document> docs = col.find().toList();`,
@@ -176,21 +212,21 @@ List<Document> docs = col.find().toList();`,
     findOne: {
       ts: `import { DataAPIClient } from "@datastax/astra-db-ts";
 
-const client = new DataAPIClient(process.env.ASTRA_DB_TOKEN!);
-const db = client.db(process.env.ASTRA_DB_ENDPOINT!);
+const client = new DataAPIClient(process.env.ASTRA_DB_APPLICATION_TOKEN!);
+const db = client.db(process.env.ASTRA_DB_API_ENDPOINT!);
 const col = db.collection("${collection}");
 
 const doc = await col.findOne({});`,
       python: `from astrapy import DataAPIClient
 import os
 
-client = DataAPIClient(os.environ["ASTRA_DB_TOKEN"])
-db = client.get_database(os.environ["ASTRA_DB_ENDPOINT"])
+client = DataAPIClient(os.environ["ASTRA_DB_APPLICATION_TOKEN"])
+db = client.get_database(os.environ["ASTRA_DB_API_ENDPOINT"])
 col = db.get_collection("${collection}")
 
 doc = col.find_one({})`,
-      java: `DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_TOKEN"));
-Database db = client.getDatabase(System.getenv("ASTRA_DB_ENDPOINT"));
+      java: `DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_APPLICATION_TOKEN"));
+Database db = client.getDatabase(System.getenv("ASTRA_DB_API_ENDPOINT"));
 Collection<Document> col = db.getCollection("${collection}");
 
 Optional<Document> doc = col.findOne(new Filter());`,
@@ -198,21 +234,21 @@ Optional<Document> doc = col.findOne(new Filter());`,
     insertMany: {
       ts: `import { DataAPIClient } from "@datastax/astra-db-ts";
 
-const client = new DataAPIClient(process.env.ASTRA_DB_TOKEN!);
-const db = client.db(process.env.ASTRA_DB_ENDPOINT!);
+const client = new DataAPIClient(process.env.ASTRA_DB_APPLICATION_TOKEN!);
+const db = client.db(process.env.ASTRA_DB_API_ENDPOINT!);
 const col = db.collection("${collection}");
 
 const result = await col.insertMany([{ field: "value" }]);`,
       python: `from astrapy import DataAPIClient
 import os
 
-client = DataAPIClient(os.environ["ASTRA_DB_TOKEN"])
-db = client.get_database(os.environ["ASTRA_DB_ENDPOINT"])
+client = DataAPIClient(os.environ["ASTRA_DB_APPLICATION_TOKEN"])
+db = client.get_database(os.environ["ASTRA_DB_API_ENDPOINT"])
 col = db.get_collection("${collection}")
 
 result = col.insert_many([{"field": "value"}])`,
-      java: `DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_TOKEN"));
-Database db = client.getDatabase(System.getenv("ASTRA_DB_ENDPOINT"));
+      java: `DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_APPLICATION_TOKEN"));
+Database db = client.getDatabase(System.getenv("ASTRA_DB_API_ENDPOINT"));
 Collection<Document> col = db.getCollection("${collection}");
 
 InsertManyResult result = col.insertMany(
@@ -221,21 +257,21 @@ InsertManyResult result = col.insertMany(
     updateOne: {
       ts: `import { DataAPIClient } from "@datastax/astra-db-ts";
 
-const client = new DataAPIClient(process.env.ASTRA_DB_TOKEN!);
-const db = client.db(process.env.ASTRA_DB_ENDPOINT!);
+const client = new DataAPIClient(process.env.ASTRA_DB_APPLICATION_TOKEN!);
+const db = client.db(process.env.ASTRA_DB_API_ENDPOINT!);
 const col = db.collection("${collection}");
 
 await col.updateOne({}, { $set: { field: "new_value" } });`,
       python: `from astrapy import DataAPIClient
 import os
 
-client = DataAPIClient(os.environ["ASTRA_DB_TOKEN"])
-db = client.get_database(os.environ["ASTRA_DB_ENDPOINT"])
+client = DataAPIClient(os.environ["ASTRA_DB_APPLICATION_TOKEN"])
+db = client.get_database(os.environ["ASTRA_DB_API_ENDPOINT"])
 col = db.get_collection("${collection}")
 
 col.update_one({}, {"$set": {"field": "new_value"}})`,
-      java: `DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_TOKEN"));
-Database db = client.getDatabase(System.getenv("ASTRA_DB_ENDPOINT"));
+      java: `DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_APPLICATION_TOKEN"));
+Database db = client.getDatabase(System.getenv("ASTRA_DB_API_ENDPOINT"));
 Collection<Document> col = db.getCollection("${collection}");
 
 col.updateOne(new Filter(), Updates.set("field", "new_value"));`,
@@ -243,61 +279,105 @@ col.updateOne(new Filter(), Updates.set("field", "new_value"));`,
     deleteOne: {
       ts: `import { DataAPIClient } from "@datastax/astra-db-ts";
 
-const client = new DataAPIClient(process.env.ASTRA_DB_TOKEN!);
-const db = client.db(process.env.ASTRA_DB_ENDPOINT!);
+const client = new DataAPIClient(process.env.ASTRA_DB_APPLICATION_TOKEN!);
+const db = client.db(process.env.ASTRA_DB_API_ENDPOINT!);
 const col = db.collection("${collection}");
 
 const result = await col.deleteOne({});`,
       python: `from astrapy import DataAPIClient
 import os
 
-client = DataAPIClient(os.environ["ASTRA_DB_TOKEN"])
-db = client.get_database(os.environ["ASTRA_DB_ENDPOINT"])
+client = DataAPIClient(os.environ["ASTRA_DB_APPLICATION_TOKEN"])
+db = client.get_database(os.environ["ASTRA_DB_API_ENDPOINT"])
 col = db.get_collection("${collection}")
 
 result = col.delete_one({})`,
-      java: `DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_TOKEN"));
-Database db = client.getDatabase(System.getenv("ASTRA_DB_ENDPOINT"));
+      java: `DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_APPLICATION_TOKEN"));
+Database db = client.getDatabase(System.getenv("ASTRA_DB_API_ENDPOINT"));
 Collection<Document> col = db.getCollection("${collection}");
 
 DeleteResult result = col.deleteOne(new Filter());`,
     },
     vectorSearch: {
-      ts: `import { DataAPIClient } from "@datastax/astra-db-ts";
+      ts:
+        vectorSnippet.mode === "vector"
+          ? `import { DataAPIClient } from "@datastax/astra-db-ts";
 
-const client = new DataAPIClient(process.env.ASTRA_DB_TOKEN!);
-const db = client.db(process.env.ASTRA_DB_ENDPOINT!);
+const client = new DataAPIClient(process.env.ASTRA_DB_APPLICATION_TOKEN!);
+const db = client.db(process.env.ASTRA_DB_API_ENDPOINT!);
 const col = db.collection("${collection}");
 
 const results = await col.find(
   {},
   {
-    sort: { $vectorize: "sample query text" },
+    sort: { $vector: ${JSON.stringify(vectorSnippet.vector)} },
+    limit: 5,
+    includeSimilarity: true,
+  }
+).toArray();`
+          : `import { DataAPIClient } from "@datastax/astra-db-ts";
+
+const client = new DataAPIClient(process.env.ASTRA_DB_APPLICATION_TOKEN!);
+const db = client.db(process.env.ASTRA_DB_API_ENDPOINT!);
+const col = db.collection("${collection}");
+
+const results = await col.find(
+  {},
+  {
+    sort: { $vectorize: ${JSON.stringify(vectorSnippet.query)} },
     limit: 5,
     includeSimilarity: true,
   }
 ).toArray();`,
-      python: `from astrapy import DataAPIClient
+      python:
+        vectorSnippet.mode === "vector"
+          ? `from astrapy import DataAPIClient
 import os
 
-client = DataAPIClient(os.environ["ASTRA_DB_TOKEN"])
-db = client.get_database(os.environ["ASTRA_DB_ENDPOINT"])
+client = DataAPIClient(os.environ["ASTRA_DB_APPLICATION_TOKEN"])
+db = client.get_database(os.environ["ASTRA_DB_API_ENDPOINT"])
 col = db.get_collection("${collection}")
 
 results = list(col.find(
     {},
-    sort={"$vectorize": "sample query text"},
+    sort={"$vector": ${JSON.stringify(vectorSnippet.vector)}},
+    limit=5,
+    include_similarity=True,
+))`
+          : `from astrapy import DataAPIClient
+import os
+
+client = DataAPIClient(os.environ["ASTRA_DB_APPLICATION_TOKEN"])
+db = client.get_database(os.environ["ASTRA_DB_API_ENDPOINT"])
+col = db.get_collection("${collection}")
+
+results = list(col.find(
+    {},
+    sort={"$vectorize": ${JSON.stringify(vectorSnippet.query)}},
     limit=5,
     include_similarity=True,
 ))`,
-      java: `DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_TOKEN"));
-Database db = client.getDatabase(System.getenv("ASTRA_DB_ENDPOINT"));
+      java:
+        vectorSnippet.mode === "vector"
+          ? `DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_APPLICATION_TOKEN"));
+Database db = client.getDatabase(System.getenv("ASTRA_DB_API_ENDPOINT"));
 Collection<Document> col = db.getCollection("${collection}");
 
 List<Document> results = col.find(
     new Filter(),
     new FindOptions()
-        .sort(Sorts.vectorize("sample query text"))
+        .sort(Sorts.vector(new float[]{${vectorSnippet.vector.map((value) => `${value}f`).join(", ")}}))
+        .limit(5)
+        .includeSimilarity()
+).toList();`
+          : `DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_APPLICATION_TOKEN"));
+Database db = client.getDatabase(System.getenv("ASTRA_DB_API_ENDPOINT"));
+Collection<Document> col = db.getCollection("${collection}");
+
+List<Document> results = col.find(
+    new Filter(),
+    new FindOptions()
+        .sort(Sorts.vectorize(${JSON.stringify(vectorSnippet.query)}))
         .limit(5)
         .includeSimilarity()
 ).toList();`,
@@ -305,21 +385,21 @@ List<Document> results = col.find(
     estimatedCount: {
       ts: `import { DataAPIClient } from "@datastax/astra-db-ts";
 
-const client = new DataAPIClient(process.env.ASTRA_DB_TOKEN!);
-const db = client.db(process.env.ASTRA_DB_ENDPOINT!);
+const client = new DataAPIClient(process.env.ASTRA_DB_APPLICATION_TOKEN!);
+const db = client.db(process.env.ASTRA_DB_API_ENDPOINT!);
 const col = db.collection("${collection}");
 
 const count = await col.estimatedDocumentCount();`,
       python: `from astrapy import DataAPIClient
 import os
 
-client = DataAPIClient(os.environ["ASTRA_DB_TOKEN"])
-db = client.get_database(os.environ["ASTRA_DB_ENDPOINT"])
+client = DataAPIClient(os.environ["ASTRA_DB_APPLICATION_TOKEN"])
+db = client.get_database(os.environ["ASTRA_DB_API_ENDPOINT"])
 col = db.get_collection("${collection}")
 
 count = col.estimated_document_count()`,
-      java: `DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_TOKEN"));
-Database db = client.getDatabase(System.getenv("ASTRA_DB_ENDPOINT"));
+      java: `DataAPIClient client = new DataAPIClient(System.getenv("ASTRA_DB_APPLICATION_TOKEN"));
+Database db = client.getDatabase(System.getenv("ASTRA_DB_API_ENDPOINT"));
 Collection<Document> col = db.getCollection("${collection}");
 
 long count = col.estimatedDocumentCount();`,

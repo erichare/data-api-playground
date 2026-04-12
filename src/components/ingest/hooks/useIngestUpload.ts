@@ -11,6 +11,7 @@ import {
   MAX_DOCUMENT_UPLOAD_BYTES,
   MAX_DOCUMENT_UPLOAD_MB,
 } from "@/lib/ingest/constants";
+import { readNdjsonStream } from "@/lib/ndjson";
 
 interface UseIngestUploadArgs {
   astraToken: string;
@@ -127,108 +128,96 @@ export function useIngestUpload({
         }
         if (!res.body) throw new Error("No response stream");
 
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
+        let outcome: IngestOutcome = "done";
 
-        while (true) {
-          const { done, value } = await reader.read();
-          buffer += decoder.decode(value, { stream: !done });
-          if (done) {
-            buffer += decoder.decode();
+        await readNdjsonStream(res.body, (event: Record<string, unknown>) => {
+          if (event.type === "prepare" && event.status === "running") {
+            setStatus({
+              stage: "preparing",
+              message: String(event.message ?? "Preparing local model"),
+              model:
+                typeof event.model === "string" ? event.model : undefined,
+              completed:
+                typeof event.completed === "number"
+                  ? event.completed
+                  : undefined,
+              total:
+                typeof event.total === "number" ? event.total : undefined,
+              determinate: event.determinate === true,
+            });
           }
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            const event = JSON.parse(line) as Record<string, unknown>;
-
-            if (event.type === "prepare" && event.status === "running") {
-              setStatus({
-                stage: "preparing",
-                message: String(event.message ?? "Preparing local model"),
-                model:
-                  typeof event.model === "string" ? event.model : undefined,
-                completed:
-                  typeof event.completed === "number"
-                    ? event.completed
-                    : undefined,
-                total:
-                  typeof event.total === "number" ? event.total : undefined,
-                determinate: event.determinate === true,
-              });
-            }
-            if (event.type === "conflict") {
-              setStatus({
-                stage: "conflict",
-                message:
-                  typeof event.message === "string"
-                    ? event.message
-                    : `A different "${file.name}" is already in this collection.`,
-              });
-              return "conflict";
-            }
-            if (event.type === "skipped") {
-              setStatus({
-                stage: "skipped",
-                message:
-                  typeof event.message === "string"
-                    ? event.message
-                    : `Skipped "${file.name}".`,
-              });
-              return "skipped";
-            }
-            if (event.type === "chunked") {
-              setStatus({
-                stage: "storing",
-                processed: 0,
-                total: event.chunks as number,
-              });
-            }
-            if (event.type === "chunk_progress") {
-              setStatus({
-                stage: "storing",
-                processed: event.processed as number,
-                total: event.total as number,
-              });
-            }
-            if (event.type === "complete") {
-              const chunks = event.chunks as number;
-              const docId = event.source_doc_id as string;
-              const replacedSourceDocIds = Array.isArray(
-                event.replaced_source_doc_ids
-              )
-                ? (event.replaced_source_doc_ids as string[])
-                : [];
-              setStatus({ stage: "done", chunks });
-              const documentSummary = {
-                source_doc_id: docId,
-                source_filename: file.name,
-                file_type: getFileType(file.name),
-                file_size: file.size,
-                md5_hash:
-                  typeof event.md5_hash === "string" ? event.md5_hash : "",
-                chunk_total: chunks,
-                ingested_at: new Date().toISOString(),
-                collection: selectedCollection,
-              };
-
-              if (replacedSourceDocIds.length > 0) {
-                replaceDocumentsByIds(documentSummary, replacedSourceDocIds);
-              } else {
-                prependDocument(documentSummary);
-              }
-              return "done";
-            }
-            if (event.type === "error") {
-              throw new Error(event.message as string);
-            }
+          if (event.type === "conflict") {
+            setStatus({
+              stage: "conflict",
+              message:
+                typeof event.message === "string"
+                  ? event.message
+                  : `A different "${file.name}" is already in this collection.`,
+            });
+            outcome = "conflict";
           }
+          if (event.type === "skipped") {
+            setStatus({
+              stage: "skipped",
+              message:
+                typeof event.message === "string"
+                  ? event.message
+                  : `Skipped "${file.name}".`,
+            });
+            outcome = "skipped";
+          }
+          if (event.type === "chunked") {
+            setStatus({
+              stage: "storing",
+              processed: 0,
+              total: event.chunks as number,
+            });
+          }
+          if (event.type === "chunk_progress") {
+            setStatus({
+              stage: "storing",
+              processed: event.processed as number,
+              total: event.total as number,
+            });
+          }
+          if (event.type === "complete") {
+            const chunks = event.chunks as number;
+            const docId = event.source_doc_id as string;
+            const replacedSourceDocIds = Array.isArray(
+              event.replaced_source_doc_ids
+            )
+              ? (event.replaced_source_doc_ids as string[])
+              : [];
+            setStatus({ stage: "done", chunks });
+            const documentSummary = {
+              source_doc_id: docId,
+              source_filename: file.name,
+              file_type: getFileType(file.name),
+              file_size: file.size,
+              md5_hash:
+                typeof event.md5_hash === "string" ? event.md5_hash : "",
+              chunk_total: chunks,
+              ingested_at: new Date().toISOString(),
+              collection: selectedCollection,
+            };
 
-          if (done) break;
-        }
-        return "done";
+            if (replacedSourceDocIds.length > 0) {
+              replaceDocumentsByIds(documentSummary, replacedSourceDocIds);
+            } else {
+              prependDocument(documentSummary);
+            }
+            outcome = "done";
+          }
+          if (event.type === "error") {
+            outcome = "error";
+            setStatus({
+              stage: "error",
+              message: event.message as string,
+            });
+          }
+        });
+
+        return outcome;
       } catch (err) {
         setStatus({
           stage: "error",

@@ -85,6 +85,11 @@ describe("/api/chat route", () => {
       send({ step: "search", status: "skipped" });
       send({
         step: "respond",
+        status: "running",
+        data: { delta: "You have ", content: "You have " },
+      });
+      send({
+        step: "respond",
         status: "complete",
         latencyMs: 3,
         data: { content: "You have two collections." },
@@ -119,6 +124,11 @@ describe("/api/chat route", () => {
       expect.arrayContaining([
         expect.objectContaining({ step: "embed", status: "skipped" }),
         expect.objectContaining({ step: "search", status: "skipped" }),
+        expect.objectContaining({
+          step: "respond",
+          status: "running",
+          data: { delta: "You have ", content: "You have " },
+        }),
         expect.objectContaining({
           step: "respond",
           status: "complete",

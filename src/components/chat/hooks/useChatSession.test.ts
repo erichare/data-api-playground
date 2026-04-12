@@ -228,4 +228,79 @@ describe("useChatSession", () => {
       pipelineSteps: [],
     });
   });
+
+  it("exposes streaming assistant text without persisting partial assistant messages", async () => {
+    const onMessagesUpdate = vi.fn();
+    const encoder = new TextEncoder();
+    let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controllerRef = controller;
+        controller.enqueue(
+          encoder.encode(
+            `${JSON.stringify({
+              step: "respond",
+              status: "running",
+              data: { delta: "Hello", content: "Hello" },
+            })}\n`
+          )
+        );
+      },
+    });
+
+    global.fetch = vi.fn(async () => new Response(stream)) as typeof fetch;
+
+    const { result } = renderHook(() =>
+      useChatSession({
+        ...defaultArgs,
+        onMessagesUpdate,
+      })
+    );
+
+    act(() => {
+      result.current.setInput("Say hello");
+    });
+
+    await act(async () => {
+      void result.current.sendMessage();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(result.current.streamingResponseText).toBe("Hello");
+    });
+    expect(onMessagesUpdate).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      controllerRef?.enqueue(
+        encoder.encode(
+          `${JSON.stringify({
+            step: "respond",
+            status: "running",
+            data: { delta: " world", content: "Hello world" },
+          })}\n`
+        )
+      );
+      controllerRef?.enqueue(
+        encoder.encode(
+          `${JSON.stringify({
+            step: "respond",
+            status: "complete",
+            latencyMs: 4,
+            data: { content: "Hello world" },
+          })}\n`
+        )
+      );
+      controllerRef?.close();
+    });
+
+    await waitFor(() => {
+      expect(onMessagesUpdate).toHaveBeenCalledTimes(2);
+    });
+    expect(onMessagesUpdate.mock.calls[1]?.[0].at(-1)).toMatchObject({
+      role: "assistant",
+      content: "Hello world",
+    });
+    expect(result.current.streamingResponseText).toBe("");
+  });
 });

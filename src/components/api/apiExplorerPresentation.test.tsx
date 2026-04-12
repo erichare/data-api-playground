@@ -59,15 +59,15 @@ describe("apiExplorerPresentation", () => {
     rerender(
       <pre>
         <HighlightedCode
-          code={`curl -sS -X POST "$ASTRA_DB_ENDPOINT" -H "Token: $ASTRA_DB_TOKEN"`}
+          code={`curl -sS -X POST "$ASTRA_DB_API_ENDPOINT" -H "Token: $ASTRA_DB_APPLICATION_TOKEN"`}
           lang="curl"
         />
       </pre>
     );
 
     expect(screen.getByText("curl")).toBeTruthy();
-    expect(screen.getByText('"$ASTRA_DB_ENDPOINT"')).toBeTruthy();
-    expect(screen.getByText('"Token: $ASTRA_DB_TOKEN"')).toBeTruthy();
+    expect(screen.getByText('"$ASTRA_DB_API_ENDPOINT"')).toBeTruthy();
+    expect(screen.getByText('"Token: $ASTRA_DB_APPLICATION_TOKEN"')).toBeTruthy();
   });
 
   it("copies text when the clipboard API is available", async () => {

@@ -80,7 +80,14 @@ export type StepEvent =
       };
     }
   | { step: "search"; status: "skipped" }
-  | { step: "respond"; status: "running" }
+  | {
+      step: "respond";
+      status: "running";
+      data?: Partial<ProviderMeta> & {
+        delta?: string;
+        content?: string;
+      };
+    }
   | {
       step: "respond";
       status: "complete";

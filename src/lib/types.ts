@@ -5,7 +5,7 @@ export interface CollectionVectorizeService {
 
 export interface Collection {
   name: string;
-  count: number;
+  count: number | null;
   vectorDim: number | null;
   vectorizeService?: CollectionVectorizeService | null;
 }

@@ -28,8 +28,10 @@ export function useConversationState({
   const persistedMessageIds = useRef(new Set<string>());
   const loadedConvIds = useRef(new Set<string>());
   const activeConvIdRef = useRef(activeConversationId);
+  const conversationsRef = useRef(conversations);
 
   useEffect(() => { activeConvIdRef.current = activeConversationId; }, [activeConversationId]);
+  useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
 
   const resetConversationTracking = useCallback(() => {
     persistedMessageIds.current = new Set();
@@ -106,35 +108,46 @@ export function useConversationState({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
-    }).catch(console.error);
+    }).catch((err) => {
+      console.error("Failed to rename conversation:", err);
+    });
   }, []);
 
   const handleDeleteConversation = useCallback(async (id: string) => {
-    setConversations((prev) => {
-      const remaining = prev.filter((c) => c.id !== id);
-      if (id === activeConvIdRef.current) {
-        const next = remaining[0];
-        if (next) {
-          setActiveConversationId(next.id);
-          void loadConversationMessages(next.id);
-        } else {
-          const name = getNextUntitledConversationName(remaining);
-          void createConversationInApi(name).then((newConv) => {
-            loadedConvIds.current.add(newConv.id);
-            setConversations([newConv]);
-            setActiveConversationId(newConv.id);
-          });
-          return [];
+    const isActive = id === activeConvIdRef.current;
+
+    setConversations((prev) => prev.filter((c) => c.id !== id));
+
+    if (isActive) {
+      // Read remaining conversations after the filter
+      const remaining = conversations.filter((c) => c.id !== id);
+      const next = remaining[0];
+      if (next) {
+        setActiveConversationId(next.id);
+        void loadConversationMessages(next.id);
+      } else {
+        const name = getNextUntitledConversationName(remaining);
+        try {
+          const newConv = await createConversationInApi(name);
+          loadedConvIds.current.add(newConv.id);
+          setConversations([newConv]);
+          setActiveConversationId(newConv.id);
+        } catch (err) {
+          console.error("Failed to create replacement conversation:", err);
         }
       }
-      return remaining;
-    });
-    await fetch(`/api/conversations/${id}`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    }).catch(console.error);
-  }, [loadConversationMessages]);
+    }
+
+    try {
+      await fetch(`/api/conversations/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+    } catch (err) {
+      console.error("Failed to delete conversation:", err);
+    }
+  }, [conversations, loadConversationMessages]);
 
   const handleMessagesUpdate = useCallback((updated: Message[]) => {
     const convId = activeConvIdRef.current;
@@ -154,7 +167,7 @@ export function useConversationState({
       });
     }
 
-    const conv = conversations.find((c) => c.id === convId);
+    const conv = conversationsRef.current.find((c) => c.id === convId);
     const firstUserMsg = updated.find((m) => m.role === "user");
     if (conv?.name && isUntitledConversationName(conv.name) && firstUserMsg && updated.filter((m) => m.role === "user").length === 1) {
       void fetch("/api/conversations/title", {
@@ -178,7 +191,7 @@ export function useConversationState({
         })
         .catch(() => { /* silently ignore */ });
     }
-  }, [conversations, huggingfaceApiKey]);
+  }, [huggingfaceApiKey]);
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
   const messages = activeConversation?.messages ?? [];

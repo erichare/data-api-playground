@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatArea } from "./ChatArea";
 
@@ -259,5 +260,67 @@ describe("ChatArea", () => {
       expect.objectContaining({ id: "search", status: "complete" }),
       expect.objectContaining({ id: "respond", status: "complete" }),
     ]);
+  });
+
+  it("renders a live assistant bubble while the response is streaming", async () => {
+    const props = makeChatProps();
+    const encoder = new TextEncoder();
+    let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controllerRef = controller;
+      },
+    });
+
+    global.fetch = vi.fn(async () => new Response(stream)) as typeof fetch;
+
+    function StatefulChatArea() {
+      const [messages, setMessages] = useState(props.messages);
+
+      return (
+        <ChatArea
+          {...props}
+          messages={messages}
+          onMessagesUpdate={setMessages}
+        />
+      );
+    }
+
+    render(<StatefulChatArea />);
+
+    fireEvent.change(screen.getByTestId("chat-input"), {
+      target: { value: "Stream something" },
+    });
+    fireEvent.click(screen.getByTestId("chat-send-button"));
+
+    act(() => {
+      controllerRef?.enqueue(
+        encoder.encode(
+          `${JSON.stringify({
+            step: "respond",
+            status: "running",
+            data: { delta: "Hello", content: "Hello" },
+          })}\n`
+        )
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Hello")).toBeTruthy();
+    });
+
+    act(() => {
+      controllerRef?.enqueue(
+        encoder.encode(
+          `${JSON.stringify({
+            step: "respond",
+            status: "complete",
+            latencyMs: 3,
+            data: { content: "Hello" },
+          })}\n`
+        )
+      );
+      controllerRef?.close();
+    });
   });
 });

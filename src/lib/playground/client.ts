@@ -65,7 +65,7 @@ export async function fetchCollectionsFromApi(
     : { keyspaces: [] as string[] };
 
   return {
-    collections: data.collections!,
+    collections: data.collections ?? [],
     fields: data.fields ?? {},
     keyspaces: ksData.keyspaces ?? [],
   };

@@ -11,6 +11,7 @@ import type { Message, PipelineStep } from "@/lib/types";
 interface MessageBubbleProps {
   message: Message;
   index: number;
+  streaming?: boolean;
 }
 
 type CodeLang = "ts" | "python" | "java" | "curl";
@@ -299,7 +300,11 @@ function renderCurlCode(code: string) {
 
 // ── MessageBubble ─────────────────────────────────────────────────────────────
 
-export function MessageBubble({ message, index }: MessageBubbleProps) {
+export function MessageBubble({
+  message,
+  index,
+  streaming = false,
+}: MessageBubbleProps) {
   const isUser = message.role === "user";
   const [activeTab, setActiveTab] = useState<"output" | "code" | "trace">("output");
 
@@ -455,7 +460,14 @@ export function MessageBubble({ message, index }: MessageBubbleProps) {
                     >
                       {message.content}
                     </ReactMarkdown>
-                    {message.latencyMs && (
+                    {streaming && (
+                      <span
+                        aria-hidden="true"
+                        className="inline-block ml-1 h-4 w-1.5 rounded-sm animate-pulse"
+                        style={{ backgroundColor: "var(--interactive)", verticalAlign: "text-bottom" }}
+                      />
+                    )}
+                    {message.latencyMs && !streaming && (
                       <div className="flex justify-end mt-1.5">
                         <span
                           className="text-[10px]"

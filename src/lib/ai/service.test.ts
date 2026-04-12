@@ -6,6 +6,7 @@ import {
   getAiStatus,
   isOllamaModelInstalled,
   resolveBackend,
+  streamText,
 } from "./service";
 
 const ENV_KEYS = [
@@ -41,6 +42,23 @@ function ndjsonResponse(events: Array<Record<string, unknown>>) {
     }),
     {
       headers: { "Content-Type": "application/x-ndjson" },
+    }
+  );
+}
+
+function sseResponse(events: string[]) {
+  const encoder = new TextEncoder();
+  const payload = events.map((event) => `data: ${event}\n\n`).join("") + "data: [DONE]\n\n";
+
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(payload));
+        controller.close();
+      },
+    }),
+    {
+      headers: { "Content-Type": "text/event-stream" },
     }
   );
 }
@@ -296,6 +314,71 @@ describe("ai service", () => {
           maxTokens: 16,
         })
       ).rejects.toThrow("Hugging Face 401: Bad token");
+    });
+  });
+
+  describe("streamText", () => {
+    it("streams Hugging Face router chunks through the callback", async () => {
+      const backend = resolveBackend({ huggingfaceApiKey: "manual-key" });
+      const onChunk = vi.fn();
+      vi.mocked(fetch).mockResolvedValueOnce(
+        sseResponse([
+          JSON.stringify({ choices: [{ delta: { content: "Hello" } }] }),
+          JSON.stringify({ choices: [{ delta: { content: " there" } }] }),
+        ])
+      );
+
+      const result = await streamText({
+        backend,
+        messages: [{ role: "user", content: "Hi" }],
+        maxTokens: 64,
+        onChunk,
+      });
+
+      expect(result).toEqual({
+        content: "Hello there",
+        provider: "huggingface",
+        model: "ibm-granite/granite-3.3-8b-instruct",
+      });
+      expect(onChunk).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ delta: "Hello", content: "Hello" })
+      );
+      expect(onChunk).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ delta: " there", content: "Hello there" })
+      );
+    });
+
+    it("streams Ollama chunks after ensuring the model is installed", async () => {
+      const backend = resolveBackend({});
+      const onChunk = vi.fn();
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          jsonResponse({ models: [{ name: "granite3.1-dense:8b" }] })
+        )
+        .mockResolvedValueOnce(
+          sseResponse([
+            JSON.stringify({ choices: [{ delta: { content: "Local" } }] }),
+            JSON.stringify({ choices: [{ delta: { content: " reply" } }] }),
+          ])
+        );
+
+      const result = await streamText({
+        backend,
+        messages: [{ role: "user", content: "Hello" }],
+        maxTokens: 32,
+        onChunk,
+      });
+
+      expect(result).toEqual({
+        content: "Local reply",
+        provider: "ollama",
+        model: "granite3.1-dense:8b",
+      });
+      expect(onChunk).toHaveBeenLastCalledWith(
+        expect.objectContaining({ content: "Local reply", delta: " reply" })
+      );
     });
   });
 

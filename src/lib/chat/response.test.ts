@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ResolvedAiBackend } from "@/lib/ai/service";
 
 const generateTextMock = vi.fn();
+const streamTextMock = vi.fn();
 
 vi.mock("@/lib/ai/service", () => ({
   generateText: generateTextMock,
+  streamText: streamTextMock,
 }));
 
 const huggingFaceBackend: ResolvedAiBackend = {
@@ -71,6 +73,46 @@ describe("chat response helpers", () => {
           }),
         ]),
       })
+    );
+  });
+
+  it("uses the streaming provider path when a chunk callback is supplied", async () => {
+    streamTextMock.mockImplementationOnce(async ({ onChunk }) => {
+      onChunk({
+        content: "Streaming answer",
+        delta: "Streaming answer",
+        provider: "huggingface",
+        model: huggingFaceBackend.chatModel,
+      });
+      return {
+        content: "Streaming answer",
+        provider: "huggingface",
+        model: huggingFaceBackend.chatModel,
+      };
+    });
+
+    const onTextChunk = vi.fn();
+    const { generateResponse } = await import("./response");
+
+    const response = await generateResponse({
+      backend: huggingFaceBackend,
+      query: "Summarize the results",
+      skipSearch: true,
+      searchResults: [],
+      allCollections: false,
+      targetedCollections: null,
+      userCollections: ["orders"],
+      collection: "orders",
+      allCollectionFields: { orders: ["total_spend"] },
+      collectionFields: ["total_spend"],
+      onTextChunk,
+    });
+
+    expect(response.content).toBe("Streaming answer");
+    expect(streamTextMock).toHaveBeenCalledOnce();
+    expect(generateTextMock).not.toHaveBeenCalled();
+    expect(onTextChunk).toHaveBeenCalledWith(
+      expect.objectContaining({ content: "Streaming answer" })
     );
   });
 });

@@ -52,9 +52,55 @@ describe("apiExplorerConfig", () => {
       "analytics"
     );
 
-    expect(code).toContain("$ASTRA_DB_ENDPOINT/api/json/v1/analytics/orders");
-    expect(code).toContain('-H "Token: $ASTRA_DB_TOKEN"');
+    expect(code).toContain("$ASTRA_DB_API_ENDPOINT/api/json/v1/analytics/orders");
+    expect(code).toContain('-H "Token: $ASTRA_DB_APPLICATION_TOKEN"');
     expect(code).toContain(`-d '{`);
+  });
+
+  it("builds vector-search snippets that match raw-vector bodies", () => {
+    const code = getCode(
+      "vectorSearch",
+      "orders",
+      JSON.stringify(
+        {
+          find: {
+            sort: { $vector: [0.1, 0.2, 0.3] },
+            options: { limit: 5, includeSimilarity: true },
+          },
+        },
+        null,
+        2
+      ),
+      "ts",
+      "analytics"
+    );
+
+    expect(code).toContain("ASTRA_DB_APPLICATION_TOKEN");
+    expect(code).toContain("ASTRA_DB_API_ENDPOINT");
+    expect(code.replace(/\s+/g, "")).toContain("sort:{$vector:[0.1,0.2,0.3]},");
+    expect(code).not.toContain("$vectorize");
+  });
+
+  it("builds vector-search snippets that match vectorize bodies", () => {
+    const code = getCode(
+      "vectorSearch",
+      "orders",
+      JSON.stringify(
+        {
+          find: {
+            sort: { $vectorize: "semantic query" },
+            options: { limit: 5, includeSimilarity: true },
+          },
+        },
+        null,
+        2
+      ),
+      "ts",
+      "analytics"
+    );
+
+    expect(code).toContain('sort: { $vectorize: "semantic query" }');
+    expect(code).not.toContain("$vector: [");
   });
 
   it("builds the displayed endpoint path with a placeholder when no collection is selected", () => {

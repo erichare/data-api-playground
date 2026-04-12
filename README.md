@@ -51,7 +51,7 @@ When Ollama needs to pull a model, the chat and ingest UIs surface a dedicated `
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20.9+
 - A [DataStax Astra DB](https://astra.datastax.com) account with an Application Token and API Endpoint
 - Optional: a [Hugging Face](https://huggingface.co/) API key
 - Optional: [Ollama](https://ollama.com/) running locally if you want the no-key fallback path

@@ -73,8 +73,19 @@ describe("getClientIp", () => {
     expect(getClientIp(req)).toBe("1.2.3.4");
   });
 
-  it("returns unknown when no forwarded header", () => {
+  it("returns a fingerprint when no forwarded header", () => {
     const req = new Request("http://localhost/test");
-    expect(getClientIp(req)).toBe("unknown");
+    const ip = getClientIp(req);
+    expect(ip).toMatch(/^fp-/);
+  });
+
+  it("returns distinct fingerprints for different user-agents", () => {
+    const req1 = new Request("http://localhost/test", {
+      headers: { "user-agent": "Mozilla/5.0" },
+    });
+    const req2 = new Request("http://localhost/test", {
+      headers: { "user-agent": "curl/7.68" },
+    });
+    expect(getClientIp(req1)).not.toBe(getClientIp(req2));
   });
 });

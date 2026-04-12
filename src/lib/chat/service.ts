@@ -148,6 +148,18 @@ export async function runChatWorkflow({
         collectionFields: decision.collectionFields,
         history: payload.history,
         onPrepareProgress,
+        onTextChunk: (chunk) => {
+          send({
+            step: "respond",
+            status: "running",
+            data: {
+              provider: chunk.provider,
+              model: chunk.model,
+              delta: chunk.delta,
+              content: chunk.content,
+            },
+          });
+        },
       }),
   });
 
@@ -181,6 +193,48 @@ function extractJsonObject(text: string) {
     .trim();
   const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
   return jsonMatch ? jsonMatch[0] : "{}";
+}
+
+const CROSS_COLLECTION_RE =
+  /\b(all (my )?(data|collections?)|tell me about my data|what('s| is| do i have| can you tell me about) (in )?(all |my )?(data|collections?)|overview of (everything|all)|across (all|every) collection|everything (i('ve| have) got|in my))\b/i;
+
+const COLLECTIONS_META_RE =
+  /\b(what (collections?|data(bases?)?) (do i have|are (there|available)|exist)|list (my |the )?(collections?|data)|show (me )?(my |the )?(collections?|data(bases?)?)|(how many|which) collections?)\b/i;
+
+const REFORMAT_RE =
+  /^(and |now |can you )?(show|put|display|format|give|render|reformat|convert|present|output|turn|make|do|write|list|show)?\s*(it|that|this|them|those|the (results?|data|answer|response|output|above|previous))?[\s,]*(in(to)?|as|using|with)?\s*(a\s+)?(table|markdown|bullet|list|json|csv|chart|sorted|numbered|formatted|different format|condensed|summary|brief|short|long)[\s\w]*/i;
+
+const SHORT_FOLLOW_UP_RE =
+  /^(and\s+)?(in\s+)?(a\s+)?(table|bullet|list|json|csv|markdown|numbered|sorted)(\s+format)?[?.]?$/i;
+
+function applyRegexFallbacks(args: {
+  query: string;
+  hasHistory: boolean;
+  userCollections: string[];
+  allCollections: boolean;
+  skipSearch: boolean;
+}): { allCollections: boolean; skipSearch: boolean } {
+  let { allCollections, skipSearch } = args;
+  const trimmed = args.query.trim();
+
+  if (!allCollections && args.userCollections.length > 1) {
+    if (CROSS_COLLECTION_RE.test(args.query)) allCollections = true;
+  }
+
+  if (!skipSearch && COLLECTIONS_META_RE.test(args.query)) {
+    skipSearch = true;
+    allCollections = true;
+  }
+
+  if (
+    !skipSearch &&
+    args.hasHistory &&
+    (REFORMAT_RE.test(trimmed) || SHORT_FOLLOW_UP_RE.test(trimmed))
+  ) {
+    skipSearch = true;
+  }
+
+  return { allCollections, skipSearch };
 }
 
 async function analyzeChatRequest({
@@ -294,31 +348,15 @@ async function analyzeChatRequest({
     rawAnalysis = `ERROR: ${error instanceof Error ? error.message : String(error)} | raw: ${rawAnalysis}`;
   }
 
-  if (!allCollections && userCollections.length > 1) {
-    const crossCollectionRe =
-      /\b(all (my )?(data|collections?)|tell me about my data|what('s| is| do i have| can you tell me about) (in )?(all |my )?(data|collections?)|overview of (everything|all)|across (all|every) collection|everything (i('ve| have) got|in my))\b/i;
-    if (crossCollectionRe.test(payload.query)) allCollections = true;
-  }
-
-  const collectionsMetaRe =
-    /\b(what (collections?|data(bases?)?) (do i have|are (there|available)|exist)|list (my |the )?(collections?|data)|show (me )?(my |the )?(collections?|data(bases?)?)|(how many|which) collections?)\b/i;
-  if (!skipSearch && collectionsMetaRe.test(payload.query)) {
-    skipSearch = true;
-    allCollections = true;
-  }
-
-  const reformatRe =
-    /^(and |now |can you )?(show|put|display|format|give|render|reformat|convert|present|output|turn|make|do|write|list|show)?\s*(it|that|this|them|those|the (results?|data|answer|response|output|above|previous))?[\s,]*(in(to)?|as|using|with)?\s*(a\s+)?(table|markdown|bullet|list|json|csv|chart|sorted|numbered|formatted|different format|condensed|summary|brief|short|long)[\s\w]*/i;
-  const shortFollowUpRe =
-    /^(and\s+)?(in\s+)?(a\s+)?(table|bullet|list|json|csv|markdown|numbered|sorted)(\s+format)?[?.]?$/i;
-  if (
-    !skipSearch &&
-    payload.history &&
-    payload.history.length > 0 &&
-    (reformatRe.test(payload.query.trim()) || shortFollowUpRe.test(payload.query.trim()))
-  ) {
-    skipSearch = true;
-  }
+  const regexOverrides = applyRegexFallbacks({
+    query: payload.query,
+    hasHistory: (payload.history?.length ?? 0) > 0,
+    userCollections,
+    allCollections,
+    skipSearch,
+  });
+  allCollections = regexOverrides.allCollections;
+  skipSearch = regexOverrides.skipSearch;
 
   if (allCollections) {
     intent = `Overview across all collections: ${userCollections.join(", ")}`;

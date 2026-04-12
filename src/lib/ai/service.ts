@@ -1,3 +1,5 @@
+import { readNdjsonStream } from "@/lib/ndjson";
+
 type ProviderMessage = {
   role: "system" | "user" | "assistant";
   content: string;
@@ -45,6 +47,10 @@ export interface TextGenerationResult {
   content: string;
   provider: AiProvider;
   model: string;
+}
+
+export interface TextGenerationChunk extends TextGenerationResult {
+  delta: string;
 }
 
 export interface EmbeddingResult {
@@ -209,28 +215,104 @@ export async function isOllamaModelInstalled(
   return hasInstalledModel(models, model);
 }
 
-async function* streamNdjson(response: Response): AsyncGenerator<Record<string, unknown>> {
+async function consumeNdjsonStream(
+  response: Response,
+  onEvent: (event: Record<string, unknown>) => void,
+): Promise<void> {
   if (!response.body) return;
+  await readNdjsonStream(response.body, onEvent);
+}
+
+function extractMessageContent(payload: unknown) {
+  const choice = (payload as {
+    choices?: Array<{ message?: { content?: string } }>;
+  })?.choices?.[0];
+  return choice?.message?.content?.trim() ?? "";
+}
+
+function extractDeltaContent(payload: unknown) {
+  const choice = (payload as {
+    choices?: Array<{ delta?: { content?: string } }>;
+  })?.choices?.[0];
+  return choice?.delta?.content ?? "";
+}
+
+function extractSseData(rawEvent: string) {
+  const dataLines: string[] = [];
+  for (const line of rawEvent.split("\n")) {
+    if (!line || line.startsWith(":")) continue;
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+  return dataLines.join("\n").trim();
+}
+
+async function consumeChatCompletionStream(
+  response: Response,
+  onChunk: (content: string, delta: string) => void
+) {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    const payload = await response.json();
+    const content = extractMessageContent(payload);
+    if (content) onChunk(content, content);
+    return content;
+  }
+
+  if (!response.body) {
+    throw new Error("Provider returned no streaming body");
+  }
+
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let accumulated = "";
+
+  const processEvent = (rawEvent: string) => {
+    const data = extractSseData(rawEvent);
+    if (!data || data === "[DONE]") return data === "[DONE]";
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(data);
+    } catch {
+      return false;
+    }
+
+    const delta = extractDeltaContent(payload);
+    if (!delta) return false;
+
+    accumulated += delta;
+    onChunk(accumulated, delta);
+    return false;
+  };
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      yield JSON.parse(line) as Record<string, unknown>;
+    buffer += decoder.decode(value, { stream: !done }).replace(/\r/g, "");
+    if (done) {
+      buffer += decoder.decode().replace(/\r/g, "");
     }
+
+    const events = buffer.split("\n\n");
+    buffer = events.pop() ?? "";
+
+    for (const rawEvent of events) {
+      if (processEvent(rawEvent)) {
+        return accumulated;
+      }
+    }
+
+    if (done) break;
   }
 
   if (buffer.trim()) {
-    yield JSON.parse(buffer) as Record<string, unknown>;
+    processEvent(buffer);
   }
+
+  return accumulated;
 }
 
 export async function ensureModel(args: {
@@ -279,7 +361,7 @@ export async function ensureModel(args: {
     throw new Error(`Ollama ${response.status}: ${await readErrorBody(response)}`);
   }
 
-  for await (const event of streamNdjson(response)) {
+  await consumeNdjsonStream(response, (event) => {
     const completed =
       typeof event.completed === "number" ? event.completed : undefined;
     const total = typeof event.total === "number" ? event.total : undefined;
@@ -293,7 +375,7 @@ export async function ensureModel(args: {
       total,
       determinate,
     });
-  }
+  });
 
   return { downloaded: true, model };
 }
@@ -376,6 +458,108 @@ export async function generateText(args: {
     choices?: Array<{ message?: { content?: string } }>;
   };
   const content = payload.choices?.[0]?.message?.content?.trim();
+  if (!content) {
+    throw new Error("Ollama returned an empty chat response");
+  }
+
+  return {
+    content,
+    provider: "ollama" as const,
+    model: backend.chatModel,
+  };
+}
+
+export async function streamText(args: {
+  backend: ResolvedAiBackend;
+  messages: ProviderMessage[];
+  maxTokens: number;
+  allowPull?: boolean;
+  onPrepareProgress?: (progress: EnsureModelProgress) => void;
+  onChunk: (chunk: TextGenerationChunk) => void;
+}) {
+  const {
+    backend,
+    messages,
+    maxTokens,
+    allowPull = true,
+    onPrepareProgress,
+    onChunk,
+  } = args;
+
+  if (backend.provider === "huggingface") {
+    const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${backend.huggingfaceApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: normalizeHuggingFaceChatModel(backend.chatModel),
+        messages,
+        max_tokens: maxTokens,
+        stream: true,
+      }),
+      signal: AbortSignal.timeout(60_000),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Hugging Face ${response.status}: ${await readErrorBody(response)}`
+      );
+    }
+
+    const content = await consumeChatCompletionStream(response, (nextContent, delta) => {
+      onChunk({
+        content: nextContent,
+        delta,
+        provider: "huggingface",
+        model: backend.chatModel,
+      });
+    });
+
+    if (!content) {
+      throw new Error("Hugging Face returned an empty chat response");
+    }
+
+    return {
+      content,
+      provider: "huggingface" as const,
+      model: backend.chatModel,
+    };
+  }
+
+  await ensureModel({
+    backend,
+    kind: "chat",
+    allowPull,
+    onProgress: onPrepareProgress,
+  });
+
+  const response = await fetch(`${backend.ollamaBaseUrl}/v1/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: backend.chatModel,
+      messages,
+      max_tokens: maxTokens,
+      stream: true,
+    }),
+    signal: AbortSignal.timeout(10 * 60 * 1000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Ollama ${response.status}: ${await readErrorBody(response)}`);
+  }
+
+  const content = await consumeChatCompletionStream(response, (nextContent, delta) => {
+    onChunk({
+      content: nextContent,
+      delta,
+      provider: "ollama",
+      model: backend.chatModel,
+    });
+  });
+
   if (!content) {
     throw new Error("Ollama returned an empty chat response");
   }

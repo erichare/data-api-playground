@@ -61,11 +61,12 @@ vi.mock("@/components/collection/CollectionCodePreview", () => ({
   ),
 }));
 
-function makeFormState(overrides: Partial<ReturnType<typeof buildFormState>> = {}) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function makeFormState(overrides: Record<string, any> = {}) {
   return {
     ...buildFormState(),
     ...overrides,
-  };
+  } as ReturnType<typeof buildFormState>;
 }
 
 function buildFormState() {
@@ -167,7 +168,7 @@ describe("NewCollectionDialog", () => {
 
   it("renders client mode controls, validation errors, and demo mode messaging", () => {
     const formState = makeFormState({
-      mode: "client",
+      mode: "client" as const,
       isConnected: false,
       canSubmit: false,
       error: "Collection already exists",

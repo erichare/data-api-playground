@@ -245,4 +245,64 @@ describe("runChatWorkflow", () => {
       })
     );
   });
+
+  it("forwards streamed response chunks as running respond events", async () => {
+    generateResponseMock.mockImplementationOnce(async ({ onTextChunk }) => {
+      onTextChunk?.({
+        content: "Here is",
+        delta: "Here is",
+        provider: "huggingface",
+        model: huggingFaceBackend.chatModel,
+      });
+      onTextChunk?.({
+        content: "Here is the answer.",
+        delta: " the answer.",
+        provider: "huggingface",
+        model: huggingFaceBackend.chatModel,
+      });
+      return {
+        content: "Here is the answer.",
+        provider: "huggingface",
+        model: huggingFaceBackend.chatModel,
+      };
+    });
+
+    const send = vi.fn();
+    const { runChatWorkflow } = await import("./service");
+    await runChatWorkflow({
+      payload: {
+        query: "Show top spend by customer",
+        searchMode: "hybrid",
+        activeCollection: "orders",
+        collections: [{ name: "orders", isVectorize: false }],
+        allCollectionFields: { orders: ["total_spend"] },
+        history: [],
+      },
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      backend: huggingFaceBackend,
+      send,
+    });
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        step: "respond",
+        status: "running",
+        data: expect.objectContaining({
+          content: "Here is",
+          delta: "Here is",
+        }),
+      })
+    );
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        step: "respond",
+        status: "running",
+        data: expect.objectContaining({
+          content: "Here is the answer.",
+          delta: " the answer.",
+        }),
+      })
+    );
+  });
 });

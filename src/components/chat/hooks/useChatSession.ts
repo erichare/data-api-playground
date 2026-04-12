@@ -7,6 +7,7 @@ import type {
   PipelineStepId,
   SearchMode,
 } from "@/lib/types";
+import { readNdjsonStream } from "@/lib/ndjson";
 
 interface ChatCollectionInput {
   name: string;
@@ -71,55 +72,7 @@ async function readChatStream(
     throw new Error("No response body");
   }
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value, { stream: !done });
-
-    if (done) {
-      buffer += decoder.decode();
-    }
-
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      if (!line.trim()) {
-        continue;
-      }
-
-      let event: ChatStreamEvent;
-      try {
-        event = JSON.parse(line) as ChatStreamEvent;
-      } catch {
-        // Ignore malformed lines and keep consuming the stream.
-        continue;
-      }
-
-      onEvent(event);
-    }
-
-    if (done) {
-      break;
-    }
-  }
-
-  if (!buffer.trim()) {
-    return;
-  }
-
-  let event: ChatStreamEvent;
-  try {
-    event = JSON.parse(buffer) as ChatStreamEvent;
-  } catch {
-    // Ignore malformed trailing payloads.
-    return;
-  }
-
-  onEvent(event);
+  await readNdjsonStream<ChatStreamEvent>(response.body, onEvent);
 }
 
 function getMessageSources(steps: PipelineStep[]) {
@@ -144,7 +97,7 @@ function buildAssistantMessage(args: {
   const { steps, content, searchMode, latencyMs } = args;
 
   return {
-    id: `msg-${Date.now() + 1}`,
+    id: `msg-${crypto.randomUUID()}`,
     role: "assistant",
     content:
       content ||
@@ -171,6 +124,7 @@ export function useChatSession({
   const [input, setInput] = useState("");
   const [searchMode, setSearchMode] = useState<SearchMode>("hybrid");
   const [streamingSteps, setStreamingSteps] = useState<PipelineStep[]>([]);
+  const [streamingResponseText, setStreamingResponseText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [chatError, setChatError] = useState("");
   const abortRef = useRef<AbortController | null>(null);
@@ -198,7 +152,7 @@ export function useChatSession({
     }
 
     const userMessage: Message = {
-      id: `msg-${Date.now()}`,
+      id: `msg-${crypto.randomUUID()}`,
       role: "user",
       content: text,
       timestamp: new Date(),
@@ -209,6 +163,7 @@ export function useChatSession({
     setInput("");
     setIsStreaming(true);
     setStreamingSteps([]);
+    setStreamingResponseText("");
     setChatError("");
 
     const liveSteps: PipelineStep[] = [];
@@ -282,10 +237,20 @@ export function useChatSession({
 
         if (
           event.step === "respond" &&
+          event.status === "running" &&
+          typeof event.data?.content === "string"
+        ) {
+          finalContent = String(event.data.content);
+          setStreamingResponseText(finalContent);
+        }
+
+        if (
+          event.step === "respond" &&
           event.status === "complete" &&
           event.data?.content
         ) {
           finalContent = String(event.data.content);
+          setStreamingResponseText(finalContent);
         }
 
         if (event.step === "respond" && event.status === "error") {
@@ -298,7 +263,9 @@ export function useChatSession({
           ? error.message
           : "An error occurred while processing your query.";
       setChatError(message);
-      finalContent = `Error: ${message}`;
+      if (!finalContent.trim()) {
+        finalContent = `Error: ${message}`;
+      }
     } finally {
       setIsStreaming(false);
       if (abortRef.current === controller) {
@@ -317,6 +284,7 @@ export function useChatSession({
       }),
     ]);
     setStreamingSteps([]);
+    setStreamingResponseText("");
   }, [
     activeCollection,
     astraEndpoint,
@@ -338,6 +306,7 @@ export function useChatSession({
     searchMode,
     setSearchMode,
     streamingSteps,
+    streamingResponseText,
     isStreaming,
     chatError,
     dismissChatError,

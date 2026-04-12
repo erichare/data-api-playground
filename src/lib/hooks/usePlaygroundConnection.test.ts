@@ -78,12 +78,12 @@ describe("usePlaygroundConnection", () => {
   it("hydrates an env-backed Astra connection when credentials exist on the server", async () => {
     fetchCollectionsFromApiMock.mockResolvedValueOnce(makeConnectionResult());
 
-    global.fetch = vi.fn(async () => ({
-      json: async () => ({
-        hasToken: true,
-        hasEndpoint: true,
-      }),
-    })) as typeof fetch;
+    global.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ hasToken: true, hasEndpoint: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    ) as typeof fetch;
 
     const bootstrapConversations = vi.fn().mockResolvedValue("conv-1");
     const resetConversationTracking = vi.fn();
@@ -111,12 +111,12 @@ describe("usePlaygroundConnection", () => {
   });
 
   it("connects with explicit credentials, trims the endpoint, and refreshes conversations", async () => {
-    global.fetch = vi.fn(async () => ({
-      json: async () => ({
-        hasToken: false,
-        hasEndpoint: false,
-      }),
-    })) as typeof fetch;
+    global.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ hasToken: false, hasEndpoint: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    ) as typeof fetch;
     fetchCollectionsFromApiMock.mockResolvedValueOnce(
       makeConnectionResult({
         collections: [
@@ -166,12 +166,12 @@ describe("usePlaygroundConnection", () => {
   });
 
   it("surfaces connection errors and preserves the failure message", async () => {
-    global.fetch = vi.fn(async () => ({
-      json: async () => ({
-        hasToken: false,
-        hasEndpoint: false,
-      }),
-    })) as typeof fetch;
+    global.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ hasToken: false, hasEndpoint: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    ) as typeof fetch;
     fetchCollectionsFromApiMock.mockRejectedValueOnce(new Error("Connection failed hard"));
 
     const bootstrapConversations = vi.fn().mockResolvedValue("conv-1");
@@ -199,12 +199,12 @@ describe("usePlaygroundConnection", () => {
   });
 
   it("updates keyspaces and selection state across manual connect flows", async () => {
-    global.fetch = vi.fn(async () => ({
-      json: async () => ({
-        hasToken: false,
-        hasEndpoint: false,
-      }),
-    })) as typeof fetch;
+    global.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ hasToken: false, hasEndpoint: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    ) as typeof fetch;
     fetchCollectionsFromApiMock
       .mockResolvedValueOnce(makeConnectionResult())
       .mockResolvedValueOnce(
@@ -272,12 +272,12 @@ describe("usePlaygroundConnection", () => {
   });
 
   it("disconnects cleanly and resets derived connection state", async () => {
-    global.fetch = vi.fn(async () => ({
-      json: async () => ({
-        hasToken: false,
-        hasEndpoint: false,
-      }),
-    })) as typeof fetch;
+    global.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ hasToken: false, hasEndpoint: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    ) as typeof fetch;
     fetchCollectionsFromApiMock.mockResolvedValueOnce(makeConnectionResult());
 
     const bootstrapConversations = vi.fn().mockResolvedValue("conv-1");

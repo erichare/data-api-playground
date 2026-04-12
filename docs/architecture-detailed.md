@@ -311,7 +311,7 @@ Routes should avoid putting credentials in query strings.
 
 ## 10. Testing
 
-The project uses `vitest` for lightweight unit and route/service boundary tests.
+The project uses `vitest` for unit, hook, and route/service boundary tests, plus `playwright` for end-to-end browser coverage.
 
 Current coverage includes:
 - frontend helper utilities
@@ -322,6 +322,7 @@ Current coverage includes:
 - chat, collection, and ingest service modules
 - shell, ingest, and chat feature components
 - selective shell/component coverage (`page.tsx`, `Header`, `Sidebar`, `PlaygroundMainPanel`, `AstraConnectDialog`)
+- browser-level auth and shell smoke tests (`tests/e2e`)
 
 The current testing strategy is intentionally focused on:
 - pure helpers

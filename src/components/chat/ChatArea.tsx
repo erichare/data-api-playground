@@ -50,6 +50,7 @@ export function ChatArea({
     searchMode,
     setSearchMode,
     streamingSteps,
+    streamingResponseText,
     isStreaming,
     chatError,
     dismissChatError,
@@ -71,7 +72,7 @@ export function ChatArea({
   useEffect(() => {
     const el = messagesContainerRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, isStreaming, streamingSteps]);
+  }, [messages, isStreaming, streamingSteps, streamingResponseText]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -131,31 +132,46 @@ export function ChatArea({
               <MessageBubble key={msg.id} message={msg} index={i} />
             ))}
             <AnimatePresence>
-              {isStreaming && streamingSteps.length > 0 && (
+              {isStreaming &&
+                (streamingSteps.length > 0 || streamingResponseText.length > 0) && (
                 <motion.div
                   key="pipeline-live"
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
-                  className="flex gap-3"
+                  className="flex flex-col gap-4"
                 >
-                  <div className="flex flex-col items-center gap-1 shrink-0">
-                    <div
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold"
-                      style={{ background: "linear-gradient(135deg, var(--step-analyze), var(--step-embed))", color: "#fff" }}
-                    >
-                      AI
+                  <MessageBubble
+                    index={messages.length}
+                    streaming={true}
+                    message={{
+                      id: "msg-streaming",
+                      role: "assistant",
+                      content: streamingResponseText,
+                      timestamp: new Date(),
+                    }}
+                  />
+                  {streamingSteps.length > 0 && (
+                    <div className="flex gap-3">
+                      <div className="flex flex-col items-center gap-1 shrink-0">
+                        <div
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold"
+                          style={{ background: "linear-gradient(135deg, var(--step-analyze), var(--step-embed))", color: "#fff" }}
+                        >
+                          AI
+                        </div>
+                        <div
+                          className="text-[8px] font-bold px-1 rounded"
+                          style={{ backgroundColor: "var(--interactive-light)", color: "var(--interactive)", fontFamily: "IBM Plex Mono, monospace", lineHeight: "1.4" }}
+                        >
+                          IBM
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <PipelineTrace steps={streamingSteps} defaultExpanded={true} />
+                      </div>
                     </div>
-                    <div
-                      className="text-[8px] font-bold px-1 rounded"
-                      style={{ backgroundColor: "var(--interactive-light)", color: "var(--interactive)", fontFamily: "IBM Plex Mono, monospace", lineHeight: "1.4" }}
-                    >
-                      IBM
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <PipelineTrace steps={streamingSteps} defaultExpanded={true} />
-                  </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

@@ -61,10 +61,40 @@ export function createRateLimiter(options: RateLimitOptions) {
   return { check, reset };
 }
 
+/**
+ * Extract a client identifier for rate-limiting.
+ *
+ * When deployed behind a trusted reverse proxy that overwrites
+ * X-Forwarded-For, the first entry is the real client IP.  In other
+ * environments the header is spoofable — callers should be aware that
+ * this is best-effort, not a security boundary.
+ *
+ * Falls back to a per-request fingerprint derived from available
+ * headers so that direct-connect clients without X-Forwarded-For do
+ * not all share a single bucket.
+ */
 export function getClientIp(req: Request): string {
   const forwarded = req.headers.get("x-forwarded-for");
   if (forwarded) {
     return forwarded.split(",")[0].trim();
   }
-  return "unknown";
+
+  // Build a rough fingerprint from stable request headers so each
+  // distinct client gets its own rate-limit bucket rather than all
+  // sharing a single "unknown" key.
+  const parts = [
+    req.headers.get("user-agent") ?? "",
+    req.headers.get("accept-language") ?? "",
+    req.headers.get("accept-encoding") ?? "",
+  ];
+  return `fp-${simpleHash(parts.join("|"))}`;
+}
+
+/** DJB2-style string hash — NOT cryptographic, just bucket distribution. */
+function simpleHash(str: string): string {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(36);
 }

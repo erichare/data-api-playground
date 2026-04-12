@@ -32,7 +32,7 @@ describe("useApiExplorerSession", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(window, "setInterval").mockReturnValue(1 as unknown as number);
+    vi.spyOn(window, "setInterval").mockReturnValue(1 as unknown as ReturnType<typeof setInterval>);
     vi.spyOn(window, "clearInterval").mockImplementation(() => undefined);
   });
 
@@ -132,7 +132,7 @@ describe("useApiExplorerSession", () => {
     });
 
     expect(result.current.bodyError).toBe("Invalid JSON");
-    const proxyCalls = fetchMock.mock.calls.filter(
+    const proxyCalls = (fetchMock.mock.calls as unknown as [string, ...unknown[]][]).filter(
       ([url]) => String(url) === "/api/data-api-proxy"
     );
     expect(proxyCalls).toHaveLength(0);

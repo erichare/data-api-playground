@@ -115,6 +115,12 @@ Core flows:
 - `/api/data-api-proxy`
 - `/api/typescript-client-calls`
 
+`/api/connect` intentionally bounds its expensive metadata enrichment work:
+
+- all collections are listed immediately
+- best-effort counts and sampled field names are fetched for up to 12 non-internal collections
+- additional collections return base metadata only so large keyspaces do not turn connect into an unbounded fan-out
+
 ## Chat Pipeline
 
 `POST /api/chat` streams newline-delimited JSON events.

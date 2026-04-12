@@ -93,4 +93,60 @@ describe("/api/connect route", () => {
     expect(payload).not.toHaveProperty("token");
     expect(payload).not.toHaveProperty("endpoint");
   });
+
+  it("bounds expensive metadata enrichment for large keyspaces", async () => {
+    const collectionNames = Array.from({ length: 14 }, (_, index) => `docs_${index + 1}`);
+    const estimatedDocumentCountMocks = new Map(
+      collectionNames.map((name, index) => [name, vi.fn().mockResolvedValue(index + 1)])
+    );
+    const findMocks = new Map(
+      collectionNames.map((name) => [
+        name,
+        vi.fn(() => ({
+          toArray: vi.fn().mockResolvedValue([{ _id: "1", [name]: "value" }]),
+        })),
+      ])
+    );
+
+    getAstraDbMock.mockReturnValue({
+      listCollections: vi.fn().mockResolvedValue(
+        collectionNames.map((name) => ({
+          name,
+          definition: { vector: { dimension: 1024 } },
+        }))
+      ),
+      collection: vi.fn((name: string) => ({
+        estimatedDocumentCount: estimatedDocumentCountMocks.get(name),
+        find: findMocks.get(name),
+      })),
+    });
+
+    const { POST } = await import("./route");
+    const request = new Request("http://localhost/api/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    const response = await POST(request as never);
+    const payload = (await response.json()) as {
+      collections: Array<{ name: string; count: number | null }>;
+      fields: Record<string, string[]>;
+    };
+
+    expect(payload.collections).toHaveLength(14);
+    expect(payload.collections[0]).toMatchObject({ name: "docs_1", count: 1 });
+    expect(payload.collections[11]).toMatchObject({ name: "docs_12", count: 12 });
+    expect(payload.collections[12]).toMatchObject({ name: "docs_13", count: null });
+    expect(payload.collections[13]).toMatchObject({ name: "docs_14", count: null });
+    expect(payload.fields.docs_1).toEqual(["docs_1"]);
+    expect(payload.fields.docs_12).toEqual(["docs_12"]);
+    expect(payload.fields.docs_13).toBeUndefined();
+    expect(payload.fields.docs_14).toBeUndefined();
+
+    expect(estimatedDocumentCountMocks.get("docs_12")).toHaveBeenCalledOnce();
+    expect(estimatedDocumentCountMocks.get("docs_13")).not.toHaveBeenCalled();
+    expect(findMocks.get("docs_12")).toHaveBeenCalledOnce();
+    expect(findMocks.get("docs_13")).not.toHaveBeenCalled();
+  });
 });

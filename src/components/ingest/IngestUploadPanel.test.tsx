@@ -77,7 +77,7 @@ describe("IngestUploadPanel", () => {
       throw new Error("Expected upload zone and file input to be rendered");
     }
 
-    const fileInputClick = vi.spyOn(fileInput, "click");
+    const fileInputClick = vi.spyOn(fileInput as HTMLElement, "click");
 
     fireEvent.dragOver(uploadZone, {
       preventDefault: vi.fn(),
