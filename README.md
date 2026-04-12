@@ -109,8 +109,9 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Ingest Behavior
 
-- Document uploads support PDF, TXT, MD, DOCX, CSV, and JSON files.
+- Document uploads support PDF, TXT, MD, DOCX, CSV, XLSX, and JSON files.
 - Document uploads are capped at 50 MB per file.
+- CSV and XLSX uploads are chunked as one row per chunk.
 - CSV ingest supports up to 5,000 rows per request.
 - Collections using Astra server-side vectorize skip client-side embedding entirely.
 - Non-vectorize collections use the resolved AI backend for embeddings.

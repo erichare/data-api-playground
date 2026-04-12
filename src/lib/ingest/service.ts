@@ -26,7 +26,13 @@ import {
   listFilenameConflicts,
   upsertIngestedDocumentRecord,
 } from "@/lib/ingest/repository";
-import { chunkText, extractText, parseDocumentUpload } from "@/lib/ingest/text";
+import {
+  chunkText,
+  extractTabularRowChunks,
+  extractText,
+  parseDocumentUpload,
+  serializeTabularRow,
+} from "@/lib/ingest/text";
 import type { NameConflictAction } from "@/lib/ingest/types";
 
 export { chunkText, extractText, parseDocumentUpload };
@@ -122,11 +128,7 @@ export function streamCsvIngest(args: {
 
       for (let index = 0; index < rows.length; index += CSV_BATCH_SIZE) {
         const batch = rows.slice(index, index + CSV_BATCH_SIZE);
-        const texts = batch.map((row) =>
-          Object.entries(row)
-            .map(([key, value]) => `${key}: ${value}`)
-            .join("; ")
-        );
+        const texts = batch.map((row) => serializeTabularRow(row));
 
         const docs = collectionConfig.useVectorize
           ? batch.map((row, batchIndex) => ({
@@ -290,17 +292,21 @@ export function streamDocumentIngest(args: {
       }
 
       send({ type: "extracting", filename });
-      const text = await extractText(buffer, fileType);
+      const rowChunks = await extractTabularRowChunks(buffer, fileType);
+      const text = rowChunks ? rowChunks.join("\n") : await extractText(buffer, fileType);
       if (text.length > MAX_EXTRACTED_TEXT_CHARS) {
         throw new Error(
           `Extracted text exceeds ${MAX_EXTRACTED_TEXT_CHARS.toLocaleString()} characters`
         );
       }
-      const chunks = chunkText(text, chunkSize);
+      const chunks = rowChunks ?? chunkText(text, chunkSize);
       const chunkTotal = chunks.length;
-      if (chunkTotal > MAX_DOCUMENT_CHUNKS) {
+      const chunkLimit = rowChunks ? MAX_CSV_ROWS : MAX_DOCUMENT_CHUNKS;
+      if (chunkTotal > chunkLimit) {
         throw new Error(
-          `Document exceeds ${MAX_DOCUMENT_CHUNKS.toLocaleString()} chunks`
+          rowChunks
+            ? `Tabular uploads support at most ${MAX_CSV_ROWS.toLocaleString()} rows per file`
+            : `Document exceeds ${MAX_DOCUMENT_CHUNKS.toLocaleString()} chunks`
         );
       }
 

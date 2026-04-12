@@ -41,7 +41,14 @@ export interface Conversation {
 
 export type ViewMode = "chat" | "ingest" | "api";
 
-export type IngestFileType = "pdf" | "txt" | "md" | "csv" | "json" | "docx";
+export type IngestFileType =
+  | "pdf"
+  | "txt"
+  | "md"
+  | "csv"
+  | "json"
+  | "docx"
+  | "xlsx";
 
 // Grouped summary for the document library (one per source file, stored in SQLite)
 export interface IngestedDocumentSummary {

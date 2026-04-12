@@ -75,6 +75,108 @@ describe("ingest service", () => {
     expect(chunks[0]?.length).toBeLessThanOrEqual(1000);
   });
 
+  it("chunks uploaded CSV files as one chunk per row", async () => {
+    listCollectionsMock.mockResolvedValue([
+      {
+        name: "docs",
+        definition: { vector: { service: { provider: "nvidia" } } },
+      },
+    ]);
+
+    const { streamDocumentIngest } = await import("./service");
+    const response = new Response(
+      streamDocumentIngest({
+        filename: "rows.csv",
+        fileType: "csv",
+        collectionName: "docs",
+        token: "token",
+        endpoint: "endpoint",
+        keyspace: "ks1",
+        chunkSize: 800,
+        metadata: {},
+        buffer: Buffer.from("name,city\nAda,London\nGrace,New York\n"),
+      })
+    );
+
+    const payload = await response.text();
+    const events = payload
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "chunked",
+        chunks: 2,
+      })
+    );
+    expect(insertManyMock).toHaveBeenCalledWith([
+      expect.objectContaining({
+        content: "name: Ada; city: London",
+        $vectorize: "name: Ada; city: London",
+      }),
+      expect.objectContaining({
+        content: "name: Grace; city: New York",
+        $vectorize: "name: Grace; city: New York",
+      }),
+    ]);
+  });
+
+  it("chunks uploaded XLSX files as one chunk per row", async () => {
+    listCollectionsMock.mockResolvedValue([
+      {
+        name: "docs",
+        definition: { vector: { service: { provider: "nvidia" } } },
+      },
+    ]);
+
+    const XLSX = await import("xlsx");
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.json_to_sheet([
+      { name: "Ada", city: "London" },
+      { name: "Grace", city: "New York" },
+    ]);
+    XLSX.utils.book_append_sheet(workbook, sheet, "People");
+
+    const { streamDocumentIngest } = await import("./service");
+    const response = new Response(
+      streamDocumentIngest({
+        filename: "rows.xlsx",
+        fileType: "xlsx",
+        collectionName: "docs",
+        token: "token",
+        endpoint: "endpoint",
+        keyspace: "ks1",
+        chunkSize: 800,
+        metadata: {},
+        buffer: XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }),
+      })
+    );
+
+    const payload = await response.text();
+    const events = payload
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "chunked",
+        chunks: 2,
+      })
+    );
+    expect(insertManyMock).toHaveBeenCalledWith([
+      expect.objectContaining({
+        content: "name: Ada; city: London",
+        $vectorize: "name: Ada; city: London",
+      }),
+      expect.objectContaining({
+        content: "name: Grace; city: New York",
+        $vectorize: "name: Grace; city: New York",
+      }),
+    ]);
+  });
+
   it("streams vectorize csv ingest progress through Astra", async () => {
     resolveAstraConnectionMock.mockReturnValue({
       token: "token",
@@ -171,6 +273,29 @@ describe("ingest service", () => {
       filename: "report.txt",
       collectionName: "docs",
       nameConflictAction: "overwrite",
+    });
+  });
+
+  it("recognizes xlsx uploads as spreadsheets", async () => {
+    resolveAstraConnectionMock.mockReturnValue({
+      token: "token",
+      endpoint: "endpoint",
+      keyspace: "ks1",
+    });
+
+    const { parseDocumentUpload } = await import("./service");
+    const formData = new FormData();
+    formData.set(
+      "file",
+      new File([new Uint8Array([0x50, 0x4b])], "sheet.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+    );
+    formData.set("collection", "docs");
+
+    await expect(parseDocumentUpload(formData)).resolves.toMatchObject({
+      filename: "sheet.xlsx",
+      fileType: "xlsx",
     });
   });
 

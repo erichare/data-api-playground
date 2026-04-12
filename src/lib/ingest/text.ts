@@ -13,6 +13,74 @@ import type {
   ParsedDocumentUpload,
 } from "@/lib/ingest/types";
 
+function isTabularFileType(fileType: string): fileType is "csv" | "xlsx" {
+  return fileType === "csv" || fileType === "xlsx";
+}
+
+function stringifyCellValue(value: unknown): string {
+  if (value instanceof Date) return value.toISOString();
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+export function serializeTabularRow(
+  row: Record<string, unknown>,
+  sheetName?: string
+): string {
+  const parts = Object.entries(row)
+    .filter(([, value]) => stringifyCellValue(value).trim().length > 0)
+    .map(([key, value]) => `${key}: ${stringifyCellValue(value)}`);
+
+  if (sheetName) {
+    parts.unshift(`sheet: ${sheetName}`);
+  }
+
+  return parts.join("; ");
+}
+
+export async function extractTabularRowChunks(
+  buffer: Buffer,
+  fileType: string
+): Promise<string[] | null> {
+  if (!isTabularFileType(fileType)) {
+    return null;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const XLSX = require("xlsx") as typeof import("xlsx");
+  const workbook = XLSX.read(buffer, {
+    type: "buffer",
+    cellDates: true,
+    dense: true,
+  });
+  const includeSheetName = workbook.SheetNames.length > 1;
+  const chunks: string[] = [];
+
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) continue;
+
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      defval: "",
+      raw: false,
+      blankrows: false,
+    });
+
+    for (const row of rows) {
+      const content = serializeTabularRow(
+        row,
+        includeSheetName ? sheetName : undefined
+      );
+      if (content.length > 0) {
+        chunks.push(content);
+      }
+    }
+  }
+
+  return chunks;
+}
+
 export function chunkText(
   text: string,
   chunkSize = DEFAULT_CHUNK_SIZE,
@@ -53,6 +121,11 @@ export async function extractText(
   buffer: Buffer,
   fileType: string
 ): Promise<string> {
+  const rowChunks = await extractTabularRowChunks(buffer, fileType);
+  if (rowChunks) {
+    return rowChunks.join("\n");
+  }
+
   switch (fileType) {
     case "pdf": {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -138,7 +211,15 @@ export async function parseDocumentUpload(
 
   const filename = file.name;
   const ext = filename.split(".").pop()?.toLowerCase() ?? "txt";
-  const fileType = ["pdf", "txt", "md", "csv", "json", "docx"].includes(ext)
+  const fileType = [
+    "pdf",
+    "txt",
+    "md",
+    "csv",
+    "json",
+    "docx",
+    "xlsx",
+  ].includes(ext)
     ? ext
     : "txt";
   if (file.size > MAX_DOCUMENT_UPLOAD_BYTES) {

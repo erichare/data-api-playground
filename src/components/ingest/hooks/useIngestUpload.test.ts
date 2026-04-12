@@ -13,7 +13,9 @@ vi.mock("@/components/ingest/ingestShared", () => ({
   fileKey: (f: File) => `${f.name}__${f.size}`,
   getFileType: (name: string) => {
     const ext = name.split(".").pop()?.toLowerCase() ?? "txt";
-    return ["pdf", "txt", "md", "csv", "json", "docx"].includes(ext) ? ext : "txt";
+    return ["pdf", "txt", "md", "csv", "json", "docx", "xlsx"].includes(ext)
+      ? ext
+      : "txt";
   },
 }));
 

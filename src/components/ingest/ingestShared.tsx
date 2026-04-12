@@ -4,8 +4,8 @@ import { Braces, FileCode, FileText, Table } from "lucide-react";
 import type { IngestFileType, IngestedDocumentSummary } from "@/lib/types";
 import { mockIngestedDocuments } from "@/lib/mock/data";
 
-export const ACCEPTED = ".pdf,.txt,.md,.csv,.json,.docx";
-export const ACCEPTED_LABEL = "PDF · TXT · MD · DOCX · CSV · JSON";
+export const ACCEPTED = ".pdf,.txt,.md,.csv,.json,.docx,.xlsx";
+export const ACCEPTED_LABEL = "PDF · TXT · MD · DOCX · CSV · XLSX · JSON";
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -19,7 +19,11 @@ export function formatDate(iso: string): string {
 
 export function getFileType(filename: string): IngestFileType {
   const ext = filename.split(".").pop()?.toLowerCase() ?? "txt";
-  return (["pdf", "txt", "md", "csv", "json", "docx"].includes(ext) ? ext : "txt") as IngestFileType;
+  return (
+    ["pdf", "txt", "md", "csv", "json", "docx", "xlsx"].includes(ext)
+      ? ext
+      : "txt"
+  ) as IngestFileType;
 }
 
 export function FileIcon({ type, size = 14 }: { type: IngestFileType; size?: number }) {
@@ -29,6 +33,7 @@ export function FileIcon({ type, size = 14 }: { type: IngestFileType; size?: num
     case "docx": return <FileText {...props} style={{ color: "#3b82f6" }} />;
     case "md": return <FileCode {...props} style={{ color: "#22c55e" }} />;
     case "csv": return <Table {...props} style={{ color: "#f97316" }} />;
+    case "xlsx": return <Table {...props} style={{ color: "#16a34a" }} />;
     case "json": return <Braces {...props} style={{ color: "#a855f7" }} />;
     default: return <FileText {...props} style={{ color: "var(--text-muted)" }} />;
   }
@@ -40,12 +45,13 @@ export function TypeBadge({ type }: { type: IngestFileType }) {
     docx: "#3b82f620",
     md: "#22c55e20",
     csv: "#f9731620",
+    xlsx: "#16a34a20",
     json: "#a855f720",
     txt: "var(--bg-card)",
   };
   const text: Record<IngestFileType, string> = {
     pdf: "#ef4444", docx: "#3b82f6", md: "#22c55e",
-    csv: "#f97316", json: "#a855f7", txt: "var(--text-muted)",
+    csv: "#f97316", xlsx: "#16a34a", json: "#a855f7", txt: "var(--text-muted)",
   };
   return (
     <span

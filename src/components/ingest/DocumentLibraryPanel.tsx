@@ -100,6 +100,7 @@ export function DocumentLibraryPanel({
           <option value="md">Markdown</option>
           <option value="txt">Text</option>
           <option value="csv">CSV</option>
+          <option value="xlsx">XLSX</option>
           <option value="json">JSON</option>
         </select>
 
