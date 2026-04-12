@@ -73,7 +73,11 @@ export async function fetchCollectionsFromApi(
 
 export async function fetchConversationsFromApi(): Promise<Conversation[]> {
   const res = await fetch("/api/conversations");
-  if (!res.ok) return [];
+  if (!res.ok) {
+    throw new Error(
+      await readApiErrorMessage(res, "Failed to load conversations")
+    );
+  }
   const data = await res.json() as { conversations?: RemoteConversation[] };
   return (data.conversations ?? []).map((c) => ({
     id: c.id,

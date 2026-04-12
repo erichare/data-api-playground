@@ -271,6 +271,57 @@ describe("usePlaygroundConnection", () => {
     );
   });
 
+  it("keeps the previous keyspace selected when a connected keyspace switch fails", async () => {
+    global.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ hasToken: false, hasEndpoint: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    ) as typeof fetch;
+    fetchCollectionsFromApiMock
+      .mockResolvedValueOnce(makeConnectionResult())
+      .mockRejectedValueOnce(new Error("keyspace failed"));
+
+    const bootstrapConversations = vi.fn().mockResolvedValue("conv-1");
+    const resetConversationTracking = vi.fn();
+
+    const { result } = renderHook(() =>
+      usePlaygroundConnection({
+        bootstrapConversations,
+        resetConversationTracking,
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.initializing).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.handleConnect(
+        "AstraCS:secret",
+        "https://db-id-us-east1.apps.astra.datastax.com"
+      );
+    });
+
+    expect(result.current.selectedKeyspace).toBe("ks1");
+    expect(result.current.collections.map((collection) => collection.name)).toEqual([
+      "dap_internal",
+      "orders",
+      "customers",
+    ]);
+
+    await act(async () => {
+      await result.current.handleKeyspaceChange("ks2");
+    });
+
+    expect(result.current.selectedKeyspace).toBe("ks1");
+    expect(result.current.collections.map((collection) => collection.name)).toEqual([
+      "dap_internal",
+      "orders",
+      "customers",
+    ]);
+  });
+
   it("disconnects cleanly and resets derived connection state", async () => {
     global.fetch = vi.fn(async () =>
       new Response(JSON.stringify({ hasToken: false, hasEndpoint: false }), {

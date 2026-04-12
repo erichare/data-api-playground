@@ -107,7 +107,10 @@ describe("proxy", () => {
     const response = proxy(
       new NextRequest("http://localhost/api/connect", {
         method: "POST",
-        headers: { "content-length": String(11 * 1024 * 1024) },
+        headers: {
+          "content-length": String(11 * 1024 * 1024),
+          "content-type": "application/json",
+        },
       })
     );
 
@@ -121,7 +124,10 @@ describe("proxy", () => {
     const response = proxy(
       new NextRequest("http://localhost/api/ingest", {
         method: "POST",
-        headers: { "content-length": String(40 * 1024 * 1024) },
+        headers: {
+          "content-length": String(40 * 1024 * 1024),
+          "content-type": "application/json",
+        },
       })
     );
 
@@ -133,7 +139,10 @@ describe("proxy", () => {
     const response = proxy(
       new NextRequest("http://localhost/api/ingest-document", {
         method: "POST",
-        headers: { "content-length": String(51 * 1024 * 1024) },
+        headers: {
+          "content-length": String(51 * 1024 * 1024),
+          "content-type": "multipart/form-data; boundary=test",
+        },
       })
     );
 
@@ -151,5 +160,19 @@ describe("proxy", () => {
     );
 
     expect(response.status).not.toBe(413);
+  });
+
+  it("requires content-length for API requests that declare a request body", async () => {
+    const response = proxy(
+      new NextRequest("http://localhost/api/connect", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    expect(response.status).toBe(411);
+    await expect(response.json()).resolves.toEqual({
+      error: "Content-Length header is required for API requests with a body",
+    });
   });
 });

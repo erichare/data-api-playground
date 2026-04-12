@@ -14,6 +14,8 @@ const originalSecret = process.env.PLAYGROUND_AUTH_SECRET;
 
 describe("auth helpers", () => {
   afterEach(() => {
+    vi.useRealTimers();
+
     if (originalPassword === undefined) delete process.env.PLAYGROUND_AUTH_PASSWORD;
     else process.env.PLAYGROUND_AUTH_PASSWORD = originalPassword;
 
@@ -76,27 +78,44 @@ describe("auth helpers", () => {
     expect(verifySessionToken(token2)).toBe(true);
   });
 
+  it("rejects expired tokens even if the browser still presents them", () => {
+    process.env.PLAYGROUND_AUTH_PASSWORD = "swordfish";
+    process.env.PLAYGROUND_AUTH_SECRET = "top-secret";
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-12T10:00:00.000Z"));
+
+    const token = createSessionToken();
+    expect(verifySessionToken(token)).toBe(true);
+
+    vi.setSystemTime(new Date("2026-04-12T22:00:01.000Z"));
+    expect(verifySessionToken(token)).toBe(false);
+  });
+
   it("rejects tampered tokens", () => {
     process.env.PLAYGROUND_AUTH_PASSWORD = "swordfish";
     process.env.PLAYGROUND_AUTH_SECRET = "top-secret";
 
     const token = createSessionToken();
-    const [nonce, hmac] = token.split(".");
+    const [expiresAt, nonce, hmac] = token.split(".");
 
     // Tamper with the nonce
     const tamperedNonce = "a".repeat(nonce.length);
-    expect(verifySessionToken(`${tamperedNonce}.${hmac}`)).toBe(false);
+    expect(verifySessionToken(`${expiresAt}.${tamperedNonce}.${hmac}`)).toBe(false);
 
     // Tamper with the HMAC
     const tamperedHmac = "b".repeat(hmac.length);
-    expect(verifySessionToken(`${nonce}.${tamperedHmac}`)).toBe(false);
+    expect(verifySessionToken(`${expiresAt}.${nonce}.${tamperedHmac}`)).toBe(false);
+
+    // Tamper with the expiry
+    expect(verifySessionToken(`0.${nonce}.${hmac}`)).toBe(false);
 
     // Missing dot separator
     expect(verifySessionToken("nodotshere")).toBe(false);
 
-    // Empty nonce or hmac
-    expect(verifySessionToken(`.${hmac}`)).toBe(false);
-    expect(verifySessionToken(`${nonce}.`)).toBe(false);
+    // Empty expiry, nonce, or hmac
+    expect(verifySessionToken(`.${nonce}.${hmac}`)).toBe(false);
+    expect(verifySessionToken(`${expiresAt}..${hmac}`)).toBe(false);
+    expect(verifySessionToken(`${expiresAt}.${nonce}.`)).toBe(false);
   });
 
   it("returns empty token when auth is disabled", () => {

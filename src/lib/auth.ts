@@ -52,22 +52,23 @@ export function isAuthEnabled() {
 
 export function createSessionToken() {
   if (!isAuthEnabled()) return "";
+  const expiresAt = Math.floor(Date.now() / 1000) + AUTH_SESSION_TTL_SECONDS;
   const nonce = randomBytes(32).toString("hex");
   const hmac = createHmac("sha256", getAuthSecret())
-    .update(nonce)
+    .update(`${expiresAt}.${nonce}`)
     .digest("hex");
-  return `${nonce}.${hmac}`;
+  return `${expiresAt}.${nonce}.${hmac}`;
 }
 
 export function verifySessionToken(token: string): boolean {
   if (!isAuthEnabled()) return true;
-  const dotIndex = token.indexOf(".");
-  if (dotIndex === -1) return false;
-  const nonce = token.slice(0, dotIndex);
-  const hmac = token.slice(dotIndex + 1);
-  if (!nonce || !hmac) return false;
+  const [expiresAtRaw, nonce, hmac] = token.split(".");
+  if (!expiresAtRaw || !nonce || !hmac) return false;
+  const expiresAt = Number.parseInt(expiresAtRaw, 10);
+  if (!Number.isFinite(expiresAt)) return false;
+  if (expiresAt <= Math.floor(Date.now() / 1000)) return false;
   const expected = createHmac("sha256", getAuthSecret())
-    .update(nonce)
+    .update(`${expiresAt}.${nonce}`)
     .digest("hex");
   return safeEqual(hmac, expected);
 }

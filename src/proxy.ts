@@ -8,9 +8,22 @@ import {
 
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+  const mayHaveBody =
+    pathname.startsWith("/api/") &&
+    ["POST", "PUT", "PATCH", "DELETE"].includes(req.method) &&
+    (req.headers.has("content-length") ||
+      req.headers.has("content-type") ||
+      req.headers.has("transfer-encoding"));
 
-  // Enforce body size limits on all API routes
+  // Enforce header-based body checks before route handlers parse the request.
   const contentLength = req.headers.get("content-length");
+  if (mayHaveBody && !contentLength) {
+    return NextResponse.json(
+      { error: "Content-Length header is required for API requests with a body" },
+      { status: 411 }
+    );
+  }
+
   if (contentLength && pathname.startsWith("/api/")) {
     const size = parseInt(contentLength, 10);
     const limit = pathname.startsWith("/api/ingest")

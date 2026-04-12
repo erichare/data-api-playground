@@ -18,7 +18,7 @@ Body-size limits are intentionally split:
 - Ingest API requests: 50 MB
 - Document upload validation: 50 MB per file
 
-The Next.js proxy buffer, `src/proxy.ts`, and the document ingest validator all use aligned limits so multipart uploads are not truncated before the route can validate them.
+`src/proxy.ts` performs an early header-based check, while shared route parsing enforces the same limits against the actual streamed body so chunked or missing-header requests cannot bypass them.
 
 ## AI Provider Resolution
 
@@ -171,7 +171,7 @@ There is no longer any random-vector fallback or silent insert-without-vectors p
 
 Upload constraints:
 
-- supported document types: PDF, TXT, MD, DOCX, CSV, JSON
+- supported document types: PDF, TXT, MD, DOCX, CSV, XLSX, JSON
 - maximum document upload size: 50 MB
 - metadata payload cap: 16 KB
 - extracted text cap: 1,000,000 characters

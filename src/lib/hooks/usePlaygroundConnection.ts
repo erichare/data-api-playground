@@ -57,7 +57,9 @@ export function usePlaygroundConnection({
 
   useEffect(() => {
     const restorePromise = (async () => {
-      await bootstrapConversations();
+      await bootstrapConversations().catch(() => {
+        // Keep the local placeholder conversation when persisted bootstrap fails.
+      });
 
       try {
         const status = await fetch("/api/astra-status").then((r) => r.json() as Promise<{ hasToken: boolean; hasEndpoint: boolean }>);
@@ -88,7 +90,9 @@ export function usePlaygroundConnection({
       setKeyspaces(result.keyspaces);
       if (result.keyspaces.length > 0) setSelectedKeyspace(result.keyspaces[0]);
       resetConversationTracking();
-      await bootstrapConversations();
+      await bootstrapConversations().catch(() => {
+        // A conversation refresh failure should not block a successful Astra connect.
+      });
     } catch (err) {
       setConnectError(err instanceof Error ? err.message : "Connection failed");
       throw err;
@@ -116,16 +120,20 @@ export function usePlaygroundConnection({
   };
 
   const handleKeyspaceChange = async (keyspace: string) => {
-    setSelectedKeyspace(keyspace);
-    if (!astraFromEnv && (!astraToken || !astraEndpoint)) return;
+    if (!astraFromEnv && (!astraToken || !astraEndpoint)) {
+      setSelectedKeyspace(keyspace);
+      return;
+    }
     try {
-      await fetchCollections(
+      const result = await fetchCollections(
         astraFromEnv ? "" : astraToken,
         astraFromEnv ? "" : astraEndpoint,
         keyspace
       );
+      setKeyspaces(result.keyspaces);
+      setSelectedKeyspace(keyspace);
     } catch {
-      // Keyspace switch failed — keep previous collection list visible.
+      // Keep the previous keyspace selection and collection snapshot in sync.
     }
   };
 

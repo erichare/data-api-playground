@@ -233,10 +233,17 @@ describe("playground client helpers", () => {
     ]);
   });
 
-  it("returns an empty conversation list when the conversations request fails", async () => {
-    global.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 503 })) as typeof fetch;
+  it("surfaces conversation list failures instead of treating them as an empty state", async () => {
+    global.fetch = vi.fn().mockResolvedValue(
+      jsonResponse(
+        { error: "Conversations unavailable", requestId: "req-conversations" },
+        { status: 503 }
+      )
+    ) as typeof fetch;
 
-    await expect(fetchConversationsFromApi()).resolves.toEqual([]);
+    await expect(fetchConversationsFromApi()).rejects.toThrow(
+      "Conversations unavailable (request req-conversations)"
+    );
   });
 
   it("creates conversations from the API response", async () => {

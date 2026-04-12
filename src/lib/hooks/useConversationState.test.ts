@@ -71,6 +71,42 @@ describe("useConversationState", () => {
     });
   });
 
+  it("does not create a new conversation when loading the conversation list fails", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url === "/api/conversations" && (!init || init.method === undefined)) {
+        return {
+          ok: false,
+          json: async () => ({
+            error: "Conversations unavailable",
+            requestId: "req-conversations",
+          }),
+        } as Response;
+      }
+
+      throw new Error(`Unhandled fetch: ${url}`);
+    });
+
+    global.fetch = fetchMock as typeof fetch;
+
+    const { result } = renderHook(() =>
+      useConversationState({
+        huggingfaceApiKey: "",
+      })
+    );
+
+    await act(async () => {
+      await expect(result.current.bootstrapConversations()).rejects.toThrow(
+        "Conversations unavailable (request req-conversations)"
+      );
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.current.conversations).toHaveLength(1);
+    expect(result.current.conversations[0]?.name).toBe("Untitled");
+  });
+
   it("persists new messages and auto-titles an untitled conversation after the first user message", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
