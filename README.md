@@ -154,8 +154,10 @@ src/
     astra.ts
     chat/
     collections/
+    context/
     ingest/
     hooks/
+    mock/
     playground/
     server/
     validation/

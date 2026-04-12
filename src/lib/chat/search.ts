@@ -6,6 +6,7 @@ import {
 } from "@/lib/ai/service";
 import { getAstraDb, SYSTEM_FIELDS } from "@/lib/astra";
 import { recordAstraClientCall } from "@/lib/astraClientLog";
+import { LOW_SIMILARITY_THRESHOLD } from "@/lib/chat/constants";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import type { ChatCollectionInfo, SearchResult } from "@/lib/chat/types";
 
@@ -20,7 +21,7 @@ function sanitizeFilterOp(op: string | null): string | null {
   return ALLOWED_FILTER_OPS.has(op) ? op : null;
 }
 
-function sanitizeFilterField(field: string | null): string | null {
+export function sanitizeFilterField(field: string | null): string | null {
   if (!field) return null;
   if (field.startsWith("$")) return null;
   if (!SAFE_FIELD_NAME_RE.test(field)) return null;
@@ -345,7 +346,6 @@ export async function searchCollections(args: {
   };
 
   const hasFilter = Object.keys(filterClause).length > 0;
-  const lowSimilarityThreshold = 0.5;
   let searchResults: SearchResult[] = [];
   let commandStr = "";
 
@@ -380,7 +380,7 @@ export async function searchCollections(args: {
       (name) => name !== collectionsToSearch[0].name
     );
     const topSimilarity = searchResults[0]?.similarity ?? 0;
-    if (topSimilarity < lowSimilarityThreshold && otherCollections.length > 0) {
+    if (topSimilarity < LOW_SIMILARITY_THRESHOLD && otherCollections.length > 0) {
       const fanTargets = otherCollections.map((name) => ({
         name,
         isVec: collections?.find((collectionInfo) => collectionInfo.name === name)
