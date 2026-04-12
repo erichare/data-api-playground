@@ -197,8 +197,8 @@ export function useIngestUpload({
               source_filename: file.name,
               file_type: getFileType(file.name),
               file_size: file.size,
-              md5_hash:
-                typeof event.md5_hash === "string" ? event.md5_hash : "",
+              content_hash:
+                typeof event.content_hash === "string" ? event.content_hash : "",
               chunk_total: chunks,
               ingested_at: new Date().toISOString(),
               collection: selectedCollection,

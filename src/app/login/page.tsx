@@ -23,7 +23,9 @@ export default async function LoginPage({
 
   const params = await searchParams;
   const nextPath =
-    params.next && params.next.startsWith("/") ? params.next : "/";
+    params.next && params.next.startsWith("/") && !params.next.startsWith("//")
+      ? params.next
+      : "/";
 
   return <LoginForm nextPath={nextPath} />;
 }

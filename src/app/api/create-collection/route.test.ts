@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+class ValidationError extends Error {
+  constructor(message: string) { super(message); this.name = "ValidationError"; }
+}
+
 const createCollectionInAstraMock = vi.fn();
 
 vi.mock("@/lib/collections/service", () => ({
   createCollectionInAstra: createCollectionInAstraMock,
+  ValidationError,
 }));
 
 describe("/api/create-collection route", () => {
@@ -14,7 +19,7 @@ describe("/api/create-collection route", () => {
 
   it("returns 400 when the collection service rejects missing credentials", async () => {
     createCollectionInAstraMock.mockRejectedValue(
-      new Error("token, endpoint, and name are required")
+      new ValidationError("token, endpoint, and name are required")
     );
 
     const { POST } = await import("./route");

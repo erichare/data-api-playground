@@ -51,6 +51,6 @@ describe("getDb", () => {
     );
     expect(pragmaMock).toHaveBeenCalledWith("journal_mode = WAL");
     expect(pragmaMock).toHaveBeenCalledWith("foreign_keys = ON");
-    expect(execMock).toHaveBeenCalledOnce();
+    expect(execMock).toHaveBeenCalledTimes(3);
   });
 });

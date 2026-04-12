@@ -19,7 +19,7 @@ export type IngestBackendHint = {
 export type ExistingIngestedDocument = {
   source_doc_id: string;
   source_filename: string;
-  md5_hash: string;
+  content_hash: string;
   ingested_at: string;
   collection: string;
 };

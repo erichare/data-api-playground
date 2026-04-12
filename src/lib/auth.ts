@@ -47,7 +47,26 @@ function parseCookie(header: string, name: string) {
 }
 
 export function isAuthEnabled() {
-  return getAuthPassword().length > 0 && getAuthSecret().length > 0;
+  const enabled = getAuthPassword().length > 0 && getAuthSecret().length > 0;
+  if (!enabled && !_authWarningEmitted && typeof process !== "undefined") {
+    _authWarningEmitted = true;
+    const hasPassword = getAuthPassword().length > 0;
+    if (!hasPassword) {
+      console.warn(
+        "[auth] PLAYGROUND_AUTH_PASSWORD is not set — authentication is DISABLED. " +
+          "All API routes are publicly accessible. Set PLAYGROUND_AUTH_PASSWORD and " +
+          "PLAYGROUND_AUTH_SECRET to enable authentication."
+      );
+    }
+  }
+  return enabled;
+}
+
+let _authWarningEmitted = false;
+
+/** @internal Reset the auth warning flag for testing. */
+export function _resetAuthWarning() {
+  _authWarningEmitted = false;
 }
 
 export function createSessionToken() {
@@ -100,7 +119,7 @@ export function setAuthCookie(response: NextResponse) {
     name: AUTH_COOKIE_NAME,
     value: createSessionToken(),
     httpOnly: true,
-    sameSite: "lax",
+    sameSite: "strict",
     secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge: AUTH_SESSION_TTL_SECONDS,
@@ -113,7 +132,7 @@ export function clearAuthCookie(response: NextResponse) {
     name: AUTH_COOKIE_NAME,
     value: "",
     httpOnly: true,
-    sameSite: "lax",
+    sameSite: "strict",
     secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge: 0,

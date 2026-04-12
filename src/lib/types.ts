@@ -56,7 +56,7 @@ export interface IngestedDocumentSummary {
   source_filename: string;
   file_type: IngestFileType;
   file_size: number;
-  md5_hash: string;
+  content_hash: string;
   chunk_total: number;
   ingested_at: string;
   collection: string;

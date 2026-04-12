@@ -20,7 +20,7 @@ const filenameConflictAllMock = vi.fn();
 const insertDocumentRunMock = vi.fn();
 const deleteExistingRunMock = vi.fn();
 const prepareMock = vi.fn((sql: string) => {
-  if (sql.includes("WHERE collection = ? AND md5_hash = ?")) {
+  if (sql.includes("WHERE collection = ? AND content_hash = ?")) {
     return { get: duplicateByHashGetMock };
   }
   if (sql.includes("WHERE collection = ? AND source_filename = ?")) {
@@ -330,7 +330,7 @@ describe("ingest service", () => {
     duplicateByHashGetMock.mockReturnValue({
       source_doc_id: "doc-existing",
       source_filename: "report.txt",
-      md5_hash: "same-hash",
+      content_hash: "same-hash",
       ingested_at: "2026-04-09T20:00:00.000Z",
       collection: "docs",
     });
@@ -369,7 +369,7 @@ describe("ingest service", () => {
       {
         source_doc_id: "doc-existing",
         source_filename: "report.txt",
-        md5_hash: "old-hash",
+        content_hash: "old-hash",
         ingested_at: "2026-04-09T20:00:00.000Z",
         collection: "docs",
       },
@@ -408,14 +408,14 @@ describe("ingest service", () => {
       {
         source_doc_id: "doc-old-1",
         source_filename: "report.txt",
-        md5_hash: "old-hash-1",
+        content_hash: "old-hash-1",
         ingested_at: "2026-04-09T19:00:00.000Z",
         collection: "docs",
       },
       {
         source_doc_id: "doc-old-2",
         source_filename: "report.txt",
-        md5_hash: "old-hash-2",
+        content_hash: "old-hash-2",
         ingested_at: "2026-04-09T18:00:00.000Z",
         collection: "docs",
       },
@@ -464,5 +464,191 @@ describe("ingest service", () => {
       collection: "docs",
       replaced_source_doc_ids: ["doc-old-1", "doc-old-2"],
     });
+  });
+
+  it("emits an error when streamCsvIngest is called with missing token or empty rows", async () => {
+    resolveAstraConnectionMock.mockReturnValue({
+      token: "",
+      endpoint: "",
+      keyspace: undefined,
+    });
+
+    const { streamCsvIngest } = await import("./service");
+    const response = new Response(
+      streamCsvIngest({
+        token: "",
+        endpoint: "",
+        collection: "docs",
+        filename: "rows.csv",
+        rows: [],
+      })
+    );
+
+    const payload = await response.text();
+    const events = payload
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "error",
+        message: "token, endpoint, collection, and rows are required",
+      }),
+    ]);
+    expect(getAstraDbMock).not.toHaveBeenCalled();
+  });
+
+  it("emits an error when streamCsvIngest listCollections throws", async () => {
+    resolveAstraConnectionMock.mockReturnValue({
+      token: "token",
+      endpoint: "endpoint",
+      keyspace: "ks1",
+    });
+    listCollectionsMock.mockRejectedValue(new Error("Network failure"));
+
+    const { streamCsvIngest } = await import("./service");
+    const response = new Response(
+      streamCsvIngest({
+        token: "token",
+        endpoint: "endpoint",
+        keyspace: "ks1",
+        collection: "docs",
+        filename: "rows.csv",
+        rows: [{ title: "First row" }],
+      })
+    );
+
+    const payload = await response.text();
+    const events = payload
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "error",
+        message: "Network failure",
+      }),
+    ]);
+  });
+
+  it("emits a skipped event with reason name_conflict when nameConflictAction is skip", async () => {
+    filenameConflictAllMock.mockReturnValue([
+      {
+        source_doc_id: "doc-existing",
+        source_filename: "report.txt",
+        content_hash: "old-hash",
+        ingested_at: "2026-04-09T20:00:00.000Z",
+        collection: "docs",
+      },
+    ]);
+
+    const { streamDocumentIngest } = await import("./service");
+    const response = new Response(
+      streamDocumentIngest({
+        filename: "report.txt",
+        fileType: "txt",
+        collectionName: "docs",
+        chunkSize: 800,
+        metadata: {},
+        buffer: Buffer.from("new contents"),
+        nameConflictAction: "skip",
+      })
+    );
+
+    const payload = await response.text();
+    const events = payload
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "skipped",
+        reason: "name_conflict",
+        source_doc_id: "doc-existing",
+      }),
+    ]);
+    expect(insertDocumentRunMock).not.toHaveBeenCalled();
+    expect(getAstraDbMock).not.toHaveBeenCalled();
+  });
+
+  it("runs demo mode when token and endpoint are empty, emitting complete with demo: true", async () => {
+    vi.useFakeTimers();
+
+    const { streamDocumentIngest } = await import("./service");
+    const stream = streamDocumentIngest({
+      filename: "demo.txt",
+      fileType: "txt",
+      collectionName: "",
+      token: "",
+      endpoint: "",
+      chunkSize: 800,
+      metadata: {},
+      buffer: Buffer.from("Hello world demo content"),
+    });
+
+    const responsePromise = new Response(stream).text();
+    await vi.runAllTimersAsync();
+    const payload = await responsePromise;
+
+    const events = payload
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "complete",
+        demo: true,
+      })
+    );
+    expect(getAstraDbMock).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
+  it("emits an error when extracted text exceeds MAX_EXTRACTED_TEXT_CHARS", async () => {
+    listCollectionsMock.mockResolvedValue([
+      {
+        name: "docs",
+        definition: { vector: { service: { provider: "nvidia" } } },
+      },
+    ]);
+
+    const { MAX_EXTRACTED_TEXT_CHARS } = await import("./constants");
+
+    // Build a buffer whose plain-text extraction exceeds the character limit.
+    // txt files go through extractText which returns the utf8 decoded content.
+    const oversizedText = "A".repeat(MAX_EXTRACTED_TEXT_CHARS + 1);
+
+    const { streamDocumentIngest } = await import("./service");
+    const response = new Response(
+      streamDocumentIngest({
+        filename: "big.txt",
+        fileType: "txt",
+        collectionName: "docs",
+        token: "token",
+        endpoint: "endpoint",
+        keyspace: "ks1",
+        chunkSize: 800,
+        metadata: {},
+        buffer: Buffer.from(oversizedText),
+      })
+    );
+
+    const payload = await response.text();
+    const events = payload
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("Extracted text exceeds"),
+      })
+    );
   });
 });

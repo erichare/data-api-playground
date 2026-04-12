@@ -48,6 +48,25 @@ export function logError(
   );
 }
 
+const SENSITIVE_TOKEN_PATTERNS = [
+  /AstraCS:[^\s,;)}\]'"]+/g,
+  /Bearer\s+[^\s,;)}\]'"]+/g,
+  /hf_[a-zA-Z0-9]+/g,
+];
+
+/**
+ * Extract an error message safe for client responses.
+ * Strips credential-like patterns (AstraCS tokens, Bearer tokens, HF keys)
+ * and truncates to 500 characters.
+ */
+export function sanitizeErrorForClient(err: unknown, fallback: string): string {
+  let message = err instanceof Error ? err.message : fallback;
+  for (const pattern of SENSITIVE_TOKEN_PATTERNS) {
+    message = message.replace(pattern, "[REDACTED]");
+  }
+  return message.slice(0, 500);
+}
+
 export function jsonError(
   context: RequestLogContext,
   status: number,

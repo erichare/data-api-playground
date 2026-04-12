@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+class ValidationError extends Error {
+  constructor(message: string) { super(message); this.name = "ValidationError"; }
+}
+
 const deleteCollectionInAstraMock = vi.fn();
 
 vi.mock("@/lib/collections/service", () => ({
   deleteCollectionInAstra: deleteCollectionInAstraMock,
+  ValidationError,
 }));
 
 describe("/api/delete-collection route", () => {

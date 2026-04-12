@@ -1,4 +1,13 @@
 import { getAstraDb, resolveAstraConnection, SYSTEM_FIELDS } from "@/lib/astra";
+
+/** Thrown for client-side validation errors (missing fields, bad input). */
+export class ValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
+import { mapWithConcurrency } from "@/lib/concurrency";
 import {
   buildTsCall,
   formatTsMethodCall,
@@ -35,7 +44,7 @@ type DocRow = {
   source_filename: string;
   file_type: string;
   file_size: number;
-  md5_hash: string;
+  content_hash: string;
   chunk_total: number;
   collection: string;
   ingested_at: string;
@@ -58,7 +67,7 @@ export function listIngestedDocuments(collection?: string): IngestedDocumentSumm
     source_filename: row.source_filename,
     file_type: row.file_type as IngestedDocumentSummary["file_type"],
     file_size: row.file_size,
-    md5_hash: row.md5_hash,
+    content_hash: row.content_hash,
     chunk_total: row.chunk_total,
     collection: row.collection,
     ingested_at: row.ingested_at,
@@ -74,28 +83,6 @@ interface CollectionMetadata {
   fields: string[];
 }
 
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  concurrency: number,
-  mapper: (item: T) => Promise<R>
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let nextIndex = 0;
-
-  async function worker() {
-    while (nextIndex < items.length) {
-      const currentIndex = nextIndex;
-      nextIndex += 1;
-      results[currentIndex] = await mapper(items[currentIndex]);
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, () => worker())
-  );
-
-  return results;
-}
 
 export async function fetchCollectionMetadata(args: {
   token: string;
@@ -147,8 +134,8 @@ export async function fetchCollectionMetadata(args: {
           ]),
         });
         count = await collectionRef.estimatedDocumentCount();
-      } catch {
-        // Leave count as null when the count query is unsupported or slow.
+      } catch (err) {
+        console.warn(`[connect] estimatedDocumentCount failed for "${collectionName}":`, err instanceof Error ? err.message : err);
       }
 
       const fieldSet = new Set<string>();
@@ -168,25 +155,32 @@ export async function fetchCollectionMetadata(args: {
             if (!SYSTEM_FIELDS.has(key)) fieldSet.add(key);
           }
         }
-      } catch {
-        // Field sampling is best-effort.
+      } catch (err) {
+        console.warn(`[connect] field sampling failed for "${collectionName}":`, err instanceof Error ? err.message : err);
       }
 
       return [collectionName, { count, fields: Array.from(fieldSet) }];
     }
   );
 
-  const metadataByCollection = new Map(sampledMetadata);
-  for (const collection of collections) {
+  const metadataByCollection = new Map(
+    sampledMetadata
+      .filter((r): r is PromiseSettledResult<[string, CollectionMetadata]> & { status: "fulfilled" } => r.status === "fulfilled")
+      .map((r) => r.value)
+  );
+  const enrichedCollections = collections.map((collection) => {
     const metadata = metadataByCollection.get(collection.name);
-    if (!metadata) continue;
-    collection.count = metadata.count;
+    if (!metadata) return collection;
+    return { ...collection, count: metadata.count };
+  });
+
+  for (const [name, metadata] of metadataByCollection) {
     if (metadata.fields.length > 0) {
-      fields[collection.name] = metadata.fields;
+      fields[name] = metadata.fields;
     }
   }
 
-  return { collections, fields };
+  return { collections: enrichedCollections, fields };
 }
 
 export async function createCollectionInAstra(
@@ -198,7 +192,7 @@ export async function createCollectionInAstra(
   const { name, dimension, metric, provider, model } = args;
 
   if (!token || !endpoint || !name) {
-    throw new Error("token, endpoint, and name are required");
+    throw new ValidationError("token, endpoint, and name are required");
   }
 
   const db = getAstraDb(token, endpoint, keyspace);
@@ -233,10 +227,10 @@ export async function deleteCollectionInAstra(args: DeleteCollectionArgs) {
   });
 
   if (!token || !endpoint) {
-    throw new Error("Missing credentials");
+    throw new ValidationError("Missing credentials");
   }
   if (!args.name) {
-    throw new Error("Missing collection name");
+    throw new ValidationError("Missing collection name");
   }
 
   const db = getAstraDb(token, endpoint, keyspace);
@@ -276,8 +270,12 @@ export async function deleteIngestedDocument(
       await astraDb
         .collection(collection)
         .deleteMany({ "metadata.source_doc_id": { $eq: source_doc_id } });
-    } catch {
-      // Local metadata delete is the authoritative operation here.
+    } catch (err) {
+      // Local metadata delete is the authoritative operation; remote failure is non-fatal.
+      console.error(
+        `[deleteIngestedDocument] Astra deleteMany failed for "${collection}" / "${source_doc_id}":`,
+        err instanceof Error ? err.message : err
+      );
     }
   }
 

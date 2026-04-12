@@ -5,6 +5,7 @@ import {
 } from "@/lib/ai/service";
 import { getAstraDb, SYSTEM_FIELDS } from "@/lib/astra";
 import { recordAstraClientCall } from "@/lib/astraClientLog";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import type { ChatCollectionInfo, SearchResult } from "@/lib/chat/types";
 
 const ALLOWED_FILTER_OPS = new Set([
@@ -25,34 +26,22 @@ function sanitizeFilterField(field: string | null): string | null {
   return field;
 }
 
+type SafeFilterPrimitive = string | number | boolean;
+
+/**
+ * Reject filter values that are objects (could contain operator keys like $where)
+ * or nested structures. Only primitives and arrays of primitives are safe.
+ */
+function isSafeFilterValue(
+  value: unknown
+): value is SafeFilterPrimitive | SafeFilterPrimitive[] {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return true;
+  if (Array.isArray(value) && value.every((v) => typeof v === "string" || typeof v === "number" || typeof v === "boolean")) return true;
+  return false;
+}
+
 const SEARCH_FAN_OUT_CONCURRENCY = 4;
 
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  concurrency: number,
-  mapper: (item: T) => Promise<R>
-): Promise<PromiseSettledResult<R>[]> {
-  const results: PromiseSettledResult<R>[] = new Array(items.length);
-  let nextIndex = 0;
-
-  async function worker() {
-    while (nextIndex < items.length) {
-      const currentIndex = nextIndex;
-      nextIndex += 1;
-      try {
-        results[currentIndex] = { status: "fulfilled", value: await mapper(items[currentIndex]) };
-      } catch (reason) {
-        results[currentIndex] = { status: "rejected", reason };
-      }
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, () => worker())
-  );
-
-  return results;
-}
 
 export interface EmbedResult {
   embeddingVector: number[];
@@ -205,18 +194,20 @@ export async function searchCollections(args: {
   }
 
   const db = getAstraDb(token, endpoint, keyspace);
+  const safeSortField = sanitizeFilterField(sortField);
   const safeFilterField = sanitizeFilterField(filterField);
   const safeFilterOp = sanitizeFilterOp(filterOp);
+  const safeFilterValue = isSafeFilterValue(filterValue) ? filterValue : null;
   const buildFilterClause = () => {
-    if (!safeFilterField || filterValue == null) return {};
-    if (safeFilterOp === "$eq" || !safeFilterOp) return { [safeFilterField]: filterValue };
-    return { [safeFilterField]: { [safeFilterOp]: filterValue } };
+    if (!safeFilterField || safeFilterValue == null) return {};
+    if (safeFilterOp === "$eq" || !safeFilterOp) return { [safeFilterField]: safeFilterValue };
+    return { [safeFilterField]: { [safeFilterOp]: safeFilterValue } };
   };
   const filterClause = buildFilterClause();
   const filterStr = safeFilterField
     ? !safeFilterOp || safeFilterOp === "$eq"
-      ? `{ ${safeFilterField}: ${JSON.stringify(filterValue)} }`
-      : `{ ${safeFilterField}: { ${safeFilterOp}: ${JSON.stringify(filterValue)} } }`
+      ? `{ ${safeFilterField}: ${JSON.stringify(safeFilterValue)} }`
+      : `{ ${safeFilterField}: { ${safeFilterOp}: ${JSON.stringify(safeFilterValue)} } }`
     : "{}";
 
   const executeSearch = async (
@@ -236,11 +227,11 @@ export async function searchCollections(args: {
     let results: SearchResult[] = [];
     let command = "";
 
-    if (sortField) {
+    if (safeSortField) {
       const sortObj = {
-        [sortField]: sortDir === "asc" ? 1 : -1,
+        [safeSortField]: sortDir === "asc" ? 1 : -1,
       } as Record<string, 1 | -1>;
-      command = `await db.collection("${collectionName}")\n  .find(${filterString}, { sort: { ${sortField}: ${sortDir === "asc" ? 1 : -1} }, limit: ${limit} })\n  .toArray()`;
+      command = `await db.collection("${collectionName}")\n  .find(${filterString}, { sort: { ${safeSortField}: ${sortDir === "asc" ? 1 : -1} }, limit: ${limit} })\n  .toArray()`;
       recordAstraClientCall({
         label: "Chat Search",
         code: command,

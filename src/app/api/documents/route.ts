@@ -4,7 +4,7 @@ import {
   deleteIngestedDocument,
   listIngestedDocuments,
 } from "@/lib/collections/service";
-import { createRequestLogContext, jsonError, logError } from "@/lib/server/log";
+import { createRequestLogContext, jsonError, logError, sanitizeErrorForClient } from "@/lib/server/log";
 import { documentsDeleteBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
@@ -46,7 +46,7 @@ export async function DELETE(req: NextRequest) {
     return jsonError(
       logContext,
       500,
-      err instanceof Error ? err.message : "Failed to delete document"
+      sanitizeErrorForClient(err, "Failed to delete document")
     );
   }
 }

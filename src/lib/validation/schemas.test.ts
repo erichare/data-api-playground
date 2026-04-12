@@ -247,7 +247,7 @@ describe("messageCreateBodySchema", () => {
         ...valid.message,
         searchMode: "vector",
         latencyMs: 42,
-        pipelineSteps: [{ step: "analyze" }],
+        pipelineSteps: [{ id: "analyze", status: "complete" }],
         sources: [],
       },
     });

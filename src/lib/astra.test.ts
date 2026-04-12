@@ -18,6 +18,7 @@ vi.mock("@datastax/astra-db-ts", () => ({
 import {
   DEFAULT_KEYSPACE,
   SYSTEM_FIELDS,
+  clearClientCache,
   getAstraDb,
   isAllowedAstraEndpoint,
   normalizeAstraEndpoint,
@@ -30,6 +31,7 @@ describe("astra helpers", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    clearClientCache();
     delete process.env.ASTRA_DB_APPLICATION_TOKEN;
     delete process.env.ASTRA_DB_API_ENDPOINT;
   });
@@ -106,5 +108,37 @@ describe("astra helpers", () => {
       getAstraDb("AstraCS:secret-token", "https://example.com")
     ).toThrowError("Invalid Astra DB endpoint");
     expect(dataApiClientCtorMock).not.toHaveBeenCalled();
+  });
+
+  it("caches DataAPIClient instances per token", () => {
+    const dbHandle = { kind: "db-handle" };
+    dbMock.mockReturnValue(dbHandle);
+
+    getAstraDb("AstraCS:token-a", "https://db.apps.astra.datastax.com");
+    getAstraDb("AstraCS:token-a", "https://db.apps.astra.datastax.com");
+
+    expect(dataApiClientCtorMock).toHaveBeenCalledTimes(1);
+    expect(dataApiClientCtorMock).toHaveBeenCalledWith("AstraCS:token-a");
+  });
+
+  it("creates separate clients for different tokens", () => {
+    const dbHandle = { kind: "db-handle" };
+    dbMock.mockReturnValue(dbHandle);
+
+    getAstraDb("AstraCS:token-a", "https://db.apps.astra.datastax.com");
+    getAstraDb("AstraCS:token-b", "https://db.apps.astra.datastax.com");
+
+    expect(dataApiClientCtorMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears the client cache", () => {
+    const dbHandle = { kind: "db-handle" };
+    dbMock.mockReturnValue(dbHandle);
+
+    getAstraDb("AstraCS:token-a", "https://db.apps.astra.datastax.com");
+    clearClientCache();
+    getAstraDb("AstraCS:token-a", "https://db.apps.astra.datastax.com");
+
+    expect(dataApiClientCtorMock).toHaveBeenCalledTimes(2);
   });
 });

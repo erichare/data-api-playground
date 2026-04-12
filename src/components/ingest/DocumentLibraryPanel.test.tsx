@@ -45,7 +45,7 @@ const baseDoc = {
   source_filename: "report.pdf",
   file_type: "pdf" as const,
   file_size: 2048,
-  md5_hash: "hash",
+  content_hash: "hash",
   chunk_total: 3,
   ingested_at: "2026-04-11T12:00:00.000Z",
   collection: "orders",

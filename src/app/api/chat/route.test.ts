@@ -36,6 +36,8 @@ vi.mock("@/lib/validation/parse", () => ({
 vi.mock("@/lib/server/log", () => ({
   createRequestLogContext: createRequestLogContextMock,
   logError: logErrorMock,
+  sanitizeErrorForClient: (err: unknown, fallback: string) =>
+    err instanceof Error ? err.message : fallback,
 }));
 
 vi.mock("@/lib/rate-limit", () => ({

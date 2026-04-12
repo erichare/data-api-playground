@@ -64,7 +64,7 @@ export async function runChatWorkflow({
       provider,
       model,
     } = await withPrepareTracking({
-      kind: isVectorize ? "embed" : "embed",
+      kind: "embed",
       send,
       task: (onPrepareProgress) =>
         embedQuery({

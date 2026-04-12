@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import {
   getRedirectUrl,
   unstable_doesMiddlewareMatch,
 } from "next/experimental/testing/server";
-import { AUTH_COOKIE_NAME, createSessionToken } from "@/lib/auth";
+import { AUTH_COOKIE_NAME, createSessionToken, _resetAuthWarning } from "@/lib/auth";
 import { config, proxy } from "./proxy";
 
 describe("proxy", () => {
@@ -14,6 +14,8 @@ describe("proxy", () => {
   beforeEach(() => {
     delete process.env.PLAYGROUND_AUTH_PASSWORD;
     delete process.env.PLAYGROUND_AUTH_SECRET;
+    _resetAuthWarning();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -22,6 +24,9 @@ describe("proxy", () => {
 
     if (originalSecret === undefined) delete process.env.PLAYGROUND_AUTH_SECRET;
     else process.env.PLAYGROUND_AUTH_SECRET = originalSecret;
+
+    _resetAuthWarning();
+    vi.restoreAllMocks();
   });
 
   it("matches application routes but skips excluded assets", () => {

@@ -19,7 +19,10 @@ export const browseBodySchema = astraConnectionSchema.extend({
   collection: z.string().min(1),
   pageState: z.string().nullable().optional(),
   sort: z
-    .object({ col: z.string(), dir: z.union([z.literal(1), z.literal(-1)]) })
+    .object({
+      col: z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_.]*$/),
+      dir: z.union([z.literal(1), z.literal(-1)]),
+    })
     .optional(),
 });
 
@@ -80,13 +83,23 @@ export const conversationUpdateBodySchema = z.object({
 export const messageCreateBodySchema = z.object({
   message: z.object({
     id: z.string().min(1),
-    role: z.string().min(1),
+    role: z.enum(["user", "assistant"]),
     content: z.string(),
     timestamp: z.string().min(1),
     searchMode: z.string().optional(),
     latencyMs: z.number().optional(),
-    pipelineSteps: z.array(z.unknown()).optional(),
-    sources: z.array(z.unknown()).optional(),
+    pipelineSteps: z.array(z.object({
+      id: z.string(),
+      status: z.string(),
+      latencyMs: z.number().optional(),
+      data: z.record(z.string(), z.unknown()).optional(),
+    })).optional(),
+    sources: z.array(z.object({
+      collection: z.string(),
+      id: z.string(),
+      similarity: z.number(),
+      preview: z.record(z.string(), z.union([z.string(), z.number()])),
+    })).optional(),
   }),
 });
 

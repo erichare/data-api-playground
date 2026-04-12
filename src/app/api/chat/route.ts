@@ -4,7 +4,8 @@ import { resolveBackend } from "@/lib/ai/service";
 import { requireApiAuth } from "@/lib/auth";
 import { runChatWorkflow } from "@/lib/chat/service";
 import type { StepEvent } from "@/lib/chat/types";
-import { createRequestLogContext, logError } from "@/lib/server/log";
+import { withRequestLog } from "@/lib/astraClientLog";
+import { createRequestLogContext, logError, sanitizeErrorForClient } from "@/lib/server/log";
 import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
 import { chatBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
@@ -54,33 +55,35 @@ export async function POST(req: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (event: StepEvent) => {
-        controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
-      };
-      const backend = resolveBackend({ huggingfaceApiKey });
+      await withRequestLog(async () => {
+        const send = (event: StepEvent) => {
+          controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+        };
+        const backend = resolveBackend({ huggingfaceApiKey });
 
-      try {
-        await runChatWorkflow({
-          payload,
-          token,
-          endpoint,
-          backend,
-          send,
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Unknown error";
-        logError(logContext, "chat.workflow.failed", err, {
-          activeCollection: payload.activeCollection,
-          searchMode: payload.searchMode,
-        });
-        controller.enqueue(
-          encoder.encode(
-            JSON.stringify({ error: message, requestId: logContext.requestId }) + "\n"
-          )
-        );
-      } finally {
-        controller.close();
-      }
+        try {
+          await runChatWorkflow({
+            payload,
+            token,
+            endpoint,
+            backend,
+            send,
+          });
+        } catch (err) {
+          const message = sanitizeErrorForClient(err, "Unknown error");
+          logError(logContext, "chat.workflow.failed", err, {
+            activeCollection: payload.activeCollection,
+            searchMode: payload.searchMode,
+          });
+          controller.enqueue(
+            encoder.encode(
+              JSON.stringify({ error: message, requestId: logContext.requestId }) + "\n"
+            )
+          );
+        } finally {
+          controller.close();
+        }
+      });
     },
   });
 

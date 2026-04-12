@@ -44,7 +44,7 @@ export function getDb(): Database.Database {
       source_filename TEXT NOT NULL,
       file_type       TEXT NOT NULL,
       file_size       INTEGER NOT NULL,
-      md5_hash        TEXT NOT NULL,
+      content_hash    TEXT NOT NULL,
       chunk_total     INTEGER NOT NULL,
       collection      TEXT NOT NULL,
       ingested_at     TEXT NOT NULL,
@@ -52,9 +52,17 @@ export function getDb(): Database.Database {
     );
 
     CREATE INDEX IF NOT EXISTS idx_docs_ingested_at ON ingested_documents(ingested_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_docs_collection_md5 ON ingested_documents(collection, md5_hash);
+    CREATE INDEX IF NOT EXISTS idx_docs_collection_hash ON ingested_documents(collection, content_hash);
     CREATE INDEX IF NOT EXISTS idx_docs_collection_filename ON ingested_documents(collection, source_filename);
   `);
+
+  // Migrate existing databases: rename md5_hash → content_hash
+  try {
+    _db.exec("ALTER TABLE ingested_documents RENAME COLUMN md5_hash TO content_hash");
+  } catch {
+    // Column already renamed or table was created with new schema
+  }
+  _db.exec("DROP INDEX IF EXISTS idx_docs_collection_md5");
 
   return _db;
 }

@@ -44,16 +44,26 @@ export function recordAstraClientCall(input: {
   code: string;
   timestamp?: string;
 }) {
-  const entries = getEntries();
-  entries.unshift({
+  const entry: AstraClientCallEntry = {
     id: crypto.randomUUID(),
     label: input.label,
     code: input.code,
     timestamp: input.timestamp ?? new Date().toISOString(),
-  });
+  };
 
-  if (entries.length > MAX_ASTRA_CLIENT_CALL_ENTRIES) {
-    entries.length = MAX_ASTRA_CLIENT_CALL_ENTRIES;
+  // Always record to the global log (consumed by typescript-client-calls endpoint)
+  globalEntries.unshift(entry);
+  if (globalEntries.length > MAX_ASTRA_CLIENT_CALL_ENTRIES) {
+    globalEntries.length = MAX_ASTRA_CLIENT_CALL_ENTRIES;
+  }
+
+  // Also record to the request-scoped log if one exists
+  const requestEntries = requestLogStorage.getStore();
+  if (requestEntries) {
+    requestEntries.unshift(entry);
+    if (requestEntries.length > MAX_ASTRA_CLIENT_CALL_ENTRIES) {
+      requestEntries.length = MAX_ASTRA_CLIENT_CALL_ENTRIES;
+    }
   }
 }
 

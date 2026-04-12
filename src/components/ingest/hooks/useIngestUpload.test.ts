@@ -332,7 +332,7 @@ describe("useIngestUpload", () => {
           chunks: 2,
           source_doc_id: "doc-new",
           replaced_source_doc_ids: ["doc-old-1", "doc-old-2"],
-          md5_hash: "new-hash",
+          content_hash: "new-hash",
         }),
       ].join("\n") + "\n";
 
@@ -355,7 +355,7 @@ describe("useIngestUpload", () => {
       expect(defaultArgs.replaceDocumentsByIds).toHaveBeenCalledWith(
         expect.objectContaining({
           source_doc_id: "doc-new",
-          md5_hash: "new-hash",
+          content_hash: "new-hash",
           source_filename: "report.pdf",
         }),
         ["doc-old-1", "doc-old-2"]
@@ -755,7 +755,7 @@ describe("useIngestUpload", () => {
                 chunks: 3,
                 source_doc_id: "doc-overwrite",
                 replaced_source_doc_ids: ["doc-old"],
-                md5_hash: "new-hash",
+                content_hash: "new-hash",
               }) + "\n"
             )
           );

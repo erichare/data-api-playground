@@ -56,6 +56,11 @@ export function resolveAstraConnection(
 const CLIENT_CACHE_TTL_MS = 5 * 60 * 1000;
 const clientCache = new Map<string, { client: DataAPIClient; createdAt: number }>();
 
+/** @internal Exposed for test cleanup only. */
+export function clearClientCache() {
+  clientCache.clear();
+}
+
 function getOrCreateClient(token: string): DataAPIClient {
   const cached = clientCache.get(token);
   if (cached && Date.now() - cached.createdAt < CLIENT_CACHE_TTL_MS) {

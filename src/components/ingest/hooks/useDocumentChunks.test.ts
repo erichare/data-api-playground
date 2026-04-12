@@ -10,7 +10,7 @@ const mockDoc: IngestedDocumentSummary = {
   source_filename: "test.pdf",
   file_type: "pdf",
   file_size: 1024,
-  md5_hash: "abc123",
+  content_hash: "abc123",
   chunk_total: 3,
   ingested_at: "2024-01-01T00:00:00Z",
   collection: "my-collection",

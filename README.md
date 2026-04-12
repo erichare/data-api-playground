@@ -100,7 +100,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Usage
 
-1. Connect to Astra DB with a token and endpoint.
+1. Connect to Astra DB with a token and endpoint. Optionally specify a keyspace if your database has multiple keyspaces (defaults to `default_keyspace`).
 2. Optionally add a Hugging Face key in the Connect dialog.
 3. Chat with your collections and inspect the Output, Code, and Trace tabs.
 4. Use the ingest workspace to upload CSV or document files, inspect ingested documents, and browse raw collection records.
@@ -184,6 +184,8 @@ Demo mode is useful for exploring the UI, testing AI backends, and understanding
 - If Ollama is selected and a required model is missing, the app pulls it on demand and shows download progress in the UI.
 - General API requests are capped at 10 MB, while ingest routes are allowed up to 50 MB.
 - Auth sessions expire after 12 hours.
+- On connect, the app samples metadata (estimated count + field names) for up to 12 collections, skipping internal `dap_` collections. Large databases may not show counts for every collection.
+- Ingested documents are tracked with a `content_hash` (SHA-256 of the raw text). Re-uploading the same file to the same collection is skipped as a duplicate.
 
 ## Scripts
 

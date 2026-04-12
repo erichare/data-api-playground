@@ -220,7 +220,7 @@ export function streamDocumentIngest(args: {
     nameConflictAction,
   } = args;
 
-  const md5Hash = createHash("sha256").update(buffer).digest("hex");
+  const contentHash = createHash("sha256").update(buffer).digest("hex");
   const fileSize = buffer.length;
   const sourceDocId = randomUUID();
   const ingestedAt = new Date().toISOString();
@@ -232,7 +232,7 @@ export function streamDocumentIngest(args: {
       const persistedCollection = collectionName || "demo";
       const duplicateByHash = getLatestDuplicateByHash({
         collection: persistedCollection,
-        md5Hash,
+        contentHash,
       });
 
       if (duplicateByHash) {
@@ -323,7 +323,7 @@ export function streamDocumentIngest(args: {
           filename,
           fileType,
           fileSize,
-          md5Hash,
+          contentHash,
           chunkTotal,
           collection: persistedCollection,
           ingestedAt,
@@ -336,7 +336,7 @@ export function streamDocumentIngest(args: {
           chunks: chunkTotal,
           collection: collectionName,
           demo: true,
-          md5_hash: md5Hash,
+          content_hash: contentHash,
           replaced_source_doc_ids: replacedSourceDocIds,
         });
         return;
@@ -443,7 +443,7 @@ export function streamDocumentIngest(args: {
         filename,
         fileType,
         fileSize,
-        md5Hash,
+        contentHash,
         chunkTotal,
         collection: collectionName,
         ingestedAt,
@@ -457,7 +457,7 @@ export function streamDocumentIngest(args: {
         collection: collectionName,
         provider: backendHint.provider,
         model: backendHint.model,
-        md5_hash: md5Hash,
+        content_hash: contentHash,
         replaced_source_doc_ids: replacedSourceDocIds,
       });
     } catch (err) {

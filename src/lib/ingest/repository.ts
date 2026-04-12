@@ -9,19 +9,19 @@ import type { ExistingIngestedDocument } from "@/lib/ingest/types";
 
 export function getLatestDuplicateByHash(args: {
   collection: string;
-  md5Hash: string;
+  contentHash: string;
 }): ExistingIngestedDocument | undefined {
   return getDb()
     .prepare(
       `
-        SELECT source_doc_id, source_filename, md5_hash, ingested_at, collection
+        SELECT source_doc_id, source_filename, content_hash, ingested_at, collection
         FROM ingested_documents
-        WHERE collection = ? AND md5_hash = ?
+        WHERE collection = ? AND content_hash = ?
         ORDER BY ingested_at DESC
         LIMIT 1
       `
     )
-    .get(args.collection, args.md5Hash) as ExistingIngestedDocument | undefined;
+    .get(args.collection, args.contentHash) as ExistingIngestedDocument | undefined;
 }
 
 export function listFilenameConflicts(args: {
@@ -31,7 +31,7 @@ export function listFilenameConflicts(args: {
   return getDb()
     .prepare(
       `
-        SELECT source_doc_id, source_filename, md5_hash, ingested_at, collection
+        SELECT source_doc_id, source_filename, content_hash, ingested_at, collection
         FROM ingested_documents
         WHERE collection = ? AND source_filename = ?
         ORDER BY ingested_at DESC
@@ -93,7 +93,7 @@ export function insertIngestedDocumentRecord(args: {
   filename: string;
   fileType: string;
   fileSize: number;
-  md5Hash: string;
+  contentHash: string;
   chunkTotal: number;
   collection: string;
   ingestedAt: string;
@@ -104,7 +104,7 @@ export function insertIngestedDocumentRecord(args: {
     filename,
     fileType,
     fileSize,
-    md5Hash,
+    contentHash,
     chunkTotal,
     collection,
     ingestedAt,
@@ -114,7 +114,7 @@ export function insertIngestedDocumentRecord(args: {
   getDb()
     .prepare(`
       INSERT INTO ingested_documents
-        (source_doc_id, source_filename, file_type, file_size, md5_hash, chunk_total, collection, ingested_at, metadata)
+        (source_doc_id, source_filename, file_type, file_size, content_hash, chunk_total, collection, ingested_at, metadata)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .run(
@@ -122,7 +122,7 @@ export function insertIngestedDocumentRecord(args: {
       filename,
       fileType,
       fileSize,
-      md5Hash,
+      contentHash,
       chunkTotal,
       collection,
       ingestedAt,
@@ -135,7 +135,7 @@ export function upsertIngestedDocumentRecord(args: {
   filename: string;
   fileType: string;
   fileSize: number;
-  md5Hash: string;
+  contentHash: string;
   chunkTotal: number;
   collection: string;
   ingestedAt: string;
@@ -146,7 +146,7 @@ export function upsertIngestedDocumentRecord(args: {
     filename,
     fileType,
     fileSize,
-    md5Hash,
+    contentHash,
     chunkTotal,
     collection,
     ingestedAt,
@@ -156,7 +156,7 @@ export function upsertIngestedDocumentRecord(args: {
   getDb()
     .prepare(`
       INSERT INTO ingested_documents
-        (source_doc_id, source_filename, file_type, file_size, md5_hash, chunk_total, collection, ingested_at, metadata)
+        (source_doc_id, source_filename, file_type, file_size, content_hash, chunk_total, collection, ingested_at, metadata)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(source_doc_id) DO UPDATE SET chunk_total = excluded.chunk_total, ingested_at = excluded.ingested_at
     `)
@@ -165,7 +165,7 @@ export function upsertIngestedDocumentRecord(args: {
       filename,
       fileType,
       fileSize,
-      md5Hash,
+      contentHash,
       chunkTotal,
       collection,
       ingestedAt,
