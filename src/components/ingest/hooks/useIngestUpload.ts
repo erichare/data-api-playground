@@ -167,26 +167,29 @@ export function useIngestUpload({
             outcome = "skipped";
           }
           if (event.type === "chunked") {
+            const total = typeof event.chunks === "number" ? event.chunks : 0;
             setStatus({
               stage: "storing",
               processed: 0,
-              total: event.chunks as number,
+              total,
             });
           }
           if (event.type === "chunk_progress") {
+            const processed = typeof event.processed === "number" ? event.processed : 0;
+            const total = typeof event.total === "number" ? event.total : 0;
             setStatus({
               stage: "storing",
-              processed: event.processed as number,
-              total: event.total as number,
+              processed,
+              total,
             });
           }
           if (event.type === "complete") {
-            const chunks = event.chunks as number;
-            const docId = event.source_doc_id as string;
+            const chunks = typeof event.chunks === "number" ? event.chunks : 0;
+            const docId = typeof event.source_doc_id === "string" ? event.source_doc_id : "";
             const replacedSourceDocIds = Array.isArray(
               event.replaced_source_doc_ids
             )
-              ? (event.replaced_source_doc_ids as string[])
+              ? event.replaced_source_doc_ids.filter((id): id is string => typeof id === "string")
               : [];
             setStatus({ stage: "done", chunks });
             const documentSummary = {
@@ -212,7 +215,7 @@ export function useIngestUpload({
             outcome = "error";
             setStatus({
               stage: "error",
-              message: event.message as string,
+              message: typeof event.message === "string" ? event.message : "Ingest failed",
             });
           }
         });

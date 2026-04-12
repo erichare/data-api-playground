@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import type { ViewMode } from "@/lib/types";
+import type { ConnectionContextValue } from "@/lib/context/ConnectionContext";
 import { usePlaygroundAuth } from "@/lib/hooks/usePlaygroundAuth";
 import { useConversationState } from "@/lib/hooks/useConversationState";
 import { usePlaygroundConnection } from "@/lib/hooks/usePlaygroundConnection";
@@ -63,7 +64,21 @@ export function usePlaygroundState() {
     [conversationState]
   );
 
+  const connectionValue: ConnectionContextValue = {
+    astraToken: connectionState.astraToken,
+    astraEndpoint: connectionState.astraEndpoint,
+    keyspace: connectionState.selectedKeyspace,
+    isConnected: connectionState.isConnected,
+    initializing: connectionState.initializing,
+    collections: connectionState.collections,
+    activeCollection: connectionState.activeCollection,
+    activeCollectionObj: connectionState.activeCollectionObj,
+    collectionFields: connectionState.collectionFields,
+    huggingfaceApiKey,
+  };
+
   return {
+    connectionValue,
     headerProps: {
       connected: connectionState.isConnected,
       envReady: connectionState.envReady && !connectionState.isConnected,
@@ -98,20 +113,10 @@ export function usePlaygroundState() {
     mainPanelProps: {
       viewMode,
       onViewModeChange: setViewMode,
-      activeCollection: connectionState.activeCollection,
-      activeCollectionObj: connectionState.activeCollectionObj,
-      collections: connectionState.collections,
-      collectionFields: connectionState.collectionFields,
       conversations: conversationState.conversations,
       activeConversationId: conversationState.activeConversationId,
       messages: conversationState.messages,
       onMessagesUpdate: conversationState.handleMessagesUpdate,
-      astraToken: connectionState.astraToken,
-      astraEndpoint: connectionState.astraEndpoint,
-      keyspace: connectionState.selectedKeyspace,
-      huggingfaceApiKey,
-      initializing: connectionState.initializing,
-      isConnected: connectionState.isConnected,
     },
     dialogsProps: {
       newCollectionOpen,

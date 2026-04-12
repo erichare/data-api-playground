@@ -65,9 +65,13 @@ export function usePlaygroundConnection({
         if (status.hasToken && status.hasEndpoint) {
           await fetchCollectionsFromApi("", "")
             .then((result) => applyConnectionResult(result, true, "", ""))
-            .catch(() => {});
+            .catch(() => {
+              // Env-based auto-connect failed; user can connect manually via dialog.
+            });
         }
-      } catch { /* ignore */ }
+      } catch {
+        // Astra status endpoint unreachable during init — non-critical.
+      }
     })();
 
     void restorePromise.finally(() => setInitializing(false));
@@ -102,7 +106,9 @@ export function usePlaygroundConnection({
     setSelectedKeyspace("default_keyspace");
     resetConversationTracking();
     onDisconnectViewReset?.();
-    void bootstrapConversations();
+    void bootstrapConversations().catch(() => {
+      // Best-effort conversation bootstrap after disconnect.
+    });
   };
 
   const handleSelectCollection = (name: string) => {
@@ -118,7 +124,9 @@ export function usePlaygroundConnection({
         astraFromEnv ? "" : astraEndpoint,
         keyspace
       );
-    } catch { /* ignore */ }
+    } catch {
+      // Keyspace switch failed — keep previous collection list visible.
+    }
   };
 
   const handleCollectionCreated = (collection: Collection) => {

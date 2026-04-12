@@ -60,6 +60,12 @@ vi.mock("@/components/shell/PlaygroundMainPanel", () => ({
   ),
 }));
 
+vi.mock("@/lib/context/ConnectionContext", () => ({
+  ConnectionProvider: ({ children }: { children: unknown }) => (
+    <>{children}</>
+  ),
+}));
+
 vi.mock("@/components/shell/PlaygroundDialogs", () => ({
   PlaygroundDialogs: ({
     connectDialogOpen,
@@ -84,6 +90,18 @@ function createState(overrides: Partial<ReturnType<typeof makeBaseState>> = {}) 
 
 function makeBaseState() {
   return {
+    connectionValue: {
+      astraToken: "",
+      astraEndpoint: "",
+      keyspace: "default_keyspace",
+      isConnected: false,
+      initializing: false,
+      collections: [],
+      activeCollection: "",
+      activeCollectionObj: undefined,
+      collectionFields: {},
+      huggingfaceApiKey: "",
+    },
     headerProps: {
       connected: false,
       envReady: false,
@@ -114,20 +132,10 @@ function makeBaseState() {
     mainPanelProps: {
       viewMode: "chat",
       onViewModeChange: vi.fn(),
-      activeCollection: "",
-      activeCollectionObj: undefined,
-      collections: [],
-      collectionFields: {},
       conversations: [],
       activeConversationId: "conv-1",
       messages: [],
       onMessagesUpdate: vi.fn(),
-      astraToken: "",
-      astraEndpoint: "",
-      keyspace: "default_keyspace",
-      huggingfaceApiKey: "",
-      initializing: false,
-      isConnected: false,
     },
     dialogsProps: {
       newCollectionOpen: false,

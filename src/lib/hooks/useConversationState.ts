@@ -108,8 +108,8 @@ export function useConversationState({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
-    }).catch((err) => {
-      console.error("Failed to rename conversation:", err);
+    }).catch(() => {
+      // Best-effort server sync — local rename already applied above.
     });
   }, []);
 
@@ -132,8 +132,8 @@ export function useConversationState({
           loadedConvIds.current.add(newConv.id);
           setConversations([newConv]);
           setActiveConversationId(newConv.id);
-        } catch (err) {
-          console.error("Failed to create replacement conversation:", err);
+        } catch {
+          // If replacement creation fails, the UI will show an empty state.
         }
       }
     }
@@ -144,8 +144,8 @@ export function useConversationState({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
-    } catch (err) {
-      console.error("Failed to delete conversation:", err);
+    } catch {
+      // Best-effort server deletion — local removal already applied above.
     }
   }, [conversations, loadConversationMessages]);
 

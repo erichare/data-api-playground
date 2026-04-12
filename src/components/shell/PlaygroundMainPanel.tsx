@@ -4,69 +4,52 @@ import { ApiExplorer } from "@/components/api/ApiExplorer";
 import { ChatArea } from "@/components/chat/ChatArea";
 import { IngestTab } from "@/components/ingest/IngestTab";
 import { ViewModeSwitcher } from "@/components/shell/ViewModeSwitcher";
-import type { Collection, Conversation, Message, ViewMode } from "@/lib/types";
+import { useConnection } from "@/lib/context/ConnectionContext";
+import type { Conversation, Message, ViewMode } from "@/lib/types";
 
 export interface PlaygroundMainPanelProps {
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
-  activeCollection: string;
-  activeCollectionObj?: Collection;
-  collections: Collection[];
-  collectionFields: Record<string, string[]>;
   conversations: Conversation[];
   activeConversationId: string;
   messages: Message[];
   onMessagesUpdate: (messages: Message[]) => void;
-  astraToken: string;
-  astraEndpoint: string;
-  keyspace: string;
-  huggingfaceApiKey?: string;
-  initializing: boolean;
-  isConnected: boolean;
 }
 
 export function PlaygroundMainPanel({
   viewMode,
   onViewModeChange,
-  activeCollection,
-  activeCollectionObj,
-  collections,
-  collectionFields,
   conversations,
   activeConversationId,
   messages,
   onMessagesUpdate,
-  astraToken,
-  astraEndpoint,
-  keyspace,
-  huggingfaceApiKey,
-  initializing,
-  isConnected,
 }: PlaygroundMainPanelProps) {
+  const conn = useConnection();
+
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       <ViewModeSwitcher
         viewMode={viewMode}
-        activeCollection={activeCollection}
+        activeCollection={conn.activeCollection}
         onChange={onViewModeChange}
       />
 
       {viewMode === "api" ? (
         <ApiExplorer
-          collection={activeCollectionObj}
-          astraToken={astraToken}
-          astraEndpoint={astraEndpoint}
-          keyspace={keyspace}
+          collection={conn.activeCollectionObj}
+          astraToken={conn.astraToken}
+          astraEndpoint={conn.astraEndpoint}
+          keyspace={conn.keyspace}
         />
       ) : viewMode === "ingest" ? (
         <IngestTab
-          astraToken={astraToken}
-          astraEndpoint={astraEndpoint}
-          keyspace={keyspace}
-          collections={collections}
-          activeCollection={activeCollection}
-          huggingfaceApiKey={huggingfaceApiKey}
-          isConnected={isConnected}
+          astraToken={conn.astraToken}
+          astraEndpoint={conn.astraEndpoint}
+          keyspace={conn.keyspace}
+          collections={conn.collections}
+          activeCollection={conn.activeCollection}
+          huggingfaceApiKey={conn.huggingfaceApiKey}
+          isConnected={conn.isConnected}
         />
       ) : (
         <ChatArea
@@ -74,19 +57,19 @@ export function PlaygroundMainPanel({
           activeConversationId={activeConversationId}
           messages={messages}
           onMessagesUpdate={onMessagesUpdate}
-          astraToken={astraToken}
-          astraEndpoint={astraEndpoint}
-          collections={collections.map((collection) => ({
+          astraToken={conn.astraToken}
+          astraEndpoint={conn.astraEndpoint}
+          collections={conn.collections.map((collection) => ({
             name: collection.name,
             isVectorize: !!collection.vectorizeService,
             vectorDimension: collection.vectorDim,
           }))}
-          activeCollection={activeCollection}
-          keyspace={keyspace}
-          huggingfaceApiKey={huggingfaceApiKey}
-          collectionFields={collectionFields}
-          isConnected={isConnected}
-          initializing={initializing}
+          activeCollection={conn.activeCollection}
+          keyspace={conn.keyspace}
+          huggingfaceApiKey={conn.huggingfaceApiKey}
+          collectionFields={conn.collectionFields}
+          isConnected={conn.isConnected}
+          initializing={conn.initializing}
         />
       )}
     </div>

@@ -148,7 +148,7 @@ export async function searchCollections(args: {
   } = args;
   let { collection } = args;
 
-  if (!isConnected) {
+  if (!isConnected || !token || !endpoint) {
     await new Promise((resolve) => setTimeout(resolve, 80));
     return {
       searchResults: [],
@@ -157,7 +157,7 @@ export async function searchCollections(args: {
     };
   }
 
-  const db = getAstraDb(token!, endpoint!, keyspace);
+  const db = getAstraDb(token, endpoint, keyspace);
   const buildFilterClause = () => {
     if (!filterField || filterValue == null) return {};
     if (filterOp === "$eq" || !filterOp) return { [filterField]: filterValue };

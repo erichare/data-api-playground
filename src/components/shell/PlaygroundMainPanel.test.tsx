@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlaygroundMainPanel } from "./PlaygroundMainPanel";
+import { ConnectionProvider, type ConnectionContextValue } from "@/lib/context/ConnectionContext";
 
 vi.mock("@/components/shell/ViewModeSwitcher", () => ({
   ViewModeSwitcher: ({
@@ -49,47 +50,55 @@ vi.mock("@/components/api/ApiExplorer", () => ({
   ),
 }));
 
-function renderPanel(overrides: Partial<Parameters<typeof PlaygroundMainPanel>[0]> = {}) {
+const defaultConnection: ConnectionContextValue = {
+  astraToken: "",
+  astraEndpoint: "",
+  keyspace: "default_keyspace",
+  isConnected: true,
+  initializing: false,
+  collections: [
+    {
+      name: "orders",
+      count: 10,
+      vectorDim: 768,
+      vectorizeService: { provider: "nvidia", modelName: "NV-Embed-QA" },
+    },
+    {
+      name: "customers",
+      count: 5,
+      vectorDim: 0,
+      vectorizeService: null,
+    },
+  ],
+  activeCollection: "orders",
+  activeCollectionObj: {
+    name: "orders",
+    count: 10,
+    vectorDim: 768,
+    vectorizeService: { provider: "nvidia", modelName: "NV-Embed-QA" },
+  },
+  collectionFields: { orders: ["customer_id", "total_spend"] },
+  huggingfaceApiKey: "",
+};
+
+function renderPanel(
+  overrides: Partial<Parameters<typeof PlaygroundMainPanel>[0]> = {},
+  connectionOverrides: Partial<ConnectionContextValue> = {}
+) {
   const onViewModeChange = vi.fn();
 
   const utils = render(
-    <PlaygroundMainPanel
-      viewMode="chat"
-      onViewModeChange={onViewModeChange}
-      activeCollection="orders"
-      activeCollectionObj={{
-        name: "orders",
-        count: 10,
-        vectorDim: 768,
-        vectorizeService: { provider: "nvidia", modelName: "NV-Embed-QA" },
-      }}
-      collections={[
-        {
-          name: "orders",
-          count: 10,
-          vectorDim: 768,
-          vectorizeService: { provider: "nvidia", modelName: "NV-Embed-QA" },
-        },
-        {
-          name: "customers",
-          count: 5,
-          vectorDim: 0,
-          vectorizeService: null,
-        },
-      ]}
-      collectionFields={{ orders: ["customer_id", "total_spend"] }}
-      conversations={[]}
-      activeConversationId="conv-1"
-      messages={[]}
-      onMessagesUpdate={vi.fn()}
-      astraToken=""
-      astraEndpoint=""
-      keyspace="default_keyspace"
-      huggingfaceApiKey=""
-      initializing={false}
-      isConnected={true}
-      {...overrides}
-    />
+    <ConnectionProvider value={{ ...defaultConnection, ...connectionOverrides }}>
+      <PlaygroundMainPanel
+        viewMode="chat"
+        onViewModeChange={onViewModeChange}
+        conversations={[]}
+        activeConversationId="conv-1"
+        messages={[]}
+        onMessagesUpdate={vi.fn()}
+        {...overrides}
+      />
+    </ConnectionProvider>
   );
 
   return { ...utils, onViewModeChange };

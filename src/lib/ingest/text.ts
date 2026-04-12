@@ -197,16 +197,16 @@ export async function parseDocumentUpload(
     formData.get("nameConflictAction") as string | null
   );
 
+  if (metadataRaw.length > MAX_METADATA_BYTES) {
+    throw new Error(
+      `Metadata payload exceeds ${MAX_METADATA_BYTES.toLocaleString()} bytes`
+    );
+  }
   let metadata: Record<string, unknown> = {};
   try {
     metadata = JSON.parse(metadataRaw);
   } catch {
     // Ignore malformed optional metadata payloads.
-  }
-  if (metadataRaw.length > MAX_METADATA_BYTES) {
-    throw new Error(
-      `Metadata payload exceeds ${MAX_METADATA_BYTES.toLocaleString()} bytes`
-    );
   }
 
   const filename = file.name;
