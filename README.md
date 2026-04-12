@@ -161,6 +161,21 @@ src/
     validation/
 ```
 
+## Rate Limiting
+
+`POST /api/chat` is rate-limited to 20 requests per 60-second sliding window per client IP. The rate limiter runs in-process memory and resets on server restart. For production deployments behind a reverse proxy, ensure `X-Forwarded-For` is set by a trusted layer.
+
+## Demo Mode
+
+When no Astra DB credentials are configured (neither via environment variables nor the Connect dialog), the app runs in **demo mode**:
+
+- Chat responses use only the AI backend with no database search
+- Document ingest creates local metadata records in SQLite but does not write to Astra
+- The document library, raw collection browser, and conversation history remain fully functional
+- The API Explorer shows generated request/response shapes without executing live calls
+
+Demo mode is useful for exploring the UI, testing AI backends, and understanding the pipeline before connecting to a live database.
+
 ## Notes
 
 - `POST /api/chat` streams `prepare`, `analyze`, `embed`, `search`, and `respond` events.
@@ -168,6 +183,7 @@ src/
 - If a Hugging Face key is present but invalid, the app returns the provider error and does not auto-fallback to Ollama.
 - If Ollama is selected and a required model is missing, the app pulls it on demand and shows download progress in the UI.
 - General API requests are capped at 10 MB, while ingest routes are allowed up to 50 MB.
+- Auth sessions expire after 12 hours.
 
 ## Scripts
 

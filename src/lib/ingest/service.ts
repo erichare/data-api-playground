@@ -220,7 +220,7 @@ export function streamDocumentIngest(args: {
     nameConflictAction,
   } = args;
 
-  const md5Hash = createHash("md5").update(buffer).digest("hex");
+  const md5Hash = createHash("sha256").update(buffer).digest("hex");
   const fileSize = buffer.length;
   const sourceDocId = randomUUID();
   const ingestedAt = new Date().toISOString();

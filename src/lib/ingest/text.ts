@@ -209,7 +209,11 @@ export async function parseDocumentUpload(
     // Ignore malformed optional metadata payloads.
   }
 
-  const filename = file.name;
+  const rawFilename = file.name;
+  const filename = rawFilename
+    .replace(/.*[/\\]/, "")
+    .replace(/[^a-zA-Z0-9._\-\s]/g, "_")
+    .slice(0, 255) || "upload";
   const ext = filename.split(".").pop()?.toLowerCase() ?? "txt";
   const fileType = [
     "pdf",

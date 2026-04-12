@@ -23,16 +23,22 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
     .prepare("SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC LIMIT 500")
     .all(id) as MsgRow[];
 
-  const messages = rows.map((r) => ({
-    id: r.id,
-    role: r.role,
-    content: r.content,
-    timestamp: r.timestamp,
-    searchMode: r.search_mode ?? undefined,
-    latencyMs: r.latency_ms ?? undefined,
-    pipelineSteps: r.pipeline_steps ? JSON.parse(r.pipeline_steps) : undefined,
-    sources: r.sources ? JSON.parse(r.sources) : undefined,
-  }));
+  const messages = rows.map((r) => {
+    let pipelineSteps: unknown;
+    let sources: unknown;
+    try { pipelineSteps = r.pipeline_steps ? JSON.parse(r.pipeline_steps) : undefined; } catch { pipelineSteps = undefined; }
+    try { sources = r.sources ? JSON.parse(r.sources) : undefined; } catch { sources = undefined; }
+    return {
+      id: r.id,
+      role: r.role,
+      content: r.content,
+      timestamp: r.timestamp,
+      searchMode: r.search_mode ?? undefined,
+      latencyMs: r.latency_ms ?? undefined,
+      pipelineSteps,
+      sources,
+    };
+  });
 
   return NextResponse.json({ messages });
 }

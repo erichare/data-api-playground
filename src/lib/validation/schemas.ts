@@ -114,9 +114,10 @@ export const chatBodySchema = astraConnectionSchema.extend({
     .array(
       z.object({
         role: z.enum(["user", "assistant"]),
-        content: z.string(),
+        content: z.string().max(50000),
       })
     )
+    .max(100)
     .optional(),
   huggingfaceApiKey: z.string().optional(),
 });

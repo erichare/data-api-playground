@@ -53,15 +53,29 @@ export function resolveAstraConnection(
   return { token, endpoint, keyspace };
 }
 
+const CLIENT_CACHE_TTL_MS = 5 * 60 * 1000;
+const clientCache = new Map<string, { client: DataAPIClient; createdAt: number }>();
+
+function getOrCreateClient(token: string): DataAPIClient {
+  const cached = clientCache.get(token);
+  if (cached && Date.now() - cached.createdAt < CLIENT_CACHE_TTL_MS) {
+    return cached.client;
+  }
+  const client = new DataAPIClient(token);
+  clientCache.set(token, { client, createdAt: Date.now() });
+  return client;
+}
+
 /**
  * Create an Astra DB database handle from a token and endpoint.
  * Pass an optional keyspace to target a non-default namespace.
+ * Clients are cached per token with a 5-minute TTL.
  */
 export function getAstraDb(token: string, endpoint: string, keyspace?: string) {
   const normalizedEndpoint = normalizeAstraEndpoint(endpoint);
   if (!isAllowedAstraEndpoint(normalizedEndpoint)) {
     throw new Error("Invalid Astra DB endpoint");
   }
-  const client = new DataAPIClient(token);
+  const client = getOrCreateClient(token);
   return keyspace ? client.db(normalizedEndpoint, { keyspace }) : client.db(normalizedEndpoint);
 }

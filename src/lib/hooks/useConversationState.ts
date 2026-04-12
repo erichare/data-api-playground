@@ -119,8 +119,7 @@ export function useConversationState({
     setConversations((prev) => prev.filter((c) => c.id !== id));
 
     if (isActive) {
-      // Read remaining conversations after the filter
-      const remaining = conversations.filter((c) => c.id !== id);
+      const remaining = conversationsRef.current.filter((c) => c.id !== id);
       const next = remaining[0];
       if (next) {
         setActiveConversationId(next.id);
@@ -147,7 +146,7 @@ export function useConversationState({
     } catch {
       // Best-effort server deletion — local removal already applied above.
     }
-  }, [conversations, loadConversationMessages]);
+  }, [loadConversationMessages]);
 
   const handleMessagesUpdate = useCallback((updated: Message[]) => {
     const convId = activeConvIdRef.current;

@@ -1,4 +1,4 @@
-import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
+import { getAstraDb, resolveAstraConnection, SYSTEM_FIELDS } from "@/lib/astra";
 import {
   buildTsCall,
   formatTsMethodCall,
@@ -63,6 +63,130 @@ export function listIngestedDocuments(collection?: string): IngestedDocumentSumm
     collection: row.collection,
     ingested_at: row.ingested_at,
   }));
+}
+
+const CONNECT_METADATA_SAMPLE_LIMIT = 12;
+const CONNECT_METADATA_CONCURRENCY = 4;
+const CONNECT_FIELD_SAMPLE_SIZE = 1;
+
+interface CollectionMetadata {
+  count: number | null;
+  fields: string[];
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex]);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, () => worker())
+  );
+
+  return results;
+}
+
+export async function fetchCollectionMetadata(args: {
+  token: string;
+  endpoint: string;
+  keyspace?: string;
+}): Promise<{ collections: Collection[]; fields: Record<string, string[]> }> {
+  const { token, endpoint, keyspace } = args;
+  const db = getAstraDb(token, endpoint, keyspace);
+
+  recordAstraClientCall({
+    label: "Connect to Astra",
+    code: buildTsCall("db", [
+      formatTsMethodCall("listCollections", [{ nameOnly: false }]),
+    ]),
+  });
+  const colls = await db.listCollections({ nameOnly: false });
+
+  const collections: Collection[] = colls.map((c) => {
+    const vectorDef = c.definition?.vector;
+    const svc = vectorDef?.service;
+    return {
+      name: c.name,
+      vectorDim: vectorDef?.dimension ?? null,
+      vectorizeService: svc
+        ? { provider: svc.provider, modelName: svc.modelName }
+        : null,
+      count: null,
+    };
+  });
+
+  const sampledCollectionNames = collections
+    .filter((collection) => !collection.name.startsWith("dap_"))
+    .slice(0, CONNECT_METADATA_SAMPLE_LIMIT)
+    .map((collection) => collection.name);
+
+  const fields: Record<string, string[]> = {};
+  const sampledMetadata = await mapWithConcurrency(
+    sampledCollectionNames,
+    CONNECT_METADATA_CONCURRENCY,
+    async (collectionName): Promise<[string, CollectionMetadata]> => {
+      const collectionRef = db.collection(collectionName);
+      let count: number | null = null;
+
+      try {
+        recordAstraClientCall({
+          label: "Collection Estimated Count",
+          code: buildTsCall(`db.collection(${JSON.stringify(collectionName)})`, [
+            formatTsMethodCall("estimatedDocumentCount", []),
+          ]),
+        });
+        count = await collectionRef.estimatedDocumentCount();
+      } catch {
+        // Leave count as null when the count query is unsupported or slow.
+      }
+
+      const fieldSet = new Set<string>();
+      try {
+        recordAstraClientCall({
+          label: "Sample Collection Fields",
+          code: buildTsCall(`db.collection(${JSON.stringify(collectionName)})`, [
+            formatTsMethodCall("find", [{}, { limit: CONNECT_FIELD_SAMPLE_SIZE }]),
+            ".toArray()",
+          ]),
+        });
+        const sample = await collectionRef
+          .find({}, { limit: CONNECT_FIELD_SAMPLE_SIZE })
+          .toArray();
+        for (const doc of sample) {
+          for (const key of Object.keys(doc)) {
+            if (!SYSTEM_FIELDS.has(key)) fieldSet.add(key);
+          }
+        }
+      } catch {
+        // Field sampling is best-effort.
+      }
+
+      return [collectionName, { count, fields: Array.from(fieldSet) }];
+    }
+  );
+
+  const metadataByCollection = new Map(sampledMetadata);
+  for (const collection of collections) {
+    const metadata = metadataByCollection.get(collection.name);
+    if (!metadata) continue;
+    collection.count = metadata.count;
+    if (metadata.fields.length > 0) {
+      fields[collection.name] = metadata.fields;
+    }
+  }
+
+  return { collections, fields };
 }
 
 export async function createCollectionInAstra(

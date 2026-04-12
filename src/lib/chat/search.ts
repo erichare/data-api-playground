@@ -7,6 +7,53 @@ import { getAstraDb, SYSTEM_FIELDS } from "@/lib/astra";
 import { recordAstraClientCall } from "@/lib/astraClientLog";
 import type { ChatCollectionInfo, SearchResult } from "@/lib/chat/types";
 
+const ALLOWED_FILTER_OPS = new Set([
+  "$eq", "$ne", "$lt", "$lte", "$gt", "$gte", "$in", "$nin", "$exists",
+]);
+
+const SAFE_FIELD_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_.]*$/;
+
+function sanitizeFilterOp(op: string | null): string | null {
+  if (!op) return null;
+  return ALLOWED_FILTER_OPS.has(op) ? op : null;
+}
+
+function sanitizeFilterField(field: string | null): string | null {
+  if (!field) return null;
+  if (field.startsWith("$")) return null;
+  if (!SAFE_FIELD_NAME_RE.test(field)) return null;
+  return field;
+}
+
+const SEARCH_FAN_OUT_CONCURRENCY = 4;
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      try {
+        results[currentIndex] = { status: "fulfilled", value: await mapper(items[currentIndex]) };
+      } catch (reason) {
+        results[currentIndex] = { status: "rejected", reason };
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, () => worker())
+  );
+
+  return results;
+}
+
 export interface EmbedResult {
   embeddingVector: number[];
   vectorPreview: number[];
@@ -158,16 +205,18 @@ export async function searchCollections(args: {
   }
 
   const db = getAstraDb(token, endpoint, keyspace);
+  const safeFilterField = sanitizeFilterField(filterField);
+  const safeFilterOp = sanitizeFilterOp(filterOp);
   const buildFilterClause = () => {
-    if (!filterField || filterValue == null) return {};
-    if (filterOp === "$eq" || !filterOp) return { [filterField]: filterValue };
-    return { [filterField]: { [filterOp]: filterValue } };
+    if (!safeFilterField || filterValue == null) return {};
+    if (safeFilterOp === "$eq" || !safeFilterOp) return { [safeFilterField]: filterValue };
+    return { [safeFilterField]: { [safeFilterOp]: filterValue } };
   };
   const filterClause = buildFilterClause();
-  const filterStr = filterField
-    ? !filterOp || filterOp === "$eq"
-      ? `{ ${filterField}: ${JSON.stringify(filterValue)} }`
-      : `{ ${filterField}: { ${filterOp}: ${JSON.stringify(filterValue)} } }`
+  const filterStr = safeFilterField
+    ? !safeFilterOp || safeFilterOp === "$eq"
+      ? `{ ${safeFilterField}: ${JSON.stringify(filterValue)} }`
+      : `{ ${safeFilterField}: { ${safeFilterOp}: ${JSON.stringify(filterValue)} } }`
     : "{}";
 
   const executeSearch = async (
@@ -343,15 +392,16 @@ export async function searchCollections(args: {
         isVec: collections?.find((collectionInfo) => collectionInfo.name === name)
           ?.isVectorize ?? false,
       }));
-      const fanResults = await Promise.allSettled(
-        fanTargets.map(({ name, isVec }) =>
+      const fanResults = await mapWithConcurrency(
+        fanTargets,
+        SEARCH_FAN_OUT_CONCURRENCY,
+        ({ name, isVec }) =>
           executeSearch(
             name,
             isVec,
             hasFilter ? filterClause : {},
             hasFilter ? filterStr : "{}"
           )
-        )
       );
       const fanBest = fanResults
         .flatMap((result) =>
@@ -370,15 +420,16 @@ export async function searchCollections(args: {
       }
     }
   } else {
-    const fanResults = await Promise.allSettled(
-      collectionsToSearch.map(({ name, isVec }) =>
+    const fanResults = await mapWithConcurrency(
+      collectionsToSearch,
+      SEARCH_FAN_OUT_CONCURRENCY,
+      ({ name, isVec }) =>
         executeSearch(
           name,
           isVec,
           hasFilter ? filterClause : {},
           hasFilter ? filterStr : "{}"
         )
-      )
     );
     searchResults = fanResults
       .flatMap((result) =>

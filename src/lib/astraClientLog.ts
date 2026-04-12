@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 export interface AstraClientCallEntry {
   id: string;
   label: string;
@@ -11,14 +13,30 @@ interface RawTsSnippet {
 }
 
 const MAX_ASTRA_CLIENT_CALL_ENTRIES = 200;
-const astraClientCallEntries: AstraClientCallEntry[] = [];
+
+/** Shared fallback log used outside a request scope. */
+const globalEntries: AstraClientCallEntry[] = [];
+
+const requestLogStorage = new AsyncLocalStorage<AstraClientCallEntry[]>();
+
+function getEntries(): AstraClientCallEntry[] {
+  return requestLogStorage.getStore() ?? globalEntries;
+}
+
+/**
+ * Run `fn` with a request-scoped client-call log.
+ * Entries recorded inside `fn` are isolated from other concurrent requests.
+ */
+export function withRequestLog<T>(fn: () => T): T {
+  return requestLogStorage.run([], fn);
+}
 
 export function listAstraClientCalls(limit = 60): AstraClientCallEntry[] {
-  return astraClientCallEntries.slice(0, limit);
+  return getEntries().slice(0, limit);
 }
 
 export function clearAstraClientCalls() {
-  astraClientCallEntries.length = 0;
+  getEntries().length = 0;
 }
 
 export function recordAstraClientCall(input: {
@@ -26,15 +44,16 @@ export function recordAstraClientCall(input: {
   code: string;
   timestamp?: string;
 }) {
-  astraClientCallEntries.unshift({
+  const entries = getEntries();
+  entries.unshift({
     id: crypto.randomUUID(),
     label: input.label,
     code: input.code,
     timestamp: input.timestamp ?? new Date().toISOString(),
   });
 
-  if (astraClientCallEntries.length > MAX_ASTRA_CLIENT_CALL_ENTRIES) {
-    astraClientCallEntries.length = MAX_ASTRA_CLIENT_CALL_ENTRIES;
+  if (entries.length > MAX_ASTRA_CLIENT_CALL_ENTRIES) {
+    entries.length = MAX_ASTRA_CLIENT_CALL_ENTRIES;
   }
 }
 

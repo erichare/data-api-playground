@@ -121,6 +121,10 @@ Core flows:
 - best-effort counts and sampled field names are fetched for up to 12 non-internal collections
 - additional collections return base metadata only so large keyspaces do not turn connect into an unbounded fan-out
 
+## Rate Limiting
+
+`POST /api/chat` enforces a per-IP rate limit of 20 requests per 60-second sliding window. The limiter is in-process memory (not shared across workers or restarts). Client IP is resolved from `X-Forwarded-For` when present, falling back to a header fingerprint. See `src/lib/rate-limit.ts`.
+
 ## Chat Pipeline
 
 `POST /api/chat` streams newline-delimited JSON events.
