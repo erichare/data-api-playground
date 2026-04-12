@@ -14,6 +14,7 @@ import {
   recordAstraClientCall,
 } from "@/lib/astraClientLog";
 import { getDb } from "@/lib/db";
+import { logInfo } from "@/lib/server/log";
 import type { Collection, IngestedDocumentSummary } from "@/lib/types";
 
 type CollectionConnectionArgs = {
@@ -153,7 +154,11 @@ export async function fetchCollectionMetadata(args: {
         });
         count = await collectionRef.estimatedDocumentCount();
       } catch (err) {
-        console.warn(`[connect] estimatedDocumentCount failed for "${collectionName}":`, err instanceof Error ? err.message : err);
+        logInfo(
+          { requestId: "", route: "/api/connect", method: "POST" },
+          "connect.estimatedDocumentCount.failed",
+          { collection: collectionName, error: err instanceof Error ? err.message : String(err) }
+        );
       }
 
       const fieldSet = new Set<string>();
@@ -174,7 +179,11 @@ export async function fetchCollectionMetadata(args: {
           }
         }
       } catch (err) {
-        console.warn(`[connect] field sampling failed for "${collectionName}":`, err instanceof Error ? err.message : err);
+        logInfo(
+          { requestId: "", route: "/api/connect", method: "POST" },
+          "connect.fieldSampling.failed",
+          { collection: collectionName, error: err instanceof Error ? err.message : String(err) }
+        );
       }
 
       return [collectionName, { count, fields: Array.from(fieldSet) }];
