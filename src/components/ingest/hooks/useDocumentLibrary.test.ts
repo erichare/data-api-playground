@@ -352,6 +352,28 @@ describe("useDocumentLibrary", () => {
       );
       expect(result.current.deletingId).toBeNull();
     });
+
+    it("uses a generic delete error message for non-Error failures", async () => {
+      const docs = [makeDoc("doc-1"), makeDoc("doc-2")];
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ documents: docs }),
+        } as unknown as Response)
+        .mockRejectedValueOnce("unexpected delete failure");
+
+      const { result } = renderHook(() => useDocumentLibrary(defaultArgs));
+
+      await waitFor(() => expect(result.current.loadingDocs).toBe(false));
+
+      await act(async () => {
+        await result.current.handleDelete(docs[0]);
+      });
+
+      expect(result.current.documents).toHaveLength(2);
+      expect(result.current.loadError).toBe("Failed to delete document");
+      expect(result.current.deletingId).toBeNull();
+    });
   });
 
   describe("prependDocument", () => {

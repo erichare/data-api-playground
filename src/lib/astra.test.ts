@@ -30,6 +30,7 @@ describe("astra helpers", () => {
   const originalEndpoint = process.env.ASTRA_DB_API_ENDPOINT;
 
   beforeEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
     clearClientCache();
     delete process.env.ASTRA_DB_APPLICATION_TOKEN;
@@ -42,6 +43,8 @@ describe("astra helpers", () => {
 
     if (originalEndpoint === undefined) delete process.env.ASTRA_DB_API_ENDPOINT;
     else process.env.ASTRA_DB_API_ENDPOINT = originalEndpoint;
+
+    vi.useRealTimers();
   });
 
   it("normalizes endpoints and validates Astra host allow-lists", () => {
@@ -119,6 +122,41 @@ describe("astra helpers", () => {
 
     expect(dataApiClientCtorMock).toHaveBeenCalledTimes(1);
     expect(dataApiClientCtorMock).toHaveBeenCalledWith("AstraCS:token-a");
+  });
+
+  it("evicts expired cached clients when the cache is full", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+
+    for (let index = 0; index < 50; index += 1) {
+      getAstraDb(
+        `AstraCS:token-${index}`,
+        "https://db.apps.astra.datastax.com"
+      );
+    }
+
+    expect(dataApiClientCtorMock).toHaveBeenCalledTimes(50);
+
+    vi.setSystemTime(new Date("2026-01-01T00:06:00Z"));
+
+    getAstraDb("AstraCS:token-50", "https://db.apps.astra.datastax.com");
+    getAstraDb("AstraCS:token-0", "https://db.apps.astra.datastax.com");
+
+    expect(dataApiClientCtorMock).toHaveBeenCalledTimes(52);
+  });
+
+  it("drops the oldest live cached client when the cache stays at capacity", () => {
+    for (let index = 0; index < 50; index += 1) {
+      getAstraDb(
+        `AstraCS:token-${index}`,
+        "https://db.apps.astra.datastax.com"
+      );
+    }
+
+    getAstraDb("AstraCS:token-50", "https://db.apps.astra.datastax.com");
+    getAstraDb("AstraCS:token-0", "https://db.apps.astra.datastax.com");
+
+    expect(dataApiClientCtorMock).toHaveBeenCalledTimes(52);
   });
 
   it("creates separate clients for different tokens", () => {

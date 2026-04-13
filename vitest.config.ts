@@ -13,7 +13,7 @@ export default defineConfig({
     exclude: ["tests/e2e/**"],
     coverage: {
       provider: "v8",
-      reporter: ["text", "html", "lcov"],
+      reporter: ["text", "html", "lcov", "json-summary"],
       reportOnFailure: true,
       skipFull: true,
       include: ["src/**/*.{ts,tsx}"],

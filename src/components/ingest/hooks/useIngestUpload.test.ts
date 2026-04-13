@@ -316,6 +316,51 @@ describe("useIngestUpload", () => {
       expect(defaultArgs.replaceDocumentsByIds).not.toHaveBeenCalled();
     });
 
+    it("falls back to default stream values when numeric metadata is missing", async () => {
+      const file = makeFile("defaults.pdf");
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      const encoder = new TextEncoder();
+      const events = [
+        JSON.stringify({ type: "chunked" }),
+        JSON.stringify({ type: "chunk_progress" }),
+        JSON.stringify({ type: "complete" }),
+      ].join("\n") + "\n";
+
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(events));
+          controller.close();
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        body: stream,
+      } as unknown as Response);
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(result.current.fileStatuses.get("defaults.pdf__1024")).toEqual({
+        stage: "done",
+        chunks: 0,
+      });
+      expect(defaultArgs.prependDocument).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source_doc_id: "",
+          source_filename: "defaults.pdf",
+          chunk_total: 0,
+          content_hash: "",
+        })
+      );
+    });
+
     it("replaces existing document rows when the server reports an overwrite", async () => {
       const file = makeFile("report.pdf");
       const { result } = renderHook(() => useIngestUpload(defaultArgs));
@@ -393,6 +438,37 @@ describe("useIngestUpload", () => {
       expect(result.current.fileStatuses.get("bad.pdf__1024")).toEqual({
         stage: "error",
         message: "Parse failed",
+      });
+    });
+
+    it("uses a fallback stream error message when the event omits one", async () => {
+      const file = makeFile("bad-default.pdf");
+      const { result } = renderHook(() => useIngestUpload(defaultArgs));
+
+      act(() => {
+        result.current.addFiles([file]);
+      });
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(JSON.stringify({ type: "error" }) + "\n"));
+          controller.close();
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        body: stream,
+      } as unknown as Response);
+
+      await act(async () => {
+        await result.current.handleIngest();
+      });
+
+      expect(result.current.fileStatuses.get("bad-default.pdf__1024")).toEqual({
+        stage: "error",
+        message: "Ingest failed",
       });
     });
 
