@@ -95,7 +95,7 @@ export async function generateResponse(args: {
         ? `User asked: "${query}"\n\n${collectionsSummary}\n\nAnswer using only the information above.`
         : isReformatFollowUp
           ? `The user is asking a follow-up or requesting a different format: "${query}"\n\nReformat or continue your previous response accordingly. Do not search the database again.`
-          : query;
+          : `User asked: "${query}"\n\nNo database search was performed and no data is available to answer this question. Do NOT fabricate, guess, or infer what data might be in any collection. If the question is about collection contents, tell the user the data could not be retrieved and suggest they try asking again or verify their collection has data.${activeFields.length > 0 ? ` The known fields in this collection are: ${activeFields.join(", ")}.` : ""}`;
 
   const messages = [
     { role: "system", content: systemPrompt } as const,

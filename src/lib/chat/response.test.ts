@@ -330,7 +330,7 @@ describe("chat response helpers", () => {
     expect(systemMessage.content).not.toContain("rating");
   });
 
-  it("falls back to the raw query string when skipSearch is true, allCollections is false, and there is no history", async () => {
+  it("includes grounding instructions in fallback when skipSearch is true, allCollections is false, and there is no history", async () => {
     generateTextMock.mockResolvedValueOnce({
       content: "Plain answer.",
       provider: "huggingface",
@@ -356,6 +356,12 @@ describe("chat response helpers", () => {
       (m: { role: string; content: string }) => m.role === "user"
     );
 
-    expect(userMessage.content).toBe("Just a plain question");
+    // Must contain the original query
+    expect(userMessage.content).toContain("Just a plain question");
+    // Must include grounding instructions to prevent hallucination
+    expect(userMessage.content).toContain("No database search was performed");
+    expect(userMessage.content).toContain("Do NOT fabricate, guess, or infer");
+    // Must mention known fields when available
+    expect(userMessage.content).toContain("total_spend");
   });
 });
