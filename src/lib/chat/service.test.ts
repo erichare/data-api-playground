@@ -681,6 +681,77 @@ describe("runChatWorkflow", () => {
     );
   });
 
+  it("detects non-existent collection reference even when LLM picks a valid collection", async () => {
+    // LLM is smart and picks "orders" (a real collection) even though user said "Lettuce"
+    generateTextMock.mockResolvedValueOnce({
+      content: JSON.stringify({
+        collection: "orders",
+        searchMode: "hybrid",
+        intent: "Find data in collection",
+        limit: 5,
+      }),
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
+
+    const send = vi.fn();
+    const { runChatWorkflow } = await import("./service");
+    await runChatWorkflow({
+      payload: {
+        query: "What's in my Lettuce collection?",
+        searchMode: "hybrid",
+        activeCollection: "orders",
+        collections: [{ name: "orders", isVectorize: false }],
+        allCollectionFields: { orders: ["amount"] },
+        history: [],
+      },
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      backend: huggingFaceBackend,
+      send,
+    });
+
+    // Heuristic detects "Lettuce" is not a real collection
+    expect(send).toHaveBeenCalledWith({ step: "embed", status: "skipped" });
+    expect(send).toHaveBeenCalledWith({ step: "search", status: "skipped" });
+    expect(embedQueryMock).not.toHaveBeenCalled();
+    expect(searchCollectionsMock).not.toHaveBeenCalled();
+    expect(generateResponseMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedCollectionMissing: "Lettuce",
+        skipSearch: true,
+      })
+    );
+  });
+
+  it("does NOT flag collection as missing when user references an existing collection", async () => {
+    const send = vi.fn();
+    const { runChatWorkflow } = await import("./service");
+    await runChatWorkflow({
+      payload: {
+        query: "What's in my orders collection?",
+        searchMode: "hybrid",
+        activeCollection: "orders",
+        collections: [{ name: "orders", isVectorize: false }],
+        allCollectionFields: { orders: ["amount"] },
+        history: [],
+      },
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      backend: huggingFaceBackend,
+      send,
+    });
+
+    // Search should NOT be skipped — "orders" exists
+    expect(embedQueryMock).toHaveBeenCalled();
+    expect(searchCollectionsMock).toHaveBeenCalled();
+    expect(generateResponseMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedCollectionMissing: undefined,
+      })
+    );
+  });
+
   it("uses dap_-prefixed active collection fallback to first user collection", async () => {
     generateTextMock.mockResolvedValueOnce({
       content: JSON.stringify({

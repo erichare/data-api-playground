@@ -222,6 +222,55 @@ const REFORMAT_RE =
 const SHORT_FOLLOW_UP_RE =
   /^(and\s+)?(in\s+)?(a\s+)?(table|bullet|list|json|csv|markdown|numbered|sorted)(\s+format)?[?.]?$/i;
 
+/**
+ * Words that commonly precede "collection" but are NOT collection names.
+ * Used by `detectMissingCollectionReference` to avoid false positives.
+ */
+const COLLECTION_STOP_WORDS = new Set([
+  "a", "an", "any", "another", "active", "all", "available", "current",
+  "default", "each", "entire", "every", "first", "last", "my", "new",
+  "no", "one", "other", "our", "same", "selected", "some", "that",
+  "the", "their", "this", "what", "which", "whole", "your",
+]);
+
+/**
+ * Detect when the user's query explicitly references a collection by name
+ * that doesn't exist in their known collection list.
+ *
+ * Returns the referenced name if it's missing, or `undefined` if the query
+ * doesn't reference a non-existent collection.
+ */
+function detectMissingCollectionReference(
+  query: string,
+  knownCollections: string[]
+): string | undefined {
+  const knownLower = new Set(knownCollections.map((n) => n.toLowerCase()));
+
+  // "my X collection", "the X collection", "X collection"
+  const beforeCollectionMatch = query.match(
+    /\b(\w+)\s+collection\b/i
+  );
+  if (beforeCollectionMatch?.[1]) {
+    const name = beforeCollectionMatch[1];
+    if (
+      !COLLECTION_STOP_WORDS.has(name.toLowerCase()) &&
+      !knownLower.has(name.toLowerCase())
+    ) {
+      return name;
+    }
+  }
+
+  // "collection called X", "collection named X"
+  const namedMatch = query.match(
+    /\bcollection\s+(?:called|named)\s+["']?(\w+)["']?/i
+  );
+  if (namedMatch?.[1] && !knownLower.has(namedMatch[1].toLowerCase())) {
+    return namedMatch[1];
+  }
+
+  return undefined;
+}
+
 function applyRegexFallbacks(args: {
   query: string;
   hasHistory: boolean;
@@ -382,6 +431,20 @@ async function analyzeChatRequest({
   });
   allCollections = regexOverrides.allCollections;
   skipSearch = regexOverrides.skipSearch;
+
+  // Detect when the user explicitly names a collection that doesn't exist.
+  // The LLM analyzer may silently pick a valid collection from the list,
+  // so this heuristic catches the mismatch deterministically.
+  if (!requestedCollectionMissing && collectionNames.length > 0) {
+    const missingRef = detectMissingCollectionReference(
+      payload.query,
+      userCollections
+    );
+    if (missingRef) {
+      requestedCollectionMissing = missingRef;
+      skipSearch = true;
+    }
+  }
 
   if (allCollections) {
     intent = `Overview across all collections: ${userCollections.join(", ")}`;
