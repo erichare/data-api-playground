@@ -130,13 +130,18 @@ describe("ingest service", () => {
       },
     ]);
 
-    const XLSX = await import("xlsx");
-    const workbook = XLSX.utils.book_new();
-    const sheet = XLSX.utils.json_to_sheet([
-      { name: "Ada", city: "London" },
-      { name: "Grace", city: "New York" },
-    ]);
-    XLSX.utils.book_append_sheet(workbook, sheet, "People");
+    const writeXlsxFile = (await import("write-excel-file/node")).default;
+    const workbook = await writeXlsxFile(
+      [
+        ["name", "city"],
+        ["Ada", "London"],
+        ["Grace", "New York"],
+      ],
+      {
+        buffer: true,
+        sheet: "People",
+      }
+    );
 
     const { streamDocumentIngest } = await import("./service");
     const response = new Response(
@@ -149,7 +154,7 @@ describe("ingest service", () => {
         keyspace: "ks1",
         chunkSize: 800,
         metadata: {},
-        buffer: XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }),
+        buffer: workbook,
       })
     );
 

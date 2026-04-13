@@ -13,15 +13,50 @@ import type {
   ParsedDocumentUpload,
 } from "@/lib/ingest/types";
 
-function isTabularFileType(fileType: string): fileType is "csv" | "xlsx" {
-  return fileType === "csv" || fileType === "xlsx";
-}
-
 function stringifyCellValue(value: unknown): string {
   if (value instanceof Date) return value.toISOString();
   if (value === null || value === undefined) return "";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+function isTabularRowEmpty(row: readonly unknown[]): boolean {
+  return row.every((cell) => stringifyCellValue(cell).trim().length === 0);
+}
+
+function buildTabularHeaders(headerRow: readonly unknown[]): string[] {
+  let emptyHeaderCount = 0;
+
+  return headerRow.map((cell) => {
+    const header = stringifyCellValue(cell);
+    if (header.trim().length > 0) {
+      return header;
+    }
+
+    const fallback =
+      emptyHeaderCount === 0 ? "__EMPTY" : `__EMPTY_${emptyHeaderCount}`;
+    emptyHeaderCount += 1;
+    return fallback;
+  });
+}
+
+function rowsToTabularObjects(
+  rows: readonly (readonly unknown[])[]
+): Record<string, unknown>[] {
+  const [headerRow, ...dataRows] = rows;
+  if (!headerRow) {
+    return [];
+  }
+
+  const headers = buildTabularHeaders(headerRow);
+
+  return dataRows
+    .filter((row) => !isTabularRowEmpty(row))
+    .map((row) =>
+      Object.fromEntries(
+        headers.map((header, index) => [header, row[index] ?? ""])
+      )
+    );
 }
 
 export function serializeTabularRow(
@@ -39,38 +74,42 @@ export function serializeTabularRow(
   return parts.join("; ");
 }
 
-export async function extractTabularRowChunks(
-  buffer: Buffer,
-  fileType: string
-): Promise<string[] | null> {
-  if (!isTabularFileType(fileType)) {
-    return null;
-  }
-
+async function extractCsvRowChunks(buffer: Buffer): Promise<string[]> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const XLSX = require("xlsx") as typeof import("xlsx");
-  const workbook = XLSX.read(buffer, {
-    type: "buffer",
-    cellDates: true,
-    dense: true,
-  });
-  const includeSheetName = workbook.SheetNames.length > 1;
+  const { parse } = require("csv-parse/sync") as typeof import("csv-parse/sync");
+  const rows = parse(buffer, {
+    bom: true,
+    columns: true,
+    relax_column_count: true,
+    skip_empty_lines: true,
+    trim: false,
+  }) as Record<string, unknown>[];
+
+  return rows
+    .map((row) => serializeTabularRow(row))
+    .filter((content) => content.length > 0);
+}
+
+async function extractXlsxRowChunks(buffer: Buffer): Promise<string[]> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const readXlsxFile = require("read-excel-file/node")
+    .default as typeof import("read-excel-file/node").default;
+  const workbook = (await readXlsxFile(buffer, {
+    trim: false,
+  })) as Array<{
+    data: unknown[][];
+    sheet: string;
+  }>;
+  const includeSheetName = workbook.length > 1;
   const chunks: string[] = [];
 
-  for (const sheetName of workbook.SheetNames) {
-    const sheet = workbook.Sheets[sheetName];
-    if (!sheet) continue;
-
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-      defval: "",
-      raw: false,
-      blankrows: false,
-    });
+  for (const { data, sheet } of workbook) {
+    const rows = rowsToTabularObjects(data);
 
     for (const row of rows) {
       const content = serializeTabularRow(
         row,
-        includeSheetName ? sheetName : undefined
+        includeSheetName ? sheet : undefined
       );
       if (content.length > 0) {
         chunks.push(content);
@@ -79,6 +118,20 @@ export async function extractTabularRowChunks(
   }
 
   return chunks;
+}
+
+export async function extractTabularRowChunks(
+  buffer: Buffer,
+  fileType: string
+): Promise<string[] | null> {
+  switch (fileType) {
+    case "csv":
+      return extractCsvRowChunks(buffer);
+    case "xlsx":
+      return extractXlsxRowChunks(buffer);
+    default:
+      return null;
+  }
 }
 
 export function chunkText(

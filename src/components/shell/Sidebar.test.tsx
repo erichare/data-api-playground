@@ -106,6 +106,10 @@ describe("Sidebar", () => {
     );
 
     fireEvent.click(screen.getByTitle("Delete"));
+    expect(screen.getByText("Delete conversation?")).toBeTruthy();
+    expect(props.onDeleteConversation).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete conversation" }));
     expect(props.onDeleteConversation).toHaveBeenCalledWith("conv-1");
   });
 

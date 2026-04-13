@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DocumentLibraryPanel } from "./DocumentLibraryPanel";
 
@@ -149,6 +149,14 @@ describe("DocumentLibraryPanel", () => {
 
     fireEvent.mouseEnter(row);
     fireEvent.click(screen.getByTitle("Delete document"));
+    expect(screen.getByText("Delete document?")).toBeTruthy();
+    expect(onDelete).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Delete document",
+      })
+    );
     expect(onDelete).toHaveBeenCalledWith(baseDoc);
   });
 });

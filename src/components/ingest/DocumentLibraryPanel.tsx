@@ -16,6 +16,7 @@ import {
   formatBytes,
   formatDate,
 } from "@/components/ingest/ingestShared";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 interface DocumentLibraryPanelProps {
   filteredDocs: IngestedDocumentSummary[];
@@ -46,159 +47,193 @@ export function DocumentLibraryPanel({
   onView,
   isConnected,
 }: DocumentLibraryPanelProps) {
+  const [documentToDelete, setDocumentToDelete] =
+    useState<IngestedDocumentSummary | null>(null);
+
   return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-      <div
-        className="px-6 py-3 border-b flex items-center gap-3"
-        style={{
-          backgroundColor: "var(--bg-panel)",
-          borderColor: "var(--border-subtle)",
-        }}
-      >
-        <div className="flex-1">
-          <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
-            Document Library
-            <span
-              className="ml-2 px-1.5 py-0.5 rounded text-xs font-normal"
-              style={{
-                backgroundColor: "var(--bg-card)",
-                color: "var(--text-muted)",
-              }}
-            >
-              {filteredDocs.length}
-            </span>
-          </p>
-        </div>
-
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search files…"
-          className="rounded-lg px-3 py-1.5 text-xs outline-none"
+    <>
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div
+          className="px-6 py-3 border-b flex items-center gap-3"
           style={{
-            width: "180px",
-            backgroundColor: "var(--bg-card)",
-            border: "1px solid var(--border-subtle)",
-            color: "var(--text-primary)",
-          }}
-        />
-
-        <select
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value as IngestFileType | "all")}
-          className="rounded-lg px-2 py-1.5 text-xs outline-none"
-          style={{
-            backgroundColor: "var(--bg-card)",
-            border: "1px solid var(--border-subtle)",
-            color: "var(--text-primary)",
+            backgroundColor: "var(--bg-panel)",
+            borderColor: "var(--border-subtle)",
           }}
         >
-          <option value="all">All types</option>
-          <option value="pdf">PDF</option>
-          <option value="docx">DOCX</option>
-          <option value="md">Markdown</option>
-          <option value="txt">Text</option>
-          <option value="csv">CSV</option>
-          <option value="xlsx">XLSX</option>
-          <option value="json">JSON</option>
-        </select>
+          <div className="flex-1">
+            <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
+              Document Library
+              <span
+                className="ml-2 px-1.5 py-0.5 rounded text-xs font-normal"
+                style={{
+                  backgroundColor: "var(--bg-card)",
+                  color: "var(--text-muted)",
+                }}
+              >
+                {filteredDocs.length}
+              </span>
+            </p>
+          </div>
 
-        <button
-          onClick={() => void loadDocuments()}
-          disabled={loadingDocs}
-          style={{ color: "var(--text-muted)" }}
-          title="Refresh"
-        >
-          <RefreshCw size={13} className={loadingDocs ? "animate-spin" : ""} />
-        </button>
-      </div>
-
-      <div
-        className="px-6 py-2 grid gap-4 border-b"
-        style={{
-          gridTemplateColumns: "1fr 160px 80px 60px 90px 80px 36px",
-          borderColor: "var(--border-subtle)",
-          backgroundColor: "var(--bg-panel)",
-        }}
-      >
-        {["File", "Doc ID", "Type", "Chunks", "Size", "Ingested", ""].map(
-          (header) => (
-            <span
-              key={header}
-              className="text-xs font-medium"
-              style={{ color: "var(--text-muted)" }}
-            >
-              {header}
-            </span>
-          )
-        )}
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        {loadError && (
-          <div
-            className="mx-6 mt-4 rounded-lg px-3 py-2 text-xs"
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search files…"
+            className="rounded-lg px-3 py-1.5 text-xs outline-none"
             style={{
-              backgroundColor: "rgba(239,68,68,0.08)",
-              border: "1px solid rgba(239,68,68,0.2)",
-              color: "#fca5a5",
+              width: "180px",
+              backgroundColor: "var(--bg-card)",
+              border: "1px solid var(--border-subtle)",
+              color: "var(--text-primary)",
+            }}
+          />
+
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value as IngestFileType | "all")}
+            className="rounded-lg px-2 py-1.5 text-xs outline-none"
+            style={{
+              backgroundColor: "var(--bg-card)",
+              border: "1px solid var(--border-subtle)",
+              color: "var(--text-primary)",
             }}
           >
-            {loadError}
-          </div>
-        )}
-        {loadingDocs ? (
-          <div
-            className="flex items-center justify-center h-32 gap-2"
-            style={{ color: "var(--text-muted)" }}
-          >
-            <Loader2 size={14} className="animate-spin" />
-            <span className="text-xs">Loading documents…</span>
-          </div>
-        ) : filteredDocs.length === 0 ? (
-          <div
-            className="flex flex-col items-center justify-center h-48 gap-3"
-            style={{ color: "var(--text-muted)" }}
-          >
-            <FileText size={24} strokeWidth={1.5} />
-            <div className="text-center">
-              <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                No documents yet
-              </p>
-              <p className="text-xs mt-1">Upload a file to get started</p>
-            </div>
-          </div>
-        ) : (
-          <AnimatePresence initial={false}>
-            {filteredDocs.map((doc) => (
-              <DocumentRow
-                key={doc.source_doc_id}
-                doc={doc}
-                onDelete={onDelete}
-                onView={onView}
-                deleting={deletingId === doc.source_doc_id}
-              />
-            ))}
-          </AnimatePresence>
-        )}
-      </div>
+            <option value="all">All types</option>
+            <option value="pdf">PDF</option>
+            <option value="docx">DOCX</option>
+            <option value="md">Markdown</option>
+            <option value="txt">Text</option>
+            <option value="csv">CSV</option>
+            <option value="xlsx">XLSX</option>
+            <option value="json">JSON</option>
+          </select>
 
-      {!isConnected && (
+          <button
+            onClick={() => void loadDocuments()}
+            disabled={loadingDocs}
+            style={{ color: "var(--text-muted)" }}
+            title="Refresh"
+          >
+            <RefreshCw size={13} className={loadingDocs ? "animate-spin" : ""} />
+          </button>
+        </div>
+
         <div
-          className="px-6 py-2 border-t flex items-center gap-2"
+          className="px-6 py-2 grid gap-4 border-b"
           style={{
+            gridTemplateColumns: "1fr 160px 80px 60px 90px 80px 36px",
             borderColor: "var(--border-subtle)",
             backgroundColor: "var(--bg-panel)",
           }}
         >
-          <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#f97316" }} />
-          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-            Demo mode — connect to Astra DB to persist documents
-          </span>
+          {["File", "Doc ID", "Type", "Chunks", "Size", "Ingested", ""].map(
+            (header) => (
+              <span
+                key={header}
+                className="text-xs font-medium"
+                style={{ color: "var(--text-muted)" }}
+              >
+                {header}
+              </span>
+            )
+          )}
         </div>
-      )}
-    </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {loadError && (
+            <div
+              className="mx-6 mt-4 rounded-lg px-3 py-2 text-xs"
+              style={{
+                backgroundColor: "rgba(239,68,68,0.08)",
+                border: "1px solid rgba(239,68,68,0.2)",
+                color: "#fca5a5",
+              }}
+            >
+              {loadError}
+            </div>
+          )}
+          {loadingDocs ? (
+            <div
+              className="flex items-center justify-center h-32 gap-2"
+              style={{ color: "var(--text-muted)" }}
+            >
+              <Loader2 size={14} className="animate-spin" />
+              <span className="text-xs">Loading documents…</span>
+            </div>
+          ) : filteredDocs.length === 0 ? (
+            <div
+              className="flex flex-col items-center justify-center h-48 gap-3"
+              style={{ color: "var(--text-muted)" }}
+            >
+              <FileText size={24} strokeWidth={1.5} />
+              <div className="text-center">
+                <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                  No documents yet
+                </p>
+                <p className="text-xs mt-1">Upload a file to get started</p>
+              </div>
+            </div>
+          ) : (
+            <AnimatePresence initial={false}>
+              {filteredDocs.map((doc) => (
+                <DocumentRow
+                  key={doc.source_doc_id}
+                  doc={doc}
+                  onDelete={() => setDocumentToDelete(doc)}
+                  onView={onView}
+                  deleting={deletingId === doc.source_doc_id}
+                />
+              ))}
+            </AnimatePresence>
+          )}
+        </div>
+
+        {!isConnected && (
+          <div
+            className="px-6 py-2 border-t flex items-center gap-2"
+            style={{
+              borderColor: "var(--border-subtle)",
+              backgroundColor: "var(--bg-panel)",
+            }}
+          >
+            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#f97316" }} />
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+              Demo mode — connect to Astra DB to persist documents
+            </span>
+          </div>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={documentToDelete !== null}
+        title="Delete document?"
+        description={
+          documentToDelete
+            ? `This will remove "${documentToDelete.source_filename}".`
+            : ""
+        }
+        confirmLabel="Delete document"
+        confirming={
+          documentToDelete !== null &&
+          deletingId === documentToDelete.source_doc_id
+        }
+        onClose={() => {
+          if (
+            documentToDelete &&
+            deletingId === documentToDelete.source_doc_id
+          ) {
+            return;
+          }
+          setDocumentToDelete(null);
+        }}
+        onConfirm={() => {
+          if (!documentToDelete) return;
+          onDelete(documentToDelete);
+          setDocumentToDelete(null);
+        }}
+      />
+    </>
   );
 }
 
@@ -209,7 +244,7 @@ function DocumentRow({
   deleting,
 }: {
   doc: IngestedDocumentSummary;
-  onDelete: (doc: IngestedDocumentSummary) => void;
+  onDelete: () => void;
   onView: (doc: IngestedDocumentSummary) => void;
   deleting: boolean;
 }) {
@@ -286,7 +321,7 @@ function DocumentRow({
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
-              onClick={() => onDelete(doc)}
+              onClick={onDelete}
               disabled={deleting}
               className="p-1.5 rounded-md"
               style={{ backgroundColor: "#ef444420", color: "#ef4444" }}

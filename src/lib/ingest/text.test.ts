@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { chunkText, serializeTabularRow } from "./text";
+import {
+  chunkText,
+  extractTabularRowChunks,
+  serializeTabularRow,
+} from "./text";
 
 describe("chunkText", () => {
   it("splits long text by paragraph boundaries", () => {
@@ -109,5 +113,46 @@ describe("serializeTabularRow", () => {
     const result = serializeTabularRow(row, "Sheet1");
 
     expect(result).toBe("sheet: Sheet1; col1: value1");
+  });
+});
+
+describe("extractTabularRowChunks", () => {
+  it("parses quoted CSV rows and skips blank lines", async () => {
+    const chunks = await extractTabularRowChunks(
+      Buffer.from('name,city\n"Ada","New York, NY"\n,\n"Grace","Paris"\n'),
+      "csv"
+    );
+
+    expect(chunks).toEqual([
+      "name: Ada; city: New York, NY",
+      "name: Grace; city: Paris",
+    ]);
+  });
+
+  it("includes sheet names for multi-sheet XLSX uploads", async () => {
+    const writeXlsxFile = (await import("write-excel-file/node")).default;
+    const workbook = await writeXlsxFile(
+      [
+        [
+          ["name", "city"],
+          ["Ada", "London"],
+        ],
+        [
+          ["name", "city"],
+          ["Grace", "New York"],
+        ],
+      ],
+      {
+        buffer: true,
+        sheets: ["People", "Team"],
+      }
+    );
+
+    const chunks = await extractTabularRowChunks(workbook, "xlsx");
+
+    expect(chunks).toEqual([
+      "sheet: People; name: Ada; city: London",
+      "sheet: Team; name: Grace; city: New York",
+    ]);
   });
 });
