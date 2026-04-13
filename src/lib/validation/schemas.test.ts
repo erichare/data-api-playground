@@ -112,6 +112,43 @@ describe("createCollectionBodySchema", () => {
       createCollectionBodySchema.safeParse({ ...valid, dimension: 1.5 }).success
     ).toBe(false);
   });
+
+  it('accepts BYO embeddings with an empty or omitted model when provider is "none"', () => {
+    const emptyModel = createCollectionBodySchema.safeParse({
+      ...valid,
+      provider: "none",
+      model: "",
+    });
+    expect(emptyModel.success).toBe(true);
+
+    const { model: omitted, ...withoutModel } = valid;
+    void omitted;
+    const omittedModel = createCollectionBodySchema.safeParse({
+      ...withoutModel,
+      provider: "none",
+    });
+    expect(omittedModel.success).toBe(true);
+    if (omittedModel.success) expect(omittedModel.data.model).toBe("");
+  });
+
+  it('rejects empty models when provider is not "none"', () => {
+    expect(
+      createCollectionBodySchema.safeParse({ ...valid, model: "" }).success
+    ).toBe(false);
+    expect(
+      createCollectionBodySchema.safeParse({
+        ...valid,
+        model: "   ",
+      }).success
+    ).toBe(false);
+    expect(
+      createCollectionBodySchema.safeParse(
+        Object.fromEntries(
+          Object.entries(valid).filter(([key]) => key !== "model")
+        )
+      ).success
+    ).toBe(false);
+  });
 });
 
 describe("deleteCollectionBodySchema", () => {

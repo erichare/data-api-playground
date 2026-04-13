@@ -124,4 +124,44 @@ describe("/api/create-collection route", () => {
       },
     });
   });
+
+  it('accepts BYO embeddings without a model and defaults it before calling the service', async () => {
+    createCollectionInAstraMock.mockResolvedValue({
+      name: "plain_docs",
+      count: 0,
+      vectorDim: 384,
+      vectorizeService: null,
+    });
+
+    const { POST } = await import("./route");
+    const request = new Request("http://localhost/api/create-collection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "plain_docs",
+        dimension: 384,
+        metric: "dot_product",
+        provider: "none",
+      }),
+    });
+
+    const response = await POST(request as never);
+
+    expect(response.status).toBe(200);
+    expect(createCollectionInAstraMock).toHaveBeenCalledWith({
+      name: "plain_docs",
+      dimension: 384,
+      metric: "dot_product",
+      provider: "none",
+      model: "",
+    });
+    expect(await response.json()).toEqual({
+      collection: {
+        name: "plain_docs",
+        count: 0,
+        vectorDim: 384,
+        vectorizeService: null,
+      },
+    });
+  });
 });

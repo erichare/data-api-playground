@@ -268,7 +268,7 @@ paths:
               allOf:
                 - $ref: "#/components/schemas/AstraConnection"
                 - type: object
-                  required: [name, dimension, metric, provider, model]
+                  required: [name, dimension, metric, provider]
                   properties:
                     name:
                       type: string
@@ -281,6 +281,7 @@ paths:
                       type: string
                     model:
                       type: string
+                      description: Required for Astra vectorize providers. For client-side embeddings (`provider: none`), this may be omitted or empty.
       responses:
         "200":
           description: Collection created
