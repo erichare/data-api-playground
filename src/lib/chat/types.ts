@@ -138,4 +138,6 @@ export interface AnalyzeDecision {
   analyzeCollections?: string[];
   collectionFields: string[];
   rawAnalysis: string;
+  /** Set when the analyzer picks a collection name not in the user's list. */
+  requestedCollectionMissing?: string;
 }

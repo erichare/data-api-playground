@@ -159,6 +159,7 @@ export async function runChatWorkflow({
         collection: resolvedCollection,
         allCollectionFields: payload.allCollectionFields ?? {},
         collectionFields: decision.collectionFields,
+        requestedCollectionMissing: decision.requestedCollectionMissing,
         history: payload.history,
         onPrepareProgress,
         onPrepared,
@@ -278,6 +279,7 @@ async function analyzeChatRequest({
   let skipSearch = false;
   let allCollections = false;
   let targetedCollections: string[] | null = null;
+  let requestedCollectionMissing: string | undefined;
 
   const allCollectionFields = payload.allCollectionFields ?? {};
   const perCollectionFieldsLines = userCollections
@@ -335,11 +337,16 @@ async function analyzeChatRequest({
       allCollections?: boolean;
     };
 
-    if (
-      parsed.collection &&
-      (collectionNames.length === 0 || collectionNames.includes(parsed.collection))
-    ) {
-      collection = parsed.collection;
+    if (parsed.collection) {
+      if (collectionNames.length === 0 || collectionNames.includes(parsed.collection)) {
+        collection = parsed.collection;
+      } else {
+        // The analyzer picked a collection that doesn't exist in the user's
+        // list — the user likely asked about a non-existent collection.
+        // Skip search so we don't silently query a different collection.
+        requestedCollectionMissing = parsed.collection;
+        skipSearch = true;
+      }
     }
     const VALID_SEARCH_MODES = new Set(["vector", "hybrid", "lexical"]);
     if (parsed.searchMode && VALID_SEARCH_MODES.has(parsed.searchMode)) {
@@ -428,6 +435,7 @@ async function analyzeChatRequest({
     collectionFields,
     rawAnalysis,
     userCollections,
+    requestedCollectionMissing,
   };
 }
 

@@ -631,12 +631,12 @@ describe("runChatWorkflow", () => {
     expect(analyzeEvent[0].data.skipSearch).toBe(true);
   });
 
-  it("rejects LLM collection that is not in the available list", async () => {
+  it("skips search and flags missing collection when LLM picks a non-existent collection", async () => {
     generateTextMock.mockResolvedValueOnce({
       content: JSON.stringify({
-        collection: "nonexistent_collection",
+        collection: "Cheese",
         searchMode: "hybrid",
-        intent: "Find data",
+        intent: "Find cheese data",
         limit: 5,
       }),
       provider: "huggingface",
@@ -647,7 +647,7 @@ describe("runChatWorkflow", () => {
     const { runChatWorkflow } = await import("./service");
     await runChatWorkflow({
       payload: {
-        query: "Show data",
+        query: "What is in my Cheese collection?",
         searchMode: "hybrid",
         activeCollection: "orders",
         collections: [{ name: "orders", isVectorize: false }],
@@ -663,8 +663,22 @@ describe("runChatWorkflow", () => {
     const analyzeEvent = send.mock.calls.find(
       ([e]) => e.step === "analyze" && e.status === "complete"
     );
-    // Falls back to the default collection since "nonexistent_collection" is invalid
+    // Falls back to the default collection name
     expect(analyzeEvent[0].data.collection).toBe("orders");
+    // But search is skipped so we don't query the wrong collection
+    expect(analyzeEvent[0].data.skipSearch).toBe(true);
+    // embed and search should be skipped
+    expect(send).toHaveBeenCalledWith({ step: "embed", status: "skipped" });
+    expect(send).toHaveBeenCalledWith({ step: "search", status: "skipped" });
+    expect(embedQueryMock).not.toHaveBeenCalled();
+    expect(searchCollectionsMock).not.toHaveBeenCalled();
+    // generateResponse should receive requestedCollectionMissing
+    expect(generateResponseMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedCollectionMissing: "Cheese",
+        skipSearch: true,
+      })
+    );
   });
 
   it("uses dap_-prefixed active collection fallback to first user collection", async () => {

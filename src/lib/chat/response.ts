@@ -28,6 +28,7 @@ export async function generateResponse(args: {
   collection: string;
   allCollectionFields: Record<string, string[]>;
   collectionFields: string[];
+  requestedCollectionMissing?: string;
   history?: { role: "user" | "assistant"; content: string }[];
   onPrepareProgress?: (progress: EnsureModelProgress) => void;
   onPrepared?: (result: EnsureModelResult) => void;
@@ -44,6 +45,7 @@ export async function generateResponse(args: {
     collection,
     allCollectionFields,
     collectionFields,
+    requestedCollectionMissing,
     history,
     onPrepareProgress,
     onPrepared,
@@ -87,7 +89,9 @@ export async function generateResponse(args: {
   const isReformatFollowUp =
     skipSearch && !collectionsSummary && history && history.length > 0;
 
-  const userContent = resultContext
+  const userContent = requestedCollectionMissing
+    ? `User asked: "${query}"\n\nThe user referenced a collection called "${requestedCollectionMissing}", but it does not exist. The available collections are: ${userCollections.length > 0 ? userCollections.join(", ") : "(none)"}. Tell the user that the "${requestedCollectionMissing}" collection was not found and list the available collections they can query. Do NOT guess or fabricate what the collection might contain.`
+    : resultContext
     ? `User asked: "${query}"\n\nContext data from ${scopeDesc} (use this to answer — do not reproduce it):\n${resultContext}\n\nAnswer the question only. Do not output the raw records.`
     : noResults
       ? `User asked: "${query}"\n\nThe database search of ${scopeDesc} returned no results. Briefly note that no matching records were found in the searched collection(s). Do NOT guess or fabricate what the collection might contain based on its name. Instead, suggest the user try a different search query, check that the correct collection is selected, or verify that data has been ingested.${activeFields.length > 0 ? ` The known fields in this collection are: ${activeFields.join(", ")}.` : ""}`

@@ -364,4 +364,42 @@ describe("chat response helpers", () => {
     // Must mention known fields when available
     expect(userMessage.content).toContain("total_spend");
   });
+
+  it("tells the user the collection was not found when requestedCollectionMissing is set", async () => {
+    generateTextMock.mockResolvedValueOnce({
+      content: "Collection not found response.",
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
+
+    const { generateResponse } = await import("./response");
+    await generateResponse({
+      backend: huggingFaceBackend,
+      query: "What is in my Cheese collection?",
+      skipSearch: true,
+      searchResults: [],
+      allCollections: false,
+      targetedCollections: null,
+      userCollections: ["orders", "products"],
+      collection: "orders",
+      allCollectionFields: { orders: ["total_spend"], products: ["sku"] },
+      collectionFields: ["total_spend"],
+      requestedCollectionMissing: "Cheese",
+    });
+
+    const messages = generateTextMock.mock.calls[0][0].messages;
+    const userMessage = messages.find(
+      (m: { role: string; content: string }) => m.role === "user"
+    );
+
+    // Must inform the user the collection doesn't exist
+    expect(userMessage.content).toContain('"Cheese"');
+    expect(userMessage.content).toContain("does not exist");
+    // Must list available collections
+    expect(userMessage.content).toContain("orders");
+    expect(userMessage.content).toContain("products");
+    // Must NOT include hallucination-prone fallback paths
+    expect(userMessage.content).not.toContain("general knowledge");
+    expect(userMessage.content).toContain("Do NOT guess or fabricate");
+  });
 });
