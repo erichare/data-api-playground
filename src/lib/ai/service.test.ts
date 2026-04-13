@@ -242,6 +242,30 @@ describe("ai service", () => {
         })
       );
     });
+
+    it("throws when the Ollama pull API returns an error status", async () => {
+      const backend = resolveBackend({});
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(jsonResponse({ models: [] }))
+        .mockResolvedValueOnce(
+          jsonResponse({ error: "connection refused" }, { status: 500 })
+        );
+
+      await expect(
+        ensureModel({ backend, kind: "chat", allowPull: true })
+      ).rejects.toThrow("Ollama 500:");
+    });
+
+    it("returns the embed model name for non-Ollama embed backends", async () => {
+      const backend = resolveBackend({ huggingfaceApiKey: "manual-key" });
+
+      await expect(
+        ensureModel({ backend, kind: "embed", allowPull: true })
+      ).resolves.toEqual({
+        downloaded: false,
+        model: "ibm-granite/granite-embedding-125m-english",
+      });
+    });
   });
 
   describe("generateText", () => {
@@ -301,6 +325,59 @@ describe("ai service", () => {
       );
     });
 
+    it("throws on empty Hugging Face chat responses", async () => {
+      const backend = resolveBackend({ huggingfaceApiKey: "manual-key" });
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ choices: [{ message: { content: "" } }] })
+      );
+
+      await expect(
+        generateText({
+          backend,
+          messages: [{ role: "user", content: "Hi" }],
+          maxTokens: 16,
+        })
+      ).rejects.toThrow("Hugging Face returned an empty chat response");
+    });
+
+    it("throws on empty Ollama chat responses", async () => {
+      const backend = resolveBackend({});
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          jsonResponse({ models: [{ name: "granite3.1-dense:8b" }] })
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({ choices: [{ message: { content: "" } }] })
+        );
+
+      await expect(
+        generateText({
+          backend,
+          messages: [{ role: "user", content: "Hello" }],
+          maxTokens: 32,
+        })
+      ).rejects.toThrow("Ollama returned an empty chat response");
+    });
+
+    it("surfaces Ollama HTTP errors in generateText", async () => {
+      const backend = resolveBackend({});
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          jsonResponse({ models: [{ name: "granite3.1-dense:8b" }] })
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({ error: "service overloaded" }, { status: 503 })
+        );
+
+      await expect(
+        generateText({
+          backend,
+          messages: [{ role: "user", content: "Hello" }],
+          maxTokens: 32,
+        })
+      ).rejects.toThrow("Ollama 503:");
+    });
+
     it("surfaces provider errors when Hugging Face rejects the request", async () => {
       const backend = resolveBackend({ huggingfaceApiKey: "manual-key" });
       vi.mocked(fetch).mockResolvedValueOnce(
@@ -348,6 +425,76 @@ describe("ai service", () => {
         2,
         expect.objectContaining({ delta: " there", content: "Hello there" })
       );
+    });
+
+    it("throws on empty Hugging Face streamed responses", async () => {
+      const backend = resolveBackend({ huggingfaceApiKey: "manual-key" });
+      vi.mocked(fetch).mockResolvedValueOnce(
+        sseResponse([])
+      );
+
+      await expect(
+        streamText({
+          backend,
+          messages: [{ role: "user", content: "Hi" }],
+          maxTokens: 16,
+          onChunk: vi.fn(),
+        })
+      ).rejects.toThrow("Hugging Face returned an empty chat response");
+    });
+
+    it("surfaces Hugging Face HTTP errors in streamText", async () => {
+      const backend = resolveBackend({ huggingfaceApiKey: "manual-key" });
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ error: "unauthorized" }, { status: 401 })
+      );
+
+      await expect(
+        streamText({
+          backend,
+          messages: [{ role: "user", content: "Hi" }],
+          maxTokens: 16,
+          onChunk: vi.fn(),
+        })
+      ).rejects.toThrow("Hugging Face 401:");
+    });
+
+    it("throws on empty Ollama streamed responses", async () => {
+      const backend = resolveBackend({});
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          jsonResponse({ models: [{ name: "granite3.1-dense:8b" }] })
+        )
+        .mockResolvedValueOnce(sseResponse([]));
+
+      await expect(
+        streamText({
+          backend,
+          messages: [{ role: "user", content: "Hello" }],
+          maxTokens: 32,
+          onChunk: vi.fn(),
+        })
+      ).rejects.toThrow("Ollama returned an empty chat response");
+    });
+
+    it("surfaces Ollama HTTP errors in streamText", async () => {
+      const backend = resolveBackend({});
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          jsonResponse({ models: [{ name: "granite3.1-dense:8b" }] })
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({ error: "overloaded" }, { status: 503 })
+        );
+
+      await expect(
+        streamText({
+          backend,
+          messages: [{ role: "user", content: "Hello" }],
+          maxTokens: 32,
+          onChunk: vi.fn(),
+        })
+      ).rejects.toThrow("Ollama 503:");
     });
 
     it("streams Ollama chunks after ensuring the model is installed", async () => {
@@ -406,6 +553,90 @@ describe("ai service", () => {
       await expect(embedMany({ backend, input: ["a"] })).rejects.toThrow(
         "Hugging Face returned an invalid embedding payload"
       );
+    });
+
+    it("ensures the Ollama embed model before generating embeddings", async () => {
+      const backend = resolveBackend({});
+      const onPrepareProgress = vi.fn();
+      const onPrepared = vi.fn();
+      vi.mocked(fetch)
+        // ensureModel → listOllamaModels
+        .mockResolvedValueOnce(
+          jsonResponse({ models: [{ name: "granite-embedding:278m" }] })
+        )
+        // actual embed call
+        .mockResolvedValueOnce(
+          jsonResponse({ embeddings: [[0.1, 0.2, 0.3]] })
+        );
+
+      const result = await embedMany({
+        backend,
+        input: ["hello"],
+        skipEnsure: false,
+        onPrepareProgress,
+        onPrepared,
+      });
+
+      expect(result).toEqual({
+        embeddings: [[0.1, 0.2, 0.3]],
+        provider: "ollama",
+        model: "granite-embedding:278m",
+      });
+      expect(onPrepareProgress).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "Model already installed" })
+      );
+      expect(onPrepared).toHaveBeenCalled();
+    });
+
+    it("surfaces errors when Ollama embed API rejects", async () => {
+      const backend = resolveBackend({});
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          jsonResponse({ models: [{ name: "granite-embedding:278m" }] })
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({ error: "model not found" }, { status: 404 })
+        );
+
+      await expect(
+        embedMany({ backend, input: ["hello"] })
+      ).rejects.toThrow("Ollama 404:");
+    });
+
+    it("rejects invalid Ollama embedding payloads", async () => {
+      const backend = resolveBackend({});
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          jsonResponse({ models: [{ name: "granite-embedding:278m" }] })
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({ embeddings: [] })
+        );
+
+      await expect(
+        embedMany({ backend, input: ["hello"] })
+      ).rejects.toThrow("Ollama returned an invalid embedding payload");
+    });
+
+    it("handles flat Hugging Face embedding response (single input)", async () => {
+      const backend = resolveBackend({ huggingfaceApiKey: "manual-key" });
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse([0.1, 0.2, 0.3])
+      );
+
+      const result = await embedMany({ backend, input: ["hello"] });
+      expect(result.embeddings).toEqual([[0.1, 0.2, 0.3]]);
+    });
+
+    it("surfaces errors when Hugging Face embed API rejects", async () => {
+      const backend = resolveBackend({ huggingfaceApiKey: "manual-key" });
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ error: "rate limited" }, { status: 429 })
+      );
+
+      await expect(
+        embedMany({ backend, input: ["hello"] })
+      ).rejects.toThrow("Hugging Face 429:");
     });
 
     it("supports Ollama embeddings without re-checking the model when skipEnsure is true", async () => {

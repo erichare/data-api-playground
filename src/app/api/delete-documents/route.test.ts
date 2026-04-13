@@ -26,6 +26,24 @@ describe("/api/delete-documents route", () => {
     });
   });
 
+  it("returns 401 when auth is enabled and no cookie is provided", async () => {
+    process.env.PLAYGROUND_AUTH_PASSWORD = "test-password";
+    process.env.PLAYGROUND_AUTH_SECRET = "test-secret-that-is-long-enough";
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      new Request("http://localhost/api/delete-documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collection: "docs", ids: ["1"] }),
+      }) as never
+    );
+
+    expect(response.status).toBe(401);
+    delete process.env.PLAYGROUND_AUTH_PASSWORD;
+    delete process.env.PLAYGROUND_AUTH_SECRET;
+  });
+
   it("returns a validation error when ids is empty", async () => {
     const { POST } = await import("./route");
     const response = await POST(

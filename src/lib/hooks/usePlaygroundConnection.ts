@@ -2,10 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Collection } from "@/lib/types";
-import {
-  fetchCollectionsFromApi,
-  readApiErrorMessage,
-} from "@/lib/playground/client";
+import { fetchCollectionsFromApi } from "@/lib/playground/client";
+import { useCollectionLifecycle } from "@/lib/hooks/useCollectionLifecycle";
 
 interface UsePlaygroundConnectionArgs {
   bootstrapConversations: () => Promise<string>;
@@ -34,6 +32,31 @@ export function usePlaygroundConnection({
   const [keyspaces, setKeyspaces] = useState<string[]>([]);
   const [selectedKeyspace, setSelectedKeyspace] = useState("default_keyspace");
 
+  // ── Collection lifecycle (create / delete / stats) ─────────────────
+  const collectionLifecycle = useCollectionLifecycle({
+    collections,
+    setCollections,
+    setCollectionFields,
+    setActiveCollection,
+    astraToken,
+    astraEndpoint,
+    astraFromEnv,
+    selectedKeyspace,
+  });
+
+  const handleCollectionCreateFailed = useCallback(
+    (name: string, message: string) => {
+      collectionLifecycle.handleCollectionCreateFailed(name, message);
+      setCollectionCreateError(message);
+    },
+    [collectionLifecycle]
+  );
+
+  const clearCollectionCreateError = useCallback(() => {
+    setCollectionCreateError("");
+  }, []);
+
+  // ── Connection helpers ─────────────────────────────────────────────
   const formatKeyspacesWarning = useCallback(
     (message: string, source: "manual" | "env" = "manual") =>
       source === "env"
@@ -67,6 +90,7 @@ export function usePlaygroundConnection({
     return result;
   }, []);
 
+  // ── Initialization ─────────────────────────────────────────────────
   useEffect(() => {
     const restorePromise = (async () => {
       await bootstrapConversations().catch(() => {
@@ -96,6 +120,7 @@ export function usePlaygroundConnection({
     void restorePromise.finally(() => setInitializing(false));
   }, [applyConnectionResult, bootstrapConversations, formatKeyspacesWarning]);
 
+  // ── Handlers ───────────────────────────────────────────────────────
   const handleConnect = useCallback(async (token: string, endpoint: string) => {
     setConnectError("");
     const fromEnv = !token && !endpoint;
@@ -168,123 +193,6 @@ export function usePlaygroundConnection({
     }
   }, [astraEndpoint, astraFromEnv, astraToken, fetchCollections, formatKeyspacesWarning]);
 
-  const handleCollectionCreated = useCallback((collection: Collection) => {
-    setCollectionCreateError("");
-    setCollections((prev) => {
-      const nextCollection = {
-        ...collection,
-        documentCount: collection.documentCount ?? 0,
-        creating: false,
-        pendingKey: undefined,
-      };
-      const pendingIndex = prev.findIndex(
-        (candidate) => candidate.name === collection.name && candidate.creating
-      );
-      if (pendingIndex >= 0) {
-        const next = [...prev];
-        next[pendingIndex] = nextCollection;
-        return next;
-      }
-      return [...prev, nextCollection];
-    });
-    setActiveCollection(collection.name);
-  }, []);
-
-  const handleCollectionCreateStarted = useCallback((collection: Collection) => {
-    setCollectionCreateError("");
-    setCollections((prev) => [...prev, collection]);
-  }, []);
-
-  const handleCollectionCreateFailed = useCallback(
-    (name: string, message: string) => {
-      const nextCollections = collections.filter(
-        (collection) => !(collection.name === name && collection.creating)
-      );
-
-      setCollections(nextCollections);
-      setCollectionCreateError(message);
-    },
-    [collections]
-  );
-
-  const clearCollectionCreateError = useCallback(() => {
-    setCollectionCreateError("");
-  }, []);
-
-  const handleCollectionStatsDelta = useCallback(
-    (
-      name: string,
-      {
-        documentDelta,
-        chunkDelta,
-      }: { documentDelta: number; chunkDelta: number }
-    ) => {
-      setCollections((prev) =>
-        prev.map((collection) => {
-          if (collection.name !== name) {
-            return collection;
-          }
-
-          const nextDocumentCount = Math.max(
-            0,
-            (collection.documentCount ?? 0) + documentDelta
-          );
-
-          return {
-            ...collection,
-            documentCount: nextDocumentCount,
-            count:
-              typeof collection.count === "number"
-                ? Math.max(0, collection.count + chunkDelta)
-                : collection.count,
-          };
-        })
-      );
-    },
-    []
-  );
-
-  const handleDeleteCollection = useCallback(
-    async (name: string) => {
-      const response = await fetch("/api/delete-collection", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          token: astraFromEnv ? undefined : astraToken,
-          endpoint: astraFromEnv ? undefined : astraEndpoint,
-          keyspace: selectedKeyspace,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          await readApiErrorMessage(response, "Failed to delete collection")
-        );
-      }
-
-      const nextCollections = collections.filter(
-        (collection) => collection.name !== name
-      );
-
-      setCollections(nextCollections);
-      setCollectionFields((prev) => {
-        const next = { ...prev };
-        delete next[name];
-        return next;
-      });
-      setActiveCollection((current) =>
-        current === name
-          ? nextCollections.find((collection) => !collection.name.startsWith("dap_"))
-              ?.name ??
-            nextCollections[0]?.name ??
-            ""
-          : current
-      );
-    },
-    [astraEndpoint, astraFromEnv, astraToken, collections, selectedKeyspace]
-  );
-
   const isConnected = astraFromEnv || !!astraToken;
   const activeCollectionObj = collections.find((c) => c.name === activeCollection) ?? collections[0];
 
@@ -311,11 +219,11 @@ export function usePlaygroundConnection({
     selectedKeyspace,
     handleSelectCollection,
     handleKeyspaceChange,
-    handleCollectionCreateStarted,
-    handleCollectionCreated,
+    handleCollectionCreateStarted: collectionLifecycle.handleCollectionCreateStarted,
+    handleCollectionCreated: collectionLifecycle.handleCollectionCreated,
     handleCollectionCreateFailed,
     clearCollectionCreateError,
-    handleCollectionStatsDelta,
-    handleDeleteCollection,
+    handleCollectionStatsDelta: collectionLifecycle.handleCollectionStatsDelta,
+    handleDeleteCollection: collectionLifecycle.handleDeleteCollection,
   };
 }

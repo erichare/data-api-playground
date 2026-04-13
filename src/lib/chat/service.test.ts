@@ -315,6 +315,452 @@ describe("runChatWorkflow", () => {
     );
   });
 
+  it("falls back gracefully when the LLM returns unparsable JSON", async () => {
+    generateTextMock.mockResolvedValueOnce({
+      content: "Here is the analysis: {invalid json content: [broken}",
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
+
+    const send = vi.fn();
+    const { runChatWorkflow } = await import("./service");
+    await runChatWorkflow({
+      payload: {
+        query: "Show top spend by customer",
+        searchMode: "hybrid",
+        activeCollection: "orders",
+        collections: [{ name: "orders", isVectorize: false }],
+        allCollectionFields: { orders: ["total_spend"] },
+        history: [],
+      },
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      backend: huggingFaceBackend,
+      send,
+    });
+
+    const analyzeEvent = send.mock.calls.find(
+      ([e]) => e.step === "analyze" && e.status === "complete"
+    );
+    expect(analyzeEvent).toBeDefined();
+    // The extracted {...} is invalid JSON, so the error catch fires
+    expect(analyzeEvent[0].data._raw).toContain("ERROR:");
+    expect(analyzeEvent[0].data.collection).toBe("orders");
+  });
+
+  it("strips markdown code fences from LLM response before parsing JSON", async () => {
+    generateTextMock.mockResolvedValueOnce({
+      content: '```json\n{"collection":"orders","searchMode":"vector","intent":"Find data","limit":3}\n```',
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
+
+    const send = vi.fn();
+    const { runChatWorkflow } = await import("./service");
+    await runChatWorkflow({
+      payload: {
+        query: "Show top spend by customer",
+        searchMode: "hybrid",
+        activeCollection: "orders",
+        collections: [{ name: "orders", isVectorize: false }],
+        allCollectionFields: { orders: ["total_spend"] },
+        history: [],
+      },
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      backend: huggingFaceBackend,
+      send,
+    });
+
+    const analyzeEvent = send.mock.calls.find(
+      ([e]) => e.step === "analyze" && e.status === "complete"
+    );
+    expect(analyzeEvent[0].data.searchMode).toBe("vector");
+    expect(analyzeEvent[0].data.limit).toBe(3);
+  });
+
+  it("clamps limit to MAX_LIMIT and respects sort/filter fields", async () => {
+    generateTextMock.mockResolvedValueOnce({
+      content: JSON.stringify({
+        collection: "orders",
+        searchMode: "lexical",
+        intent: "Find expensive orders",
+        limit: 5000,
+        sortField: "amount",
+        sortDir: "asc",
+        filterField: "status",
+        filterOp: "$ne",
+        filterValue: "cancelled",
+      }),
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
+
+    const send = vi.fn();
+    const { runChatWorkflow } = await import("./service");
+    await runChatWorkflow({
+      payload: {
+        query: "Show top orders",
+        searchMode: "hybrid",
+        activeCollection: "orders",
+        collections: [{ name: "orders", isVectorize: false }],
+        allCollectionFields: { orders: ["amount", "status"] },
+        history: [],
+      },
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      backend: huggingFaceBackend,
+      send,
+    });
+
+    const analyzeEvent = send.mock.calls.find(
+      ([e]) => e.step === "analyze" && e.status === "complete"
+    );
+    expect(analyzeEvent[0].data.limit).toBe(1000); // MAX_LIMIT
+    expect(analyzeEvent[0].data.searchMode).toBe("lexical");
+    expect(analyzeEvent[0].data.sortField).toBe("amount");
+    expect(analyzeEvent[0].data.sortDir).toBe("asc");
+    expect(analyzeEvent[0].data.filterField).toBe("status");
+    expect(analyzeEvent[0].data.filterOp).toBe("$ne");
+    expect(analyzeEvent[0].data.filterValue).toBe("cancelled");
+  });
+
+  it("rejects invalid searchMode and limit <= 0 from LLM", async () => {
+    generateTextMock.mockResolvedValueOnce({
+      content: JSON.stringify({
+        collection: "orders",
+        searchMode: "invalid_mode",
+        intent: "Find data",
+        limit: -5,
+      }),
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
+
+    const send = vi.fn();
+    const { runChatWorkflow } = await import("./service");
+    await runChatWorkflow({
+      payload: {
+        query: "Show data",
+        searchMode: "hybrid",
+        activeCollection: "orders",
+        collections: [{ name: "orders", isVectorize: false }],
+        allCollectionFields: { orders: ["total_spend"] },
+        history: [],
+      },
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      backend: huggingFaceBackend,
+      send,
+    });
+
+    const analyzeEvent = send.mock.calls.find(
+      ([e]) => e.step === "analyze" && e.status === "complete"
+    );
+    // invalid_mode is rejected, default "hybrid" stays
+    expect(analyzeEvent[0].data.searchMode).toBe("hybrid");
+    // limit <= 0 is rejected, default 5 stays
+    expect(analyzeEvent[0].data.limit).toBe(5);
+  });
+
+  it("handles targeted multi-collection searches from the LLM", async () => {
+    generateTextMock.mockResolvedValueOnce({
+      content: JSON.stringify({
+        collection: "orders",
+        collections: ["orders", "inventory"],
+        searchMode: "hybrid",
+        intent: "Search orders and inventory",
+        limit: 5,
+      }),
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
+
+    searchCollectionsMock.mockResolvedValue({
+      searchResults: [
+        { id: "doc-1", similarity: 0.9, preview: { title: "A" }, collection: "orders" },
+      ],
+      commandStr: "// multi-collection search",
+      collection: "orders",
+    });
+
+    const send = vi.fn();
+    const { runChatWorkflow } = await import("./service");
+    await runChatWorkflow({
+      payload: {
+        query: "Show items across orders and inventory",
+        searchMode: "hybrid",
+        activeCollection: "orders",
+        collections: [
+          { name: "orders", isVectorize: false },
+          { name: "inventory", isVectorize: false },
+        ],
+        allCollectionFields: {
+          orders: ["amount"],
+          inventory: ["quantity"],
+        },
+        history: [],
+      },
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      backend: huggingFaceBackend,
+      send,
+    });
+
+    const analyzeEvent = send.mock.calls.find(
+      ([e]) => e.step === "analyze" && e.status === "complete"
+    );
+    expect(analyzeEvent[0].data.collections).toEqual(["orders", "inventory"]);
+    expect(analyzeEvent[0].data.intent).toContain("orders, inventory");
+  });
+
+  it("triggers CROSS_COLLECTION_RE fallback for broad queries", async () => {
+    generateTextMock.mockResolvedValueOnce({
+      content: JSON.stringify({
+        collection: "orders",
+        searchMode: "hybrid",
+        intent: "Overview",
+        limit: 5,
+        allCollections: false,
+        skipSearch: false,
+      }),
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
+
+    const send = vi.fn();
+    const { runChatWorkflow } = await import("./service");
+    await runChatWorkflow({
+      payload: {
+        query: "Tell me about all my data",
+        searchMode: "hybrid",
+        activeCollection: "orders",
+        collections: [
+          { name: "orders", isVectorize: false },
+          { name: "customers", isVectorize: false },
+        ],
+        allCollectionFields: {},
+        history: [],
+      },
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      backend: huggingFaceBackend,
+      send,
+    });
+
+    const analyzeEvent = send.mock.calls.find(
+      ([e]) => e.step === "analyze" && e.status === "complete"
+    );
+    // CROSS_COLLECTION_RE should set allCollections = true
+    expect(analyzeEvent[0].data.allCollections).toBe(true);
+  });
+
+  it("triggers COLLECTIONS_META_RE to skip search on schema queries", async () => {
+    generateTextMock.mockResolvedValueOnce({
+      content: JSON.stringify({
+        collection: "orders",
+        searchMode: "hybrid",
+        intent: "List collections",
+        limit: 5,
+        skipSearch: false,
+        allCollections: false,
+      }),
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
+
+    const send = vi.fn();
+    const { runChatWorkflow } = await import("./service");
+    await runChatWorkflow({
+      payload: {
+        query: "What collections do I have?",
+        searchMode: "hybrid",
+        activeCollection: "orders",
+        collections: [{ name: "orders", isVectorize: false }],
+        allCollectionFields: {},
+        history: [],
+      },
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      backend: huggingFaceBackend,
+      send,
+    });
+
+    const analyzeEvent = send.mock.calls.find(
+      ([e]) => e.step === "analyze" && e.status === "complete"
+    );
+    expect(analyzeEvent[0].data.skipSearch).toBe(true);
+    expect(analyzeEvent[0].data.allCollections).toBe(true);
+  });
+
+  it("triggers REFORMAT_RE to skip search on reformat follow-ups with history", async () => {
+    generateTextMock.mockResolvedValueOnce({
+      content: JSON.stringify({
+        collection: "orders",
+        searchMode: "hybrid",
+        intent: "Reformat output",
+        limit: 5,
+        skipSearch: false,
+      }),
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
+
+    const send = vi.fn();
+    const { runChatWorkflow } = await import("./service");
+    await runChatWorkflow({
+      payload: {
+        query: "Show that in a table",
+        searchMode: "hybrid",
+        activeCollection: "orders",
+        collections: [{ name: "orders", isVectorize: false }],
+        allCollectionFields: {},
+        history: [
+          { role: "assistant", content: "Here are the results." },
+        ],
+      },
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      backend: huggingFaceBackend,
+      send,
+    });
+
+    const analyzeEvent = send.mock.calls.find(
+      ([e]) => e.step === "analyze" && e.status === "complete"
+    );
+    expect(analyzeEvent[0].data.skipSearch).toBe(true);
+  });
+
+  it("rejects LLM collection that is not in the available list", async () => {
+    generateTextMock.mockResolvedValueOnce({
+      content: JSON.stringify({
+        collection: "nonexistent_collection",
+        searchMode: "hybrid",
+        intent: "Find data",
+        limit: 5,
+      }),
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
+
+    const send = vi.fn();
+    const { runChatWorkflow } = await import("./service");
+    await runChatWorkflow({
+      payload: {
+        query: "Show data",
+        searchMode: "hybrid",
+        activeCollection: "orders",
+        collections: [{ name: "orders", isVectorize: false }],
+        allCollectionFields: { orders: ["amount"] },
+        history: [],
+      },
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      backend: huggingFaceBackend,
+      send,
+    });
+
+    const analyzeEvent = send.mock.calls.find(
+      ([e]) => e.step === "analyze" && e.status === "complete"
+    );
+    // Falls back to the default collection since "nonexistent_collection" is invalid
+    expect(analyzeEvent[0].data.collection).toBe("orders");
+  });
+
+  it("uses dap_-prefixed active collection fallback to first user collection", async () => {
+    generateTextMock.mockResolvedValueOnce({
+      content: JSON.stringify({
+        searchMode: "hybrid",
+        intent: "Find data",
+        limit: 5,
+      }),
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
+
+    const send = vi.fn();
+    const { runChatWorkflow } = await import("./service");
+    await runChatWorkflow({
+      payload: {
+        query: "Show data",
+        searchMode: "hybrid",
+        activeCollection: "dap_internal",
+        collections: [
+          { name: "dap_internal", isVectorize: false },
+          { name: "products", isVectorize: false },
+        ],
+        allCollectionFields: { products: ["name"] },
+        history: [],
+      },
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      backend: huggingFaceBackend,
+      send,
+    });
+
+    const analyzeEvent = send.mock.calls.find(
+      ([e]) => e.step === "analyze" && e.status === "complete"
+    );
+    // Active collection starts with dap_, so default falls to first user collection
+    expect(analyzeEvent[0].data.collection).toBe("products");
+  });
+
+  it("handles vectorize collections and multi-collection fan-out search", async () => {
+    generateTextMock.mockResolvedValueOnce({
+      content: JSON.stringify({
+        collection: "docs",
+        searchMode: "hybrid",
+        intent: "Find docs",
+        limit: 5,
+        allCollections: true,
+      }),
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
+
+    embedQueryMock.mockResolvedValue({
+      embeddingVector: [],
+      vectorPreview: [],
+      realEmbedding: true,
+      provider: "astra",
+      model: "server-side vectorize",
+    });
+
+    searchCollectionsMock.mockResolvedValue({
+      searchResults: [
+        { id: "doc-1", similarity: 0.9, preview: { title: "A" }, collection: "docs" },
+      ],
+      commandStr: "// all-collections search",
+      collection: "docs",
+    });
+
+    const send = vi.fn();
+    const { runChatWorkflow } = await import("./service");
+    await runChatWorkflow({
+      payload: {
+        query: "Tell me about all my data",
+        searchMode: "hybrid",
+        activeCollection: "docs",
+        collections: [
+          { name: "docs", isVectorize: true },
+          { name: "notes", isVectorize: true },
+        ],
+        allCollectionFields: {},
+        history: [],
+      },
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      backend: huggingFaceBackend,
+      send,
+    });
+
+    const embedEvent = send.mock.calls.find(
+      ([e]) => e.step === "embed" && e.status === "complete"
+    );
+    // Vectorize means dims should be 0
+    expect(embedEvent[0].data.dims).toBe(0);
+  });
+
   it("completes prepare before streamed response chunks arrive", async () => {
     generateTextMock.mockResolvedValueOnce({
       content: JSON.stringify({

@@ -16,6 +16,31 @@ describe("/api/documents route", () => {
     delete process.env.PLAYGROUND_AUTH_PASSWORD;
   });
 
+  it("returns 401 on GET when auth is enabled and no cookie is provided", async () => {
+    process.env.PLAYGROUND_AUTH_PASSWORD = "test-password";
+    process.env.PLAYGROUND_AUTH_SECRET = "test-secret-that-is-long-enough";
+
+    const { GET } = await import("./route");
+    const response = await GET(
+      new Request("http://localhost/api/documents?collection=docs") as never
+    );
+
+    expect(response.status).toBe(401);
+    delete process.env.PLAYGROUND_AUTH_PASSWORD;
+    delete process.env.PLAYGROUND_AUTH_SECRET;
+  });
+
+  it("returns 500 when listing documents throws", async () => {
+    listIngestedDocumentsMock.mockImplementationOnce(() => { throw new Error("db error"); });
+
+    const { GET } = await import("./route");
+    const response = await GET(
+      new Request("http://localhost/api/documents?collection=docs") as never
+    );
+
+    expect(response.status).toBe(500);
+  });
+
   it("lists ingested documents for the requested collection", async () => {
     listIngestedDocumentsMock.mockReturnValueOnce([
       {

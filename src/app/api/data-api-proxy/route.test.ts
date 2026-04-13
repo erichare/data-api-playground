@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getAstraDbMock = vi.fn();
 const isAllowedAstraEndpointMock = vi.fn();
@@ -26,9 +26,14 @@ function makeRequest(body: Record<string, unknown>) {
 }
 
 describe("/api/data-api-proxy route", () => {
+  const originalPassword = process.env.PLAYGROUND_AUTH_PASSWORD;
+  const originalSecret = process.env.PLAYGROUND_AUTH_SECRET;
+
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    delete process.env.PLAYGROUND_AUTH_PASSWORD;
+    delete process.env.PLAYGROUND_AUTH_SECRET;
     resolveAstraConnectionMock.mockReturnValue({
       token: "AstraCS:test",
       endpoint: "https://db-id-us-east1.apps.astra.datastax.com",
@@ -46,6 +51,26 @@ describe("/api/data-api-proxy route", () => {
     getAstraDbMock.mockReturnValue({
       collection: collectionMock,
     });
+  });
+
+  afterEach(() => {
+    if (originalPassword === undefined) delete process.env.PLAYGROUND_AUTH_PASSWORD;
+    else process.env.PLAYGROUND_AUTH_PASSWORD = originalPassword;
+    if (originalSecret === undefined) delete process.env.PLAYGROUND_AUTH_SECRET;
+    else process.env.PLAYGROUND_AUTH_SECRET = originalSecret;
+  });
+
+  it("returns 401 when auth is enabled and no cookie is provided", async () => {
+    process.env.PLAYGROUND_AUTH_PASSWORD = "test-password";
+    process.env.PLAYGROUND_AUTH_SECRET = "test-secret-that-is-long-enough";
+
+    const { POST } = await import("./route");
+    const response = await POST(makeRequest({
+      collection: "docs",
+      requestBody: { find: { filter: {} } },
+    }));
+
+    expect(response.status).toBe(401);
   });
 
   it("rejects non-Astra endpoints", async () => {
@@ -206,6 +231,93 @@ describe("/api/data-api-proxy route", () => {
     expect(response.status).toBe(200);
     expect((await response.json()).data).toEqual(expected);
     assert();
+  });
+
+  it("handles find with sort and without explicit options", async () => {
+    const toArrayMock = vi.fn().mockResolvedValue([{ title: "Sorted" }]);
+    findMock.mockReturnValue({ toArray: toArrayMock });
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      makeRequest({
+        collection: "docs",
+        requestBody: { find: { filter: {}, sort: { title: 1 } } },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).data).toEqual([{ title: "Sorted" }]);
+  });
+
+  it("handles find with null payload gracefully", async () => {
+    const toArrayMock = vi.fn().mockResolvedValue([]);
+    findMock.mockReturnValue({ toArray: toArrayMock });
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      makeRequest({
+        collection: "docs",
+        requestBody: { find: null },
+      })
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it("handles findOne with null payload", async () => {
+    findOneMock.mockResolvedValueOnce(null);
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      makeRequest({
+        collection: "docs",
+        requestBody: { findOne: null },
+      })
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it("handles insertMany with null payload", async () => {
+    insertManyMock.mockResolvedValueOnce({ insertedCount: 0, insertedIds: [] });
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      makeRequest({
+        collection: "docs",
+        requestBody: { insertMany: null },
+      })
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it("handles updateOne with null payload", async () => {
+    updateOneMock.mockResolvedValueOnce({ matchedCount: 0, modifiedCount: 0 });
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      makeRequest({
+        collection: "docs",
+        requestBody: { updateOne: null },
+      })
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it("handles deleteOne with null payload", async () => {
+    deleteOneMock.mockResolvedValueOnce({ deletedCount: 0 });
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      makeRequest({
+        collection: "docs",
+        requestBody: { deleteOne: null },
+      })
+    );
+
+    expect(response.status).toBe(200);
   });
 
   it("rejects unsupported operations", async () => {
