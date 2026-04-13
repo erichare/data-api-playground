@@ -8,6 +8,7 @@ import {
   Plus,
   MessageSquare,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import type { Collection, Conversation } from "@/lib/types";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -17,6 +18,7 @@ import { CollectionItem } from "./CollectionItem";
 export interface SidebarProps {
   collections: Collection[];
   activeCollection: string;
+  collectionCreateError?: string;
   onSelectCollection: (name: string) => void;
   onNewCollection: () => void;
   keyspaces?: string[];
@@ -29,12 +31,14 @@ export interface SidebarProps {
   creatingConversation?: boolean;
   onRenameConversation: (id: string, name: string) => void;
   onDeleteConversation: (id: string) => void;
+  onDeleteCollection: (name: string) => Promise<void> | void;
   viewMode?: string;
 }
 
 export function Sidebar({
   collections,
   activeCollection,
+  collectionCreateError = "",
   onSelectCollection,
   onNewCollection,
   conversations,
@@ -44,11 +48,19 @@ export function Sidebar({
   creatingConversation = false,
   onRenameConversation,
   onDeleteConversation,
+  onDeleteCollection,
   viewMode = "chat",
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [conversationToDelete, setConversationToDelete] =
     useState<Conversation | null>(null);
+  const [collectionToDelete, setCollectionToDelete] =
+    useState<Collection | null>(null);
+  const [deleteCollectionValue, setDeleteCollectionValue] = useState("");
+  const [deletingCollectionName, setDeletingCollectionName] = useState<string | null>(
+    null
+  );
+  const [deleteCollectionError, setDeleteCollectionError] = useState("");
   const visibleCollections = collections.filter((c) => !c.name.startsWith("dap_"));
 
   const convActive = viewMode === "chat";
@@ -134,7 +146,7 @@ export function Sidebar({
                   </p>
                   <span
                     className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
-                    style={{ backgroundColor: "var(--bg-hover)", color: "var(--text-secondary)" }}
+                    style={{ backgroundColor: "var(--interactive-light)", color: "var(--interactive)" }}
                   >
                     {visibleCollections.length}
                   </span>
@@ -142,12 +154,29 @@ export function Sidebar({
                 <div className="flex flex-col gap-0.5">
                   {visibleCollections.map((col) => (
                     <CollectionItem
-                      key={col.name}
+                      key={col.pendingKey ?? col.name}
                       collection={col}
                       isActive={collActive && activeCollection === col.name}
-                      onClick={() => onSelectCollection(col.name)}
+                      onClick={() => {
+                        if (col.creating) return;
+                        onSelectCollection(col.name);
+                      }}
+                      onDelete={() => {
+                        if (col.creating) return;
+                        setCollectionToDelete(col);
+                        setDeleteCollectionValue("");
+                        setDeleteCollectionError("");
+                      }}
                     />
                   ))}
+                  {collectionCreateError ? (
+                    <p
+                      className="px-1 pt-1 text-[11px] leading-4"
+                      style={{ color: "#fca5a5" }}
+                    >
+                      {collectionCreateError}
+                    </p>
+                  ) : null}
                   <motion.button
                     onClick={onNewCollection}
                     className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium mt-0.5"
@@ -187,18 +216,21 @@ export function Sidebar({
             <div className="w-4 h-px my-1" style={{ backgroundColor: "var(--border-subtle)" }} />
             {visibleCollections.map((col) => (
               <motion.button
-                key={col.name}
-                onClick={() => onSelectCollection(col.name)}
+                key={col.pendingKey ?? col.name}
+                onClick={() => {
+                  if (col.creating) return;
+                  onSelectCollection(col.name);
+                }}
                 className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold uppercase"
                 style={{
                   backgroundColor: collActive && activeCollection === col.name ? "var(--interactive-light)" : "rgba(0,0,0,0)",
                   color: collActive && activeCollection === col.name ? "var(--interactive)" : "var(--text-muted)",
                   borderLeft: collActive && activeCollection === col.name ? "2px solid var(--interactive)" : "2px solid transparent",
                 }}
-                whileHover={{ backgroundColor: "var(--bg-hover)" }}
+                whileHover={col.creating ? {} : { backgroundColor: "var(--bg-hover)" }}
                 title={col.name}
               >
-                {col.name[0].toUpperCase()}
+                {col.creating ? <Loader2 size={12} className="animate-spin" /> : col.name[0].toUpperCase()}
               </motion.button>
             ))}
           </div>
@@ -221,6 +253,82 @@ export function Sidebar({
           setConversationToDelete(null);
         }}
       />
+
+      <ConfirmDialog
+        open={collectionToDelete !== null}
+        title="Delete collection?"
+        description={
+          collectionToDelete
+            ? `This permanently removes "${collectionToDelete.name}" and its data.`
+            : ""
+        }
+        confirmLabel="Delete collection"
+        confirmDisabled={deleteCollectionValue !== collectionToDelete?.name}
+        confirming={deletingCollectionName === collectionToDelete?.name}
+        onClose={() => {
+          if (deletingCollectionName === collectionToDelete?.name) return;
+          setCollectionToDelete(null);
+          setDeleteCollectionValue("");
+          setDeleteCollectionError("");
+        }}
+        onConfirm={async () => {
+          if (!collectionToDelete || deleteCollectionValue !== collectionToDelete.name) {
+            return;
+          }
+
+          setDeletingCollectionName(collectionToDelete.name);
+          setDeleteCollectionError("");
+
+          try {
+            await onDeleteCollection(collectionToDelete.name);
+            setCollectionToDelete(null);
+            setDeleteCollectionValue("");
+          } catch (error) {
+            setDeleteCollectionError(
+              error instanceof Error ? error.message : "Failed to delete collection"
+            );
+          } finally {
+            setDeletingCollectionName(null);
+          }
+        }}
+      >
+        <div
+          className="rounded-xl px-3 py-2"
+          style={{
+            backgroundColor: "rgba(239,68,68,0.08)",
+            border: "1px solid rgba(239,68,68,0.22)",
+          }}
+        >
+          <div className="flex items-start gap-2">
+            <AlertTriangle
+              size={14}
+              style={{ color: "#f87171", flexShrink: 0, marginTop: 1 }}
+            />
+            <p className="text-xs leading-5" style={{ color: "#fecaca" }}>
+              This action is destructive and cannot be undone. Type the collection
+              name to confirm.
+            </p>
+          </div>
+        </div>
+        <input
+          autoFocus
+          value={deleteCollectionValue}
+          onChange={(event) => setDeleteCollectionValue(event.target.value)}
+          placeholder={collectionToDelete?.name ?? "Collection name"}
+          className="mt-3 w-full rounded-lg px-3 py-2 text-xs outline-none"
+          style={{
+            backgroundColor: "var(--bg-card)",
+            border: "1px solid var(--border-subtle)",
+            color: "var(--text-primary)",
+            fontFamily: "IBM Plex Mono, monospace",
+          }}
+        />
+        {deleteCollectionError ? (
+          <p className="mt-2 text-xs" style={{ color: "#fca5a5" }}>
+            {deleteCollectionError}
+          </p>
+        ) : null}
+      </ConfirmDialog>
     </>
   );
 }

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
 
@@ -47,6 +47,7 @@ function makeSidebarProps(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}
       { name: "dap_internal", count: 3, documentCount: 1, vectorDim: 768, vectorizeService: null },
     ],
     activeCollection: "orders",
+    collectionCreateError: "",
     onSelectCollection: vi.fn(),
     onNewCollection: vi.fn(),
     conversations: [
@@ -65,6 +66,7 @@ function makeSidebarProps(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}
     creatingConversation: false,
     onRenameConversation: vi.fn(),
     onDeleteConversation: vi.fn(),
+    onDeleteCollection: vi.fn().mockResolvedValue(undefined),
     viewMode: "chat",
     ...overrides,
   };
@@ -89,6 +91,67 @@ describe("Sidebar", () => {
 
     fireEvent.click(screen.getByTitle("orders"));
     expect(props.onSelectCollection).toHaveBeenCalledWith("orders");
+  });
+
+  it("shows a creating collection as pending and surfaces collection-create errors", () => {
+    const props = makeSidebarProps({
+      collections: [
+        {
+          name: "orders",
+          count: 12,
+          documentCount: 3,
+          vectorDim: 768,
+          vectorizeService: null,
+        },
+        {
+          name: "reports",
+          count: 0,
+          documentCount: 0,
+          vectorDim: null,
+          vectorizeService: { provider: "nvidia", modelName: "NV-Embed-QA" },
+          creating: true,
+          pendingKey: "reports::pending",
+        },
+      ],
+      collectionCreateError: 'Failed to create "broken"',
+    });
+    render(<Sidebar {...props} />);
+
+    expect(screen.getByText("Creating collection...")).toBeTruthy();
+    expect(screen.getByText('Failed to create "broken"')).toBeTruthy();
+
+    fireEvent.click(screen.getByText("reports"));
+    expect(props.onSelectCollection).not.toHaveBeenCalledWith("reports");
+
+    expect(screen.getAllByTitle("Delete collection")).toHaveLength(1);
+  });
+
+  it("requires typing the collection name before deleting it", async () => {
+    const props = makeSidebarProps();
+    render(<Sidebar {...props} />);
+
+    fireEvent.click(screen.getByTitle("Delete collection"));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Delete collection?")).toBeTruthy();
+    expect(
+      within(dialog).getByText(/This action is destructive and cannot be undone/i)
+    ).toBeTruthy();
+
+    const confirmButton = within(dialog).getByRole("button", {
+      name: "Delete collection",
+    });
+    expect(confirmButton.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.change(within(dialog).getByPlaceholderText("orders"), {
+      target: { value: "orders" },
+    });
+    expect(confirmButton.hasAttribute("disabled")).toBe(false);
+
+    fireEvent.click(confirmButton);
+
+    await Promise.resolve();
+    expect(props.onDeleteCollection).toHaveBeenCalledWith("orders");
   });
 
   it("supports renaming and deleting conversations", () => {

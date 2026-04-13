@@ -140,11 +140,13 @@ describe("IngestTab", () => {
   });
 
   it("prefers the active collection when one is selected", () => {
-    renderTab({ activeCollection: "customers" });
+    const onCollectionStatsDelta = vi.fn();
+    renderTab({ activeCollection: "customers", onCollectionStatsDelta });
 
     expect(useDocumentLibraryMock).toHaveBeenCalledWith(
       expect.objectContaining({
         selectedCollection: "customers",
+        onCollectionStatsDelta,
       })
     );
     expect(useIngestUploadMock).toHaveBeenCalledWith(

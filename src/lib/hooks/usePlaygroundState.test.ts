@@ -78,11 +78,17 @@ describe("usePlaygroundState", () => {
       collectionFields: {},
       activeCollection: "",
       activeCollectionObj: undefined,
+      collectionCreateError: "",
       keyspaces: [],
       selectedKeyspace: "default_keyspace",
       handleSelectCollection: vi.fn(),
       handleKeyspaceChange: vi.fn(),
+      handleCollectionCreateStarted: vi.fn(),
       handleCollectionCreated: vi.fn(),
+      handleCollectionCreateFailed: vi.fn(),
+      clearCollectionCreateError: vi.fn(),
+      handleCollectionStatsDelta: vi.fn(),
+      handleDeleteCollection: vi.fn(),
     }));
   });
 
@@ -143,7 +149,9 @@ describe("usePlaygroundState", () => {
     const setConnectDialogOpen = vi.fn();
     const setConnectError = vi.fn();
     const handleSelectCollection = vi.fn();
+    const clearCollectionCreateError = vi.fn();
     const handleConversationChange = vi.fn().mockResolvedValue(undefined);
+    const handleCollectionStatsDelta = vi.fn();
 
     useConversationStateMock.mockImplementation(() => ({
       conversations: [],
@@ -177,11 +185,17 @@ describe("usePlaygroundState", () => {
       collectionFields: {},
       activeCollection: "",
       activeCollectionObj: undefined,
+      collectionCreateError: "",
       keyspaces: [],
       selectedKeyspace: "default_keyspace",
       handleSelectCollection,
       handleKeyspaceChange: vi.fn(),
+      handleCollectionCreateStarted: vi.fn(),
       handleCollectionCreated: vi.fn(),
+      handleCollectionCreateFailed: vi.fn(),
+      clearCollectionCreateError,
+      handleCollectionStatsDelta,
+      handleDeleteCollection: vi.fn(),
     }));
 
     const { result } = renderHook(() => usePlaygroundState());
@@ -192,6 +206,9 @@ describe("usePlaygroundState", () => {
     act(() => {
       result.current.sidebarProps.onSelectCollection("orders");
     });
+    act(() => {
+      result.current.sidebarProps.onNewCollection();
+    });
     await act(async () => {
       await result.current.sidebarProps.onConversationChange("conv-2");
     });
@@ -201,7 +218,11 @@ describe("usePlaygroundState", () => {
 
     expect(setConnectDialogOpen).toHaveBeenCalledWith(true);
     expect(handleSelectCollection).toHaveBeenCalledWith("orders");
+    expect(clearCollectionCreateError).toHaveBeenCalled();
     expect(result.current.mainPanelProps.viewMode).toBe("chat");
+    expect(result.current.mainPanelProps.onCollectionStatsDelta).toBe(
+      handleCollectionStatsDelta
+    );
     expect(handleConversationChange).toHaveBeenCalledWith("conv-2");
     expect(setConnectDialogOpen).toHaveBeenLastCalledWith(false);
     expect(setConnectError).toHaveBeenCalledWith("");

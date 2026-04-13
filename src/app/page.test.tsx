@@ -128,6 +128,7 @@ function makeBaseState() {
       creatingConversation: false,
       onRenameConversation: vi.fn().mockResolvedValue(undefined),
       onDeleteConversation: vi.fn().mockResolvedValue(undefined),
+      onDeleteCollection: vi.fn().mockResolvedValue(undefined),
     },
     mainPanelProps: {
       viewMode: "chat",

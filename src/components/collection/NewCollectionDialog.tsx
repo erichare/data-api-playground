@@ -13,6 +13,8 @@ import {
 interface NewCollectionDialogProps {
   open: boolean;
   onClose: () => void;
+  onCreateStarted?: (collection: Collection) => void;
+  onCreateFailed?: (name: string, message: string) => void;
   onCreated: (collection: Collection) => void;
   astraToken?: string;
   astraEndpoint?: string;
@@ -25,6 +27,8 @@ const MODES: CollectionMode[] = ["vectorize", "client"];
 export function NewCollectionDialog({
   open,
   onClose,
+  onCreateStarted,
+  onCreateFailed,
   onCreated,
   astraToken,
   astraEndpoint,
@@ -57,6 +61,8 @@ export function NewCollectionDialog({
     astraEndpoint,
     keyspace,
     isConnected: connected,
+    onCreateStarted,
+    onCreateFailed,
     onCreated,
     onClose,
   });

@@ -38,11 +38,13 @@ const defaultArgs = {
   astraToken: "token",
   astraEndpoint: "https://endpoint.com",
   keyspace: "ks",
+  onCollectionStatsDelta: vi.fn(),
 };
 
 describe("useDocumentLibrary", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
+    defaultArgs.onCollectionStatsDelta = vi.fn();
   });
 
   afterEach(() => {
@@ -272,6 +274,10 @@ describe("useDocumentLibrary", () => {
       expect(result.current.documents).toHaveLength(1);
       expect(result.current.documents[0].source_doc_id).toBe("doc-2");
       expect(result.current.deletingId).toBeNull();
+      expect(defaultArgs.onCollectionStatsDelta).toHaveBeenCalledWith("col1", {
+        documentDelta: -1,
+        chunkDelta: -1,
+      });
     });
 
     it("sets deletingId to doc id during deletion", async () => {
@@ -366,6 +372,10 @@ describe("useDocumentLibrary", () => {
 
       expect(result.current.documents[0].source_doc_id).toBe("doc-new");
       expect(result.current.documents).toHaveLength(2);
+      expect(defaultArgs.onCollectionStatsDelta).toHaveBeenCalledWith("col1", {
+        documentDelta: 1,
+        chunkDelta: 1,
+      });
     });
   });
 
@@ -447,6 +457,10 @@ describe("useDocumentLibrary", () => {
           source_doc_id: "doc-2",
         }),
       ]);
+      expect(defaultArgs.onCollectionStatsDelta).toHaveBeenCalledWith("col1", {
+        documentDelta: 0,
+        chunkDelta: 0,
+      });
     });
   });
 });

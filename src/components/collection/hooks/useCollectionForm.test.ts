@@ -544,19 +544,79 @@ describe("useCollectionForm", () => {
         expect.objectContaining({ name: "my_collection" })
       );
     });
+
+    it("closes immediately and reports an optimistic collection when connected", async () => {
+      const onCreated = vi.fn();
+      const onClose = vi.fn();
+      const onCreateStarted = vi.fn();
+      let resolveCreate!: (value: Response) => void;
+      global.fetch = vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveCreate = resolve;
+          })
+      ) as typeof fetch;
+
+      const { result } = renderHook(() =>
+        useCollectionForm(
+          baseArgs({
+            isConnected: true,
+            open: false,
+            onCreated,
+            onClose,
+            onCreateStarted,
+          })
+        )
+      );
+
+      await act(async () => {
+        result.current.setName("reports");
+        result.current.setMode("client");
+      });
+
+      act(() => {
+        void result.current.handleCreate();
+      });
+
+      expect(onCreateStarted).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "reports",
+          creating: true,
+        })
+      );
+      expect(onClose).toHaveBeenCalled();
+      expect(onCreated).not.toHaveBeenCalled();
+
+      await act(async () => {
+        resolveCreate(
+          makeCreateCollectionResponse({
+            name: "reports",
+            count: 0,
+            documentCount: 0,
+            vectorDim: 768,
+            vectorizeService: null,
+          })
+        );
+      });
+
+      expect(onCreated).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "reports" })
+      );
+    });
   });
 
   // ─── Submission – error ───────────────────────────────────────────────────
 
   describe("handleCreate – error", () => {
     it("sets error when createCollection API returns an error body", async () => {
+      const onCreateFailed = vi.fn();
       global.fetch = vi.fn().mockResolvedValue(
         makeErrorResponse(400, "server error")
       ) as typeof fetch;
 
       const { result } = renderHook(() =>
         useCollectionForm(
-          baseArgs({ isConnected: true, open: false })
+          baseArgs({ isConnected: true, open: false, onCreateFailed })
         )
       );
 
@@ -571,16 +631,20 @@ describe("useCollectionForm", () => {
         await result.current.handleCreate();
       });
 
-      expect(result.current.error).toBe("server error");
+      expect(onCreateFailed).toHaveBeenCalledWith("col", "server error");
+      expect(result.current.error).toBe("");
       expect(result.current.loading).toBe(false);
     });
 
     it("sets generic error for non-Error throws", async () => {
       // Simulate fetch throwing a non-Error (unusual but possible)
+      const onCreateFailed = vi.fn();
       global.fetch = vi.fn().mockRejectedValue("something went wrong") as typeof fetch;
 
       const { result } = renderHook(() =>
-        useCollectionForm(baseArgs({ isConnected: true, open: false }))
+        useCollectionForm(
+          baseArgs({ isConnected: true, open: false, onCreateFailed })
+        )
       );
 
       await act(async () => {
@@ -592,10 +656,16 @@ describe("useCollectionForm", () => {
         await result.current.handleCreate();
       });
 
-      expect(result.current.error).toBe("Failed to create collection");
+      expect(onCreateFailed).toHaveBeenCalledWith(
+        "col",
+        "Failed to create collection"
+      );
+      expect(result.current.error).toBe("");
     });
 
-    it("clears a previous error before a new submission attempt", async () => {
+    it("can retry a connected create after a failed background attempt", async () => {
+      const onCreateFailed = vi.fn();
+      const onCreated = vi.fn();
       // Use isConnected=true + open=false so createCollection hits the real fetch path
       let callCount = 0;
       global.fetch = vi.fn(async () => {
@@ -606,7 +676,7 @@ describe("useCollectionForm", () => {
 
       const { result } = renderHook(() =>
         useCollectionForm(
-          baseArgs({ isConnected: true, open: false })
+          baseArgs({ isConnected: true, open: false, onCreateFailed, onCreated })
         )
       );
 
@@ -620,14 +690,57 @@ describe("useCollectionForm", () => {
       await act(async () => {
         await result.current.handleCreate();
       });
-      expect(result.current.error).toBe("first failure");
+      expect(onCreateFailed).toHaveBeenCalledWith("col", "first failure");
+      expect(result.current.error).toBe("");
 
-      // Second attempt succeeds — error should be cleared
+      await act(async () => {
+        result.current.setName("col");
+        result.current.setMode("client");
+      });
+
+      // Second attempt succeeds after the user re-enters the form data
       await act(async () => {
         await result.current.handleCreate();
       });
 
-      // The second call should clear the previous error
+      expect(onCreated).toHaveBeenCalled();
+      expect(result.current.error).toBe("");
+    });
+
+    it("removes the optimistic row through onCreateFailed when connected creation fails", async () => {
+      const onCreateStarted = vi.fn();
+      const onCreateFailed = vi.fn();
+      const onClose = vi.fn();
+      global.fetch = vi.fn().mockResolvedValue(
+        makeErrorResponse(400, "server error")
+      ) as typeof fetch;
+
+      const { result } = renderHook(() =>
+        useCollectionForm(
+          baseArgs({
+            isConnected: true,
+            open: false,
+            onClose,
+            onCreateStarted,
+            onCreateFailed,
+          })
+        )
+      );
+
+      await act(async () => {
+        result.current.setName("broken");
+        result.current.setMode("client");
+      });
+
+      await act(async () => {
+        await result.current.handleCreate();
+      });
+
+      expect(onCreateStarted).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "broken", creating: true })
+      );
+      expect(onClose).toHaveBeenCalled();
+      expect(onCreateFailed).toHaveBeenCalledWith("broken", "server error");
       expect(result.current.error).toBe("");
     });
   });

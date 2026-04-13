@@ -64,15 +64,23 @@ export function usePlaygroundState() {
     [conversationState]
   );
 
+  const resolvedCollections = connectionState.collections.filter(
+    (collection) => !collection.creating
+  );
+  const resolvedActiveCollectionObj =
+    resolvedCollections.find(
+      (collection) => collection.name === connectionState.activeCollection
+    ) ?? resolvedCollections[0];
+
   const connectionValue: ConnectionContextValue = {
     astraToken: connectionState.astraToken,
     astraEndpoint: connectionState.astraEndpoint,
     keyspace: connectionState.selectedKeyspace,
     isConnected: connectionState.isConnected,
     initializing: connectionState.initializing,
-    collections: connectionState.collections,
+    collections: resolvedCollections,
     activeCollection: connectionState.activeCollection,
-    activeCollectionObj: connectionState.activeCollectionObj,
+    activeCollectionObj: resolvedActiveCollectionObj,
     collectionFields: connectionState.collectionFields,
     huggingfaceApiKey,
   };
@@ -92,9 +100,13 @@ export function usePlaygroundState() {
     sidebarProps: {
       collections: connectionState.collections,
       activeCollection: connectionState.activeCollection,
+      collectionCreateError: connectionState.collectionCreateError,
       viewMode,
       onSelectCollection: handleSidebarCollectionSelect,
-      onNewCollection: () => setNewCollectionOpen(true),
+      onNewCollection: () => {
+        connectionState.clearCollectionCreateError();
+        setNewCollectionOpen(true);
+      },
       keyspaces: connectionState.keyspaces,
       selectedKeyspace: connectionState.selectedKeyspace,
       onKeyspaceChange: (keyspace: string) =>
@@ -109,6 +121,8 @@ export function usePlaygroundState() {
         void conversationState.handleRenameConversation(id, name),
       onDeleteConversation: (id: string) =>
         void conversationState.handleDeleteConversation(id),
+      onDeleteCollection: (name: string) =>
+        connectionState.handleDeleteCollection(name),
     },
     mainPanelProps: {
       viewMode,
@@ -117,10 +131,13 @@ export function usePlaygroundState() {
       activeConversationId: conversationState.activeConversationId,
       messages: conversationState.messages,
       onMessagesUpdate: conversationState.handleMessagesUpdate,
+      onCollectionStatsDelta: connectionState.handleCollectionStatsDelta,
     },
     dialogsProps: {
       newCollectionOpen,
       onCloseNewCollection: () => setNewCollectionOpen(false),
+      onCollectionCreateStarted: connectionState.handleCollectionCreateStarted,
+      onCollectionCreateFailed: connectionState.handleCollectionCreateFailed,
       onCollectionCreated: connectionState.handleCollectionCreated,
       astraToken: connectionState.astraToken,
       astraEndpoint: connectionState.astraEndpoint,

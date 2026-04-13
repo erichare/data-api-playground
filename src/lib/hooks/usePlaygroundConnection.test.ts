@@ -4,12 +4,14 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePlaygroundConnection } from "./usePlaygroundConnection";
 
-const { fetchCollectionsFromApiMock } = vi.hoisted(() => ({
+const { fetchCollectionsFromApiMock, readApiErrorMessageMock } = vi.hoisted(() => ({
   fetchCollectionsFromApiMock: vi.fn(),
+  readApiErrorMessageMock: vi.fn(),
 }));
 
 vi.mock("@/lib/playground/client", () => ({
   fetchCollectionsFromApi: fetchCollectionsFromApiMock,
+  readApiErrorMessage: readApiErrorMessageMock,
 }));
 
 function makeConnectionResult(overrides: Partial<Awaited<ReturnType<typeof fetchCollectionsFromApiMock>>> = {}) {
@@ -34,6 +36,7 @@ describe("usePlaygroundConnection", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
+    readApiErrorMessageMock.mockResolvedValue("Failed to delete collection");
   });
 
   afterEach(() => {
@@ -418,5 +421,199 @@ describe("usePlaygroundConnection", () => {
     expect(resetConversationTracking).toHaveBeenCalledTimes(2);
     expect(onDisconnectViewReset).toHaveBeenCalledTimes(1);
     expect(bootstrapConversations).toHaveBeenCalledTimes(3);
+  });
+
+  it("deletes a collection and selects the next available collection", async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/astra-status") {
+        return new Response(JSON.stringify({ hasToken: false, hasEndpoint: false }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (String(input) === "/api/delete-collection") {
+        return new Response(JSON.stringify({ dropped: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      throw new Error(`Unhandled fetch: ${String(input)}`);
+    }) as typeof fetch;
+    fetchCollectionsFromApiMock.mockResolvedValueOnce(makeConnectionResult());
+
+    const bootstrapConversations = vi.fn().mockResolvedValue("conv-1");
+    const resetConversationTracking = vi.fn();
+
+    const { result } = renderHook(() =>
+      usePlaygroundConnection({
+        bootstrapConversations,
+        resetConversationTracking,
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.initializing).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.handleConnect(
+        "AstraCS:secret",
+        "https://db-id-us-east1.apps.astra.datastax.com"
+      );
+    });
+
+    expect(result.current.activeCollection).toBe("orders");
+
+    await act(async () => {
+      await result.current.handleDeleteCollection("orders");
+    });
+
+    expect(result.current.collections.map((collection) => collection.name)).toEqual([
+      "dap_internal",
+      "customers",
+    ]);
+    expect(result.current.activeCollection).toBe("customers");
+    expect(result.current.collectionFields).toEqual({
+      customers: ["name"],
+    });
+  });
+
+  it("applies document and chunk deltas to the active collection summary", async () => {
+    global.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ hasToken: false, hasEndpoint: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    ) as typeof fetch;
+    fetchCollectionsFromApiMock.mockResolvedValueOnce(
+      makeConnectionResult({
+        collections: [
+          {
+            name: "orders",
+            count: 12,
+            documentCount: 2,
+            vectorDim: 768,
+            vectorizeService: null,
+          },
+        ],
+      })
+    );
+
+    const { result } = renderHook(() =>
+      usePlaygroundConnection({
+        bootstrapConversations: vi.fn().mockResolvedValue("conv-1"),
+        resetConversationTracking: vi.fn(),
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.initializing).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.handleConnect(
+        "AstraCS:secret",
+        "https://db-id-us-east1.apps.astra.datastax.com"
+      );
+    });
+
+    act(() => {
+      result.current.handleCollectionStatsDelta("orders", {
+        documentDelta: 1,
+        chunkDelta: 3,
+      });
+    });
+
+    expect(result.current.collections).toEqual([
+      expect.objectContaining({
+        name: "orders",
+        documentCount: 3,
+        count: 15,
+      }),
+    ]);
+  });
+
+  it("tracks optimistic collection creation state in the sidebar list", async () => {
+    global.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ hasToken: false, hasEndpoint: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    ) as typeof fetch;
+    fetchCollectionsFromApiMock.mockResolvedValueOnce(makeConnectionResult());
+
+    const { result } = renderHook(() =>
+      usePlaygroundConnection({
+        bootstrapConversations: vi.fn().mockResolvedValue("conv-1"),
+        resetConversationTracking: vi.fn(),
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.initializing).toBe(false);
+    });
+
+    act(() => {
+      result.current.handleCollectionCreateStarted({
+        name: "reports",
+        count: 0,
+        documentCount: 0,
+        vectorDim: null,
+        vectorizeService: { provider: "nvidia", modelName: "NV-Embed-QA" },
+        creating: true,
+        pendingKey: "reports::pending",
+      });
+    });
+
+    expect(result.current.collections).toContainEqual(
+      expect.objectContaining({
+        name: "reports",
+        creating: true,
+      })
+    );
+    expect(result.current.activeCollection).toBe("");
+
+    act(() => {
+      result.current.handleCollectionCreated({
+        name: "reports",
+        count: 0,
+        documentCount: 0,
+        vectorDim: null,
+        vectorizeService: { provider: "nvidia", modelName: "NV-Embed-QA" },
+      });
+    });
+
+    expect(result.current.collections.filter((collection) => collection.name === "reports"))
+      .toHaveLength(1);
+    expect(result.current.collections).toContainEqual(
+      expect.objectContaining({
+        name: "reports",
+        creating: false,
+      })
+    );
+    expect(result.current.activeCollection).toBe("reports");
+
+    act(() => {
+      result.current.handleCollectionCreateStarted({
+        name: "broken",
+        count: 0,
+        documentCount: 0,
+        vectorDim: 1536,
+        vectorizeService: null,
+        creating: true,
+        pendingKey: "broken::pending",
+      });
+    });
+    act(() => {
+      result.current.handleCollectionCreateFailed("broken", "Failed to create collection");
+    });
+
+    expect(result.current.collections.map((collection) => collection.name)).not.toContain(
+      "broken"
+    );
+    expect(result.current.collectionCreateError).toBe("Failed to create collection");
+    expect(result.current.activeCollection).toBe("reports");
   });
 });

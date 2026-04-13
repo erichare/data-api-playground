@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Collection } from "@/lib/types";
-import { fetchCollectionsFromApi } from "@/lib/playground/client";
+import {
+  fetchCollectionsFromApi,
+  readApiErrorMessage,
+} from "@/lib/playground/client";
 
 interface UsePlaygroundConnectionArgs {
   bootstrapConversations: () => Promise<string>;
@@ -27,6 +30,7 @@ export function usePlaygroundConnection({
   const [collections, setCollections] = useState<Collection[]>([]);
   const [collectionFields, setCollectionFields] = useState<Record<string, string[]>>({});
   const [activeCollection, setActiveCollection] = useState("");
+  const [collectionCreateError, setCollectionCreateError] = useState("");
   const [keyspaces, setKeyspaces] = useState<string[]>([]);
   const [selectedKeyspace, setSelectedKeyspace] = useState("default_keyspace");
 
@@ -124,6 +128,7 @@ export function usePlaygroundConnection({
     setCollections([]);
     setCollectionFields({});
     setActiveCollection("");
+    setCollectionCreateError("");
     setKeyspaces([]);
     setSelectedKeyspace("default_keyspace");
     resetConversationTracking();
@@ -164,9 +169,121 @@ export function usePlaygroundConnection({
   }, [astraEndpoint, astraFromEnv, astraToken, fetchCollections, formatKeyspacesWarning]);
 
   const handleCollectionCreated = useCallback((collection: Collection) => {
-    setCollections((prev) => [...prev, collection]);
+    setCollectionCreateError("");
+    setCollections((prev) => {
+      const nextCollection = {
+        ...collection,
+        documentCount: collection.documentCount ?? 0,
+        creating: false,
+        pendingKey: undefined,
+      };
+      const pendingIndex = prev.findIndex(
+        (candidate) => candidate.name === collection.name && candidate.creating
+      );
+      if (pendingIndex >= 0) {
+        const next = [...prev];
+        next[pendingIndex] = nextCollection;
+        return next;
+      }
+      return [...prev, nextCollection];
+    });
     setActiveCollection(collection.name);
   }, []);
+
+  const handleCollectionCreateStarted = useCallback((collection: Collection) => {
+    setCollectionCreateError("");
+    setCollections((prev) => [...prev, collection]);
+  }, []);
+
+  const handleCollectionCreateFailed = useCallback(
+    (name: string, message: string) => {
+      const nextCollections = collections.filter(
+        (collection) => !(collection.name === name && collection.creating)
+      );
+
+      setCollections(nextCollections);
+      setCollectionCreateError(message);
+    },
+    [collections]
+  );
+
+  const clearCollectionCreateError = useCallback(() => {
+    setCollectionCreateError("");
+  }, []);
+
+  const handleCollectionStatsDelta = useCallback(
+    (
+      name: string,
+      {
+        documentDelta,
+        chunkDelta,
+      }: { documentDelta: number; chunkDelta: number }
+    ) => {
+      setCollections((prev) =>
+        prev.map((collection) => {
+          if (collection.name !== name) {
+            return collection;
+          }
+
+          const nextDocumentCount = Math.max(
+            0,
+            (collection.documentCount ?? 0) + documentDelta
+          );
+
+          return {
+            ...collection,
+            documentCount: nextDocumentCount,
+            count:
+              typeof collection.count === "number"
+                ? Math.max(0, collection.count + chunkDelta)
+                : collection.count,
+          };
+        })
+      );
+    },
+    []
+  );
+
+  const handleDeleteCollection = useCallback(
+    async (name: string) => {
+      const response = await fetch("/api/delete-collection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          token: astraFromEnv ? undefined : astraToken,
+          endpoint: astraFromEnv ? undefined : astraEndpoint,
+          keyspace: selectedKeyspace,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          await readApiErrorMessage(response, "Failed to delete collection")
+        );
+      }
+
+      const nextCollections = collections.filter(
+        (collection) => collection.name !== name
+      );
+
+      setCollections(nextCollections);
+      setCollectionFields((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+      setActiveCollection((current) =>
+        current === name
+          ? nextCollections.find((collection) => !collection.name.startsWith("dap_"))
+              ?.name ??
+            nextCollections[0]?.name ??
+            ""
+          : current
+      );
+    },
+    [astraEndpoint, astraFromEnv, astraToken, collections, selectedKeyspace]
+  );
 
   const isConnected = astraFromEnv || !!astraToken;
   const activeCollectionObj = collections.find((c) => c.name === activeCollection) ?? collections[0];
@@ -189,10 +306,16 @@ export function usePlaygroundConnection({
     collectionFields,
     activeCollection,
     activeCollectionObj,
+    collectionCreateError,
     keyspaces,
     selectedKeyspace,
     handleSelectCollection,
     handleKeyspaceChange,
+    handleCollectionCreateStarted,
     handleCollectionCreated,
+    handleCollectionCreateFailed,
+    clearCollectionCreateError,
+    handleCollectionStatsDelta,
+    handleDeleteCollection,
   };
 }

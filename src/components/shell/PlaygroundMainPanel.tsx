@@ -14,6 +14,10 @@ export interface PlaygroundMainPanelProps {
   activeConversationId: string;
   messages: Message[];
   onMessagesUpdate: (messages: Message[]) => void;
+  onCollectionStatsDelta?: (
+    name: string,
+    delta: { documentDelta: number; chunkDelta: number }
+  ) => void;
 }
 
 export function PlaygroundMainPanel({
@@ -23,6 +27,7 @@ export function PlaygroundMainPanel({
   activeConversationId,
   messages,
   onMessagesUpdate,
+  onCollectionStatsDelta,
 }: PlaygroundMainPanelProps) {
   const conn = useConnection();
 
@@ -50,6 +55,7 @@ export function PlaygroundMainPanel({
           activeCollection={conn.activeCollection}
           huggingfaceApiKey={conn.huggingfaceApiKey}
           isConnected={conn.isConnected}
+          onCollectionStatsDelta={onCollectionStatsDelta}
         />
       ) : (
         <ChatArea

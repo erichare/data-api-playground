@@ -50,7 +50,7 @@ function makeDetailedSteps(): PipelineStep[] {
       latencyMs: 5,
       data: {
         provider: "huggingface",
-        model: "ibm-granite/granite-3.3-8b-instruct",
+        model: "Qwen/Qwen2.5-Coder-32B-Instruct",
         intent: "collection_overview",
         allCollections: true,
         collections: ["orders", "users"],
@@ -99,7 +99,7 @@ function makeDetailedSteps(): PipelineStep[] {
       latencyMs: 13,
       data: {
         provider: "huggingface",
-        model: "ibm-granite/granite-3.3-8b-instruct",
+        model: "Qwen/Qwen2.5-Coder-32B-Instruct",
         content: "This answer summarizes the matching orders and highlights the strongest result for the user.",
       },
     },
@@ -121,7 +121,7 @@ describe("PipelineTrace", () => {
     expect(screen.getByText('{"intent":"collection_overview"}')).toBeTruthy();
     expect(screen.getByText("[0.1000, 0.2000, 0.3000, …]")).toBeTruthy();
     expect(
-      screen.getAllByText(/Hugging Face · ibm-granite\/granite-3.3-8b-instruct/)
+      screen.getAllByText(/Hugging Face · Qwen\/Qwen2.5-Coder-32B-Instruct/)
     ).toHaveLength(2);
     expect(screen.getByText(/Ollama · granite-embedding:278m/)).toBeTruthy();
     expect(screen.getByText("Granite unavailable")).toBeTruthy();

@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useEffect, useId } from "react";
 import { createPortal } from "react-dom";
 
@@ -10,6 +11,8 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   confirming?: boolean;
+  confirmDisabled?: boolean;
+  children?: ReactNode;
   onConfirm: () => void;
   onClose: () => void;
 }
@@ -21,6 +24,8 @@ export function ConfirmDialog({
   confirmLabel = "Delete",
   cancelLabel = "Cancel",
   confirming = false,
+  confirmDisabled = false,
+  children,
   onConfirm,
   onClose,
 }: ConfirmDialogProps) {
@@ -76,6 +81,7 @@ export function ConfirmDialog({
         >
           {description}
         </p>
+        {children ? <div className="mt-3">{children}</div> : null}
         <div className="mt-4 flex justify-end gap-2">
           <button
             type="button"
@@ -93,12 +99,12 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={confirming}
+            disabled={confirming || confirmDisabled}
             className="rounded-lg px-3 py-1.5 text-xs font-medium"
             style={{
               backgroundColor: "#ef4444",
               color: "white",
-              opacity: confirming ? 0.7 : 1,
+              opacity: confirming || confirmDisabled ? 0.7 : 1,
             }}
           >
             {confirming ? "Deleting..." : confirmLabel}

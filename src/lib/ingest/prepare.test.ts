@@ -16,7 +16,7 @@ const huggingFaceBackend: ResolvedAiBackend = {
   source: "manual",
   huggingfaceApiKey: "hf-key",
   huggingFaceKeyPresent: true,
-  chatModel: "ibm-granite/granite-3.3-8b-instruct",
+  chatModel: "Qwen/Qwen2.5-Coder-32B-Instruct",
   embedModel: "ibm-granite/granite-embedding-125m-english",
   ollamaBaseUrl: "http://127.0.0.1:11434",
 };

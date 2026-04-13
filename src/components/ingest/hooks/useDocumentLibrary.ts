@@ -11,6 +11,10 @@ interface UseDocumentLibraryArgs {
   astraToken: string;
   astraEndpoint: string;
   keyspace: string;
+  onCollectionStatsDelta?: (
+    name: string,
+    delta: { documentDelta: number; chunkDelta: number }
+  ) => void;
 }
 
 export function useDocumentLibrary({
@@ -19,6 +23,7 @@ export function useDocumentLibrary({
   astraToken,
   astraEndpoint,
   keyspace,
+  onCollectionStatsDelta,
 }: UseDocumentLibraryArgs) {
   const [documents, setDocuments] = useState<IngestedDocumentSummary[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
@@ -87,6 +92,10 @@ export function useDocumentLibrary({
         }
       }
       setDocuments((prev) => prev.filter((d) => d.source_doc_id !== doc.source_doc_id));
+      onCollectionStatsDelta?.(doc.collection, {
+        documentDelta: -1,
+        chunkDelta: -doc.chunk_total,
+      });
     } catch (err) {
       setLoadError(
         err instanceof Error ? err.message : "Failed to delete document"
@@ -94,21 +103,32 @@ export function useDocumentLibrary({
     } finally {
       setDeletingId(null);
     }
-  }, [isConnected, astraToken, astraEndpoint, keyspace]);
+  }, [isConnected, astraToken, astraEndpoint, keyspace, onCollectionStatsDelta]);
 
   const prependDocument = useCallback((doc: IngestedDocumentSummary) => {
     setDocuments((prev) => [doc, ...prev]);
-  }, []);
+    onCollectionStatsDelta?.(doc.collection, {
+      documentDelta: 1,
+      chunkDelta: doc.chunk_total,
+    });
+  }, [onCollectionStatsDelta]);
 
   const replaceDocumentsByIds = useCallback(
     (doc: IngestedDocumentSummary, replacedSourceDocIds: string[]) => {
       const replacedIdSet = new Set(replacedSourceDocIds);
+      const replacedChunkTotal = documents
+        .filter((existingDoc) => replacedIdSet.has(existingDoc.source_doc_id))
+        .reduce((total, existingDoc) => total + existingDoc.chunk_total, 0);
       setDocuments((prev) => [
         doc,
         ...prev.filter((existingDoc) => !replacedIdSet.has(existingDoc.source_doc_id)),
       ]);
+      onCollectionStatsDelta?.(doc.collection, {
+        documentDelta: 1 - replacedSourceDocIds.length,
+        chunkDelta: doc.chunk_total - replacedChunkTotal,
+      });
     },
-    []
+    [documents, onCollectionStatsDelta]
   );
 
   const filteredDocs = useMemo(() => (

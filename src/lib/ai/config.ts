@@ -1,6 +1,6 @@
 import type { ResolvedAiBackend } from "./types";
 
-export const DEFAULT_HF_CHAT_MODEL = "ibm-granite/granite-3.3-8b-instruct";
+export const DEFAULT_HF_CHAT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct";
 export const DEFAULT_HF_EMBED_MODEL = "ibm-granite/granite-embedding-125m-english";
 export const DEFAULT_OLLAMA_CHAT_MODEL = "granite3.1-dense:8b";
 export const DEFAULT_OLLAMA_EMBED_MODEL = "granite-embedding:278m";
@@ -66,8 +66,4 @@ export function resolveBackend(args: {
     embedModel: models.ollamaEmbedModel,
     ollamaBaseUrl: models.ollamaBaseUrl,
   };
-}
-
-export function normalizeHuggingFaceChatModel(model: string) {
-  return model.includes(":") ? model : `${model}:hf-inference`;
 }

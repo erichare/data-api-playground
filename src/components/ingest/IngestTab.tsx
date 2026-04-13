@@ -18,6 +18,10 @@ interface IngestTabProps {
   activeCollection?: string;
   huggingfaceApiKey?: string;
   isConnected: boolean;
+  onCollectionStatsDelta?: (
+    name: string,
+    delta: { documentDelta: number; chunkDelta: number }
+  ) => void;
 }
 
 export function IngestTab({
@@ -28,6 +32,7 @@ export function IngestTab({
   activeCollection,
   huggingfaceApiKey,
   isConnected,
+  onCollectionStatsDelta,
 }: IngestTabProps) {
   const selectedCollection = useMemo(
     () =>
@@ -59,6 +64,7 @@ export function IngestTab({
     astraToken,
     astraEndpoint,
     keyspace,
+    onCollectionStatsDelta,
   });
 
   const {

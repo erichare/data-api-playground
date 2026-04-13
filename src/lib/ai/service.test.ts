@@ -162,7 +162,7 @@ describe("ai service", () => {
         ensureModel({ backend, kind: "chat", allowPull: true })
       ).resolves.toEqual({
         downloaded: false,
-        model: "ibm-granite/granite-3.3-8b-instruct",
+        model: "Qwen/Qwen2.5-Coder-32B-Instruct",
       });
     });
 
@@ -245,7 +245,7 @@ describe("ai service", () => {
   });
 
   describe("generateText", () => {
-    it("calls the Hugging Face router and normalizes the chat model name", async () => {
+    it("calls the Hugging Face router with the configured chat model", async () => {
       const backend = resolveBackend({ huggingfaceApiKey: "manual-key" });
       vi.mocked(fetch).mockResolvedValueOnce(
         jsonResponse({
@@ -262,12 +262,12 @@ describe("ai service", () => {
       expect(result).toEqual({
         content: "Hello there",
         provider: "huggingface",
-        model: "ibm-granite/granite-3.3-8b-instruct",
+        model: "Qwen/Qwen2.5-Coder-32B-Instruct",
       });
 
       const [, options] = vi.mocked(fetch).mock.calls[0];
       expect(options?.body).toContain(
-        '"model":"ibm-granite/granite-3.3-8b-instruct:hf-inference"'
+        '"model":"Qwen/Qwen2.5-Coder-32B-Instruct"'
       );
     });
 
@@ -338,7 +338,7 @@ describe("ai service", () => {
       expect(result).toEqual({
         content: "Hello there",
         provider: "huggingface",
-        model: "ibm-granite/granite-3.3-8b-instruct",
+        model: "Qwen/Qwen2.5-Coder-32B-Instruct",
       });
       expect(onChunk).toHaveBeenNthCalledWith(
         1,

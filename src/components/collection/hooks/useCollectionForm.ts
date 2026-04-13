@@ -16,6 +16,8 @@ interface UseCollectionFormArgs {
   astraEndpoint?: string;
   keyspace?: string;
   isConnected?: boolean;
+  onCreateStarted?: (collection: Collection) => void;
+  onCreateFailed?: (name: string, message: string) => void;
   onCreated: (collection: Collection) => void;
   onClose: () => void;
 }
@@ -26,6 +28,8 @@ export function useCollectionForm({
   astraEndpoint,
   keyspace,
   isConnected = false,
+  onCreateStarted,
+  onCreateFailed,
   onCreated,
   onClose,
 }: UseCollectionFormArgs) {
@@ -77,28 +81,58 @@ export function useCollectionForm({
 
   const handleCreate = useCallback(async () => {
     if (!canSubmit) return;
+    const trimmedName = name.trim();
+    const optimisticCollection: Collection = {
+      name: trimmedName,
+      count: 0,
+      documentCount: 0,
+      vectorDim: mode === "vectorize" ? null : dimension,
+      vectorizeService:
+        mode === "vectorize"
+          ? {
+              provider: selectedModel?.provider ?? "nvidia",
+              modelName: selectedModel?.modelName ?? "NV-Embed-QA",
+            }
+          : null,
+      creating: true,
+      pendingKey: `${trimmedName}::pending`,
+    };
+
     setError("");
     setLoading(true);
 
     try {
+      if (isConnected) {
+        onCreateStarted?.(optimisticCollection);
+        resetAfterCreate();
+        onClose();
+      }
+
       const collection = await createCollection({
         astraToken,
         astraEndpoint,
         keyspace,
         isConnected,
-        name,
+        name: trimmedName,
         mode,
         dimension,
         metric,
         selectedModel,
       });
       onCreated(collection);
-      resetAfterCreate();
-      onClose();
+      if (!isConnected) {
+        resetAfterCreate();
+        onClose();
+      }
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to create collection"
-      );
+      const message =
+        err instanceof Error ? err.message : "Failed to create collection";
+
+      if (isConnected) {
+        onCreateFailed?.(trimmedName, message);
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -113,6 +147,8 @@ export function useCollectionForm({
     mode,
     name,
     onClose,
+    onCreateFailed,
+    onCreateStarted,
     onCreated,
     resetAfterCreate,
     selectedModel,

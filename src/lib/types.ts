@@ -9,6 +9,8 @@ export interface Collection {
   documentCount?: number;
   vectorDim: number | null;
   vectorizeService?: CollectionVectorizeService | null;
+  creating?: boolean;
+  pendingKey?: string;
 }
 
 export interface DocumentSource {

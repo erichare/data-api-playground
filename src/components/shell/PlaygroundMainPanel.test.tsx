@@ -39,8 +39,19 @@ vi.mock("@/components/chat/ChatArea", () => ({
 }));
 
 vi.mock("@/components/ingest/IngestTab", () => ({
-  IngestTab: ({ activeCollection }: { activeCollection: string }) => (
-    <div data-testid="ingest-tab">{activeCollection}</div>
+  IngestTab: ({
+    activeCollection,
+    onCollectionStatsDelta,
+  }: {
+    activeCollection: string;
+    onCollectionStatsDelta?: () => void;
+  }) => (
+    <div data-testid="ingest-tab">
+      {JSON.stringify({
+        activeCollection,
+        hasCollectionStatsDelta: typeof onCollectionStatsDelta === "function",
+      })}
+    </div>
   ),
 }));
 
@@ -127,9 +138,14 @@ describe("PlaygroundMainPanel", () => {
   });
 
   it("renders the ingest tab when ingest mode is selected", () => {
-    renderPanel({ viewMode: "ingest" });
+    renderPanel({ viewMode: "ingest", onCollectionStatsDelta: vi.fn() });
 
-    expect(screen.getByTestId("ingest-tab").textContent).toBe("orders");
+    expect(screen.getByTestId("ingest-tab").textContent).toBe(
+      JSON.stringify({
+        activeCollection: "orders",
+        hasCollectionStatsDelta: true,
+      })
+    );
     expect(screen.queryByTestId("chat-area")).toBeNull();
   });
 

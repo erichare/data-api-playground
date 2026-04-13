@@ -40,7 +40,7 @@ Normalized operations:
 
 Default models:
 
-- Hugging Face chat: `ibm-granite/granite-3.3-8b-instruct`
+- Hugging Face chat: `Qwen/Qwen2.5-Coder-32B-Instruct`
 - Hugging Face embeddings: `ibm-granite/granite-embedding-125m-english`
 - Ollama chat: `granite3.1-dense:8b`
 - Ollama embeddings: `granite-embedding:278m`

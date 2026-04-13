@@ -1,4 +1,4 @@
-import { getAiModelConfig, normalizeHuggingFaceChatModel } from "./config";
+import { getAiModelConfig } from "./config";
 import { consumeChatCompletionStream, consumeNdjsonStream, readErrorBody } from "./streaming";
 import type {
   AiModelKind,
@@ -185,7 +185,7 @@ export async function generateText(args: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: normalizeHuggingFaceChatModel(backend.chatModel),
+        model: backend.chatModel,
         messages,
         max_tokens: maxTokens,
       }),
@@ -281,7 +281,7 @@ export async function streamText(args: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: normalizeHuggingFaceChatModel(backend.chatModel),
+        model: backend.chatModel,
         messages,
         max_tokens: maxTokens,
         stream: true,

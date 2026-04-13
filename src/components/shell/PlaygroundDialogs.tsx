@@ -8,6 +8,8 @@ import type { Collection } from "@/lib/types";
 export interface PlaygroundDialogsProps {
   newCollectionOpen: boolean;
   onCloseNewCollection: () => void;
+  onCollectionCreateStarted?: (collection: Collection) => void;
+  onCollectionCreateFailed?: (name: string, message: string) => void;
   onCollectionCreated: (collection: Collection) => void;
   astraToken: string;
   astraEndpoint: string;
@@ -28,6 +30,8 @@ export interface PlaygroundDialogsProps {
 export function PlaygroundDialogs({
   newCollectionOpen,
   onCloseNewCollection,
+  onCollectionCreateStarted,
+  onCollectionCreateFailed,
   onCollectionCreated,
   astraToken,
   astraEndpoint,
@@ -49,6 +53,8 @@ export function PlaygroundDialogs({
       <NewCollectionDialog
         open={newCollectionOpen}
         onClose={onCloseNewCollection}
+        onCreateStarted={onCollectionCreateStarted}
+        onCreateFailed={onCollectionCreateFailed}
         onCreated={onCollectionCreated}
         astraToken={astraToken}
         astraEndpoint={astraEndpoint}
