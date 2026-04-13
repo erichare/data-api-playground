@@ -183,6 +183,42 @@ describe("chat response helpers", () => {
     );
 
     expect(userMessage.content).toContain("no matching records were found");
+    // Must NOT tell the AI to use general knowledge (causes hallucination)
+    expect(userMessage.content).not.toContain("general knowledge");
+    // Should instruct grounding and suggest user actions
+    expect(userMessage.content).toContain("Do NOT guess or fabricate");
+    expect(userMessage.content).toContain("total_spend");
+  });
+
+  it("includes grounding rule in system prompt to prevent hallucination", async () => {
+    generateTextMock.mockResolvedValueOnce({
+      content: "Answer.",
+      provider: "huggingface",
+      model: huggingFaceBackend.chatModel,
+    });
+
+    const { generateResponse } = await import("./response");
+    await generateResponse({
+      backend: huggingFaceBackend,
+      query: "What is in my Rwar collection?",
+      skipSearch: false,
+      searchResults: [],
+      allCollections: false,
+      targetedCollections: null,
+      userCollections: ["Rwar"],
+      collection: "Rwar",
+      allCollectionFields: {},
+      collectionFields: [],
+    });
+
+    const messages = generateTextMock.mock.calls[0][0].messages;
+    const systemMessage = messages.find(
+      (m: { role: string; content: string }) => m.role === "system"
+    );
+
+    // System prompt must prohibit fabricating data based on collection names
+    expect(systemMessage.content).toContain("NEVER guess, infer, or fabricate");
+    expect(systemMessage.content).toContain("ONLY describe data that was actually retrieved");
   });
 
   it("includes collections summary when skipSearch is true, allCollections is true, and there is no history", async () => {

@@ -34,13 +34,26 @@ export const keyspacesBodySchema = astraConnectionSchema;
 
 export const embeddingProvidersBodySchema = astraConnectionSchema;
 
+// ── Field sampling ──────────────────────────────────────────────────
+export const sampleFieldsBodySchema = astraConnectionSchema.extend({
+  collection: z.string().min(1),
+});
+
 // ── Collection CRUD ──────────────────────────────────────────────────
 export const createCollectionBodySchema = astraConnectionSchema.extend({
   name: z.string().min(1),
   dimension: z.number().int().positive(),
   metric: z.enum(["cosine", "dot_product", "euclidean"]),
   provider: z.string().min(1),
-  model: z.string().min(1),
+  model: z.string().trim().optional().default(""),
+}).superRefine((value, ctx) => {
+  if (value.provider !== "none" && value.model.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["model"],
+      message: 'Model is required when provider is not "none"',
+    });
+  }
 });
 
 export const deleteCollectionBodySchema = astraConnectionSchema.extend({
