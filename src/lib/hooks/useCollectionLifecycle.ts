@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import type { Collection } from "@/lib/types";
 import { readApiErrorMessage } from "@/lib/playground/client";
 
@@ -69,6 +69,51 @@ export function useCollectionLifecycle({
     [collections, setCollections]
   );
 
+  /**
+   * Sample field names from a single document in a collection and update
+   * `collectionFields` state. Called automatically when documents are added
+   * to a collection so the chat system has up-to-date field metadata.
+   */
+  const refreshingFieldsRef = useRef<Set<string>>(new Set());
+  const refreshCollectionFields = useCallback(
+    (collectionName: string) => {
+      // Avoid duplicate concurrent refreshes for the same collection
+      if (refreshingFieldsRef.current.has(collectionName)) return;
+      refreshingFieldsRef.current.add(collectionName);
+
+      fetch("/api/sample-fields", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          collection: collectionName,
+          token: astraFromEnv ? undefined : astraToken,
+          endpoint: astraFromEnv ? undefined : astraEndpoint,
+          keyspace: selectedKeyspace,
+        }),
+      })
+        .then(async (res) => {
+          if (!res.ok) return;
+          const data = (await res.json()) as {
+            collection: string;
+            fields: string[];
+          };
+          if (data.fields && data.fields.length > 0) {
+            setCollectionFields((prev) => ({
+              ...prev,
+              [data.collection]: data.fields,
+            }));
+          }
+        })
+        .catch(() => {
+          // Field refresh is best-effort — don't disrupt the user.
+        })
+        .finally(() => {
+          refreshingFieldsRef.current.delete(collectionName);
+        });
+    },
+    [astraFromEnv, astraToken, astraEndpoint, selectedKeyspace, setCollectionFields]
+  );
+
   const handleCollectionStatsDelta = useCallback(
     (
       name: string,
@@ -98,8 +143,14 @@ export function useCollectionLifecycle({
           };
         })
       );
+
+      // After documents are added, refresh field metadata for this collection
+      // so the chat system knows the actual data shape.
+      if (documentDelta > 0) {
+        refreshCollectionFields(name);
+      }
     },
-    [setCollections]
+    [setCollections, refreshCollectionFields]
   );
 
   const handleDeleteCollection = useCallback(
