@@ -1,21 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const renameRunMock = vi.fn();
-const deleteRunMock = vi.fn();
-const prepareMock = vi.fn((sql: string) => {
-  if (sql.includes("UPDATE conversations")) {
-    return { run: renameRunMock };
-  }
-  if (sql.includes("DELETE FROM conversations")) {
-    return { run: deleteRunMock };
-  }
-  throw new Error(`Unexpected SQL in test: ${sql}`);
-});
+const renameConversationMock = vi.fn();
+const deleteConversationMock = vi.fn();
 
-vi.mock("@/lib/db", () => ({
-  getDb: vi.fn(() => ({
-    prepare: prepareMock,
-  })),
+vi.mock("@/lib/conversations/repository", () => ({
+  renameConversation: renameConversationMock,
+  deleteConversation: deleteConversationMock,
 }));
 
 describe("/api/conversations/[id] route", () => {
@@ -37,11 +27,11 @@ describe("/api/conversations/[id] route", () => {
     );
 
     expect(await response.json()).toEqual({ updated: true });
-    expect(renameRunMock).toHaveBeenCalledWith(
-      "Research Notes",
-      expect.any(String),
-      "conv-1"
-    );
+    expect(renameConversationMock).toHaveBeenCalledWith({
+      id: "conv-1",
+      name: "Research Notes",
+      now: expect.any(String),
+    });
   });
 
   it("deletes a conversation by id", async () => {
@@ -56,6 +46,6 @@ describe("/api/conversations/[id] route", () => {
     );
 
     expect(await response.json()).toEqual({ deleted: true });
-    expect(deleteRunMock).toHaveBeenCalledWith("conv-1");
+    expect(deleteConversationMock).toHaveBeenCalledWith("conv-1");
   });
 });

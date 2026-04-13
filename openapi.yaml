@@ -1,0 +1,904 @@
+openapi: 3.1.0
+info:
+  title: Data API Playground
+  description: >
+    Interactive web app for exploring DataStax Astra DB via the Data API.
+    Provides collection management, document ingestion, RAG chat, and a
+    Data API proxy with TypeScript client call logging.
+  version: 0.1.0
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+
+tags:
+  - name: Auth
+    description: Session-based authentication
+  - name: Status
+    description: Health and connection status checks
+  - name: Collections
+    description: Astra DB collection management
+  - name: Documents
+    description: Ingested document metadata and chunks
+  - name: Ingest
+    description: Document and CSV ingestion pipelines
+  - name: Chat
+    description: RAG chat with streaming responses
+  - name: Conversations
+    description: Conversation and message persistence
+  - name: Proxy
+    description: Data API proxy and client call logging
+  - name: Keyspaces
+    description: Astra DB keyspace management
+
+components:
+  schemas:
+    AstraConnection:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Astra DB application token
+        endpoint:
+          type: string
+          description: Astra DB API endpoint URL
+        keyspace:
+          type: string
+          description: Astra DB keyspace name
+
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        messageCount:
+          type: integer
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        searchMode:
+          type: string
+        latencyMs:
+          type: number
+        pipelineSteps:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              status:
+                type: string
+              latencyMs:
+                type: number
+              data:
+                type: object
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              collection:
+                type: string
+              id:
+                type: string
+              similarity:
+                type: number
+              preview:
+                type: object
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        requestId:
+          type: string
+
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: playground_session
+      description: >
+        HMAC-SHA256 session cookie set by POST /api/auth/login.
+        Only required when PLAYGROUND_AUTH_PASSWORD is configured.
+
+paths:
+  # ── Auth ─────────────────────────────────────────────────────────────
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate with password
+      description: >
+        Validates the password and sets a session cookie.
+        Rate limited to 5 requests per 60 seconds.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "401":
+          description: Invalid password
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Clear session cookie
+      responses:
+        "200":
+          description: Logout successful
+
+  /api/auth/status:
+    get:
+      tags: [Auth]
+      summary: Check authentication status
+      responses:
+        "200":
+          description: Auth status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authEnabled:
+                    type: boolean
+                  authenticated:
+                    type: boolean
+
+  # ── Status ───────────────────────────────────────────────────────────
+  /api/astra-status:
+    get:
+      tags: [Status]
+      summary: Check Astra DB connection status
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Connection status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connected:
+                    type: boolean
+                  hasToken:
+                    type: boolean
+                  hasEndpoint:
+                    type: boolean
+
+  /api/ai-status:
+    get:
+      tags: [Status]
+      summary: Get AI backend status
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: AI provider status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                  provider:
+                    type: string
+
+  # ── Collections ──────────────────────────────────────────────────────
+  /api/connect:
+    post:
+      tags: [Collections]
+      summary: Connect to Astra DB and list collections
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AstraConnection"
+      responses:
+        "200":
+          description: Connection established with collection metadata
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/create-collection:
+    post:
+      tags: [Collections]
+      summary: Create a new collection
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AstraConnection"
+                - type: object
+                  required: [name, dimension, metric, provider, model]
+                  properties:
+                    name:
+                      type: string
+                    dimension:
+                      type: integer
+                    metric:
+                      type: string
+                      enum: [cosine, dot_product, euclidean]
+                    provider:
+                      type: string
+                    model:
+                      type: string
+      responses:
+        "200":
+          description: Collection created
+        "400":
+          description: Validation error
+
+  /api/delete-collection:
+    post:
+      tags: [Collections]
+      summary: Delete a collection
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AstraConnection"
+                - type: object
+                  required: [name]
+                  properties:
+                    name:
+                      type: string
+      responses:
+        "200":
+          description: Collection deleted
+
+  /api/browse:
+    post:
+      tags: [Collections]
+      summary: Browse documents in a collection
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AstraConnection"
+                - type: object
+                  required: [collection]
+                  properties:
+                    collection:
+                      type: string
+                    pageState:
+                      type: string
+                      nullable: true
+                    sort:
+                      type: object
+                      properties:
+                        col:
+                          type: string
+                        dir:
+                          type: integer
+                          enum: [1, -1]
+      responses:
+        "200":
+          description: Paginated document list
+
+  /api/count:
+    post:
+      tags: [Collections]
+      summary: Count documents in a collection
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AstraConnection"
+                - type: object
+                  required: [collection]
+                  properties:
+                    collection:
+                      type: string
+      responses:
+        "200":
+          description: Document count
+
+  /api/embedding-providers:
+    post:
+      tags: [Collections]
+      summary: List available embedding providers
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AstraConnection"
+      responses:
+        "200":
+          description: Embedding provider list
+
+  # ── Keyspaces ────────────────────────────────────────────────────────
+  /api/keyspaces:
+    post:
+      tags: [Keyspaces]
+      summary: List keyspaces
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AstraConnection"
+      responses:
+        "200":
+          description: Keyspace list
+
+  # ── Documents ────────────────────────────────────────────────────────
+  /api/documents:
+    get:
+      tags: [Documents]
+      summary: List ingested document metadata
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: source_doc_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: collection
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Document metadata
+
+  /api/documents/chunks:
+    post:
+      tags: [Documents]
+      summary: Retrieve chunks for an ingested document
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AstraConnection"
+                - type: object
+                  required: [source_doc_id, collection]
+                  properties:
+                    source_doc_id:
+                      type: string
+                    collection:
+                      type: string
+      responses:
+        "200":
+          description: Document chunks
+
+  /api/delete-documents:
+    post:
+      tags: [Documents]
+      summary: Delete documents by ID
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AstraConnection"
+                - type: object
+                  required: [collection, ids]
+                  properties:
+                    collection:
+                      type: string
+                    ids:
+                      type: array
+                      items:
+                        type: string
+      responses:
+        "200":
+          description: Documents deleted
+
+  # ── Ingest ───────────────────────────────────────────────────────────
+  /api/ingest:
+    post:
+      tags: [Ingest]
+      summary: Stream CSV row ingestion
+      description: >
+        Ingests rows from a parsed CSV/XLSX file into an Astra DB collection.
+        Returns NDJSON streaming progress events.
+        Rate limited to 10 requests per 60 seconds.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AstraConnection"
+                - type: object
+                  required: [collection, rows, filename]
+                  properties:
+                    collection:
+                      type: string
+                    rows:
+                      type: array
+                      items:
+                        type: object
+                    filename:
+                      type: string
+                    huggingfaceApiKey:
+                      type: string
+      responses:
+        "200":
+          description: NDJSON streaming progress events
+          content:
+            application/x-ndjson:
+              schema:
+                type: object
+
+  /api/ingest-document:
+    post:
+      tags: [Ingest]
+      summary: Upload and ingest a document file
+      description: >
+        Accepts a multipart form upload (PDF, DOCX, CSV, XLSX, JSON, TXT, MD),
+        extracts text, chunks it, and inserts into an Astra DB collection.
+        Returns NDJSON streaming progress events. Max file size 50 MB.
+        Rate limited to 10 requests per 60 seconds.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, collection]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                collection:
+                  type: string
+                token:
+                  type: string
+                endpoint:
+                  type: string
+                keyspace:
+                  type: string
+                chunkSize:
+                  type: string
+                metadata:
+                  type: string
+                  description: JSON string of metadata to attach to chunks
+                huggingfaceApiKey:
+                  type: string
+                nameConflictAction:
+                  type: string
+                  enum: [overwrite, skip]
+      responses:
+        "200":
+          description: NDJSON streaming progress events
+          content:
+            application/x-ndjson:
+              schema:
+                type: object
+
+  # ── Chat ─────────────────────────────────────────────────────────────
+  /api/chat:
+    post:
+      tags: [Chat]
+      summary: RAG chat with streaming response
+      description: >
+        Performs vector/hybrid/lexical search across selected collections,
+        builds a context-augmented prompt, and streams the AI response.
+        Rate limited to 20 requests per 60 seconds.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AstraConnection"
+                - type: object
+                  required: [query, searchMode]
+                  properties:
+                    query:
+                      type: string
+                    searchMode:
+                      type: string
+                      enum: [vector, hybrid, lexical]
+                    collections:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          isVectorize:
+                            type: boolean
+                          vectorDimension:
+                            type: integer
+                            nullable: true
+                    activeCollection:
+                      type: string
+                    allCollectionFields:
+                      type: object
+                      additionalProperties:
+                        type: array
+                        items:
+                          type: string
+                    history:
+                      type: array
+                      items:
+                        type: object
+                        required: [role, content]
+                        properties:
+                          role:
+                            type: string
+                            enum: [user, assistant]
+                          content:
+                            type: string
+                            maxLength: 50000
+                      maxItems: 100
+                    huggingfaceApiKey:
+                      type: string
+      responses:
+        "200":
+          description: NDJSON streaming chat response
+          content:
+            application/x-ndjson:
+              schema:
+                type: object
+
+  # ── Conversations ────────────────────────────────────────────────────
+  /api/conversations:
+    get:
+      tags: [Conversations]
+      summary: List recent conversations
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: List of conversations ordered by last update
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversations:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Conversation"
+    post:
+      tags: [Conversations]
+      summary: Create a new conversation
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+      responses:
+        "200":
+          description: Created conversation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversation:
+                    $ref: "#/components/schemas/Conversation"
+
+  /api/conversations/{id}:
+    patch:
+      tags: [Conversations]
+      summary: Rename a conversation
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        "200":
+          description: Conversation renamed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated:
+                    type: boolean
+    delete:
+      tags: [Conversations]
+      summary: Delete a conversation and its messages
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Conversation deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+
+  /api/conversations/{id}/messages:
+    get:
+      tags: [Conversations]
+      summary: List messages in a conversation
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Message list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Message"
+        "404":
+          description: Conversation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [Conversations]
+      summary: Append a message to a conversation
+      description: >
+        Inserts a message with ON CONFLICT(id) DO NOTHING for idempotent retries.
+        Only increments the conversation message count when a new row is inserted.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: object
+                  required: [id, role, content, timestamp]
+                  properties:
+                    id:
+                      type: string
+                    role:
+                      type: string
+                      enum: [user, assistant]
+                    content:
+                      type: string
+                    timestamp:
+                      type: string
+                      format: date-time
+                    searchMode:
+                      type: string
+                    latencyMs:
+                      type: number
+                    pipelineSteps:
+                      type: array
+                      items:
+                        type: object
+                    sources:
+                      type: array
+                      items:
+                        type: object
+      responses:
+        "200":
+          description: Message saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  saved:
+                    type: boolean
+
+  /api/conversations/title:
+    post:
+      tags: [Conversations]
+      summary: Generate a conversation title from the first message
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [firstMessage]
+              properties:
+                firstMessage:
+                  type: string
+                huggingfaceApiKey:
+                  type: string
+      responses:
+        "200":
+          description: Generated title
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  title:
+                    type: string
+
+  # ── Proxy ────────────────────────────────────────────────────────────
+  /api/data-api-proxy:
+    post:
+      tags: [Proxy]
+      summary: Proxy a Data API request to Astra DB
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AstraConnection"
+                - type: object
+                  required: [collection, requestBody]
+                  properties:
+                    collection:
+                      type: string
+                    requestBody:
+                      type: object
+                      description: Raw Data API request body
+      responses:
+        "200":
+          description: Proxied Data API response
+
+  /api/typescript-client-calls:
+    get:
+      tags: [Proxy]
+      summary: List recorded TypeScript client calls
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        "200":
+          description: Client call log
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  calls:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        label:
+                          type: string
+                        code:
+                          type: string
+                        timestamp:
+                          type: string

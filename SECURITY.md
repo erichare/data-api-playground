@@ -13,7 +13,7 @@ Older versions may not receive security updates.
 Please do not open public GitHub issues for suspected security vulnerabilities.
 
 If this repository has GitHub private vulnerability reporting enabled, use that.
-Otherwise, contact: security@example.com
+Otherwise, contact: security@ibm.com
 
 Please include:
 - A description of the issue

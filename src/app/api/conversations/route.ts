@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireApiAuth } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { listConversations, createConversation } from "@/lib/conversations/repository";
 import { createRequestLogContext, logError, sanitizeErrorForClient } from "@/lib/server/log";
 import { conversationCreateBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
 export const runtime = "nodejs";
-
-type ConvRow = { id: string; name: string; created_at: string; updated_at: string; message_count: number };
 
 // GET /api/conversations
 export async function GET(req: Request) {
@@ -16,10 +14,7 @@ export async function GET(req: Request) {
   if (authError) return authError;
 
   try {
-    const db = getDb();
-    const rows = db
-      .prepare("SELECT id, name, created_at, updated_at, message_count FROM conversations ORDER BY updated_at DESC LIMIT 100")
-      .all() as ConvRow[];
+    const rows = listConversations();
 
     const conversations = rows.map((r) => ({
       id: r.id,
@@ -48,14 +43,11 @@ export async function POST(req: Request) {
   if (isErrorResponse(result)) return result;
 
   try {
-    const db = getDb();
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     const name = result.name ?? "New Conversation";
 
-    db.prepare(
-      "INSERT INTO conversations (id, name, created_at, updated_at, message_count) VALUES (?, ?, ?, ?, 0)"
-    ).run(id, name, now, now);
+    createConversation({ id, name, now });
 
     return NextResponse.json({ conversation: { id, name, createdAt: now, updatedAt: now, messageCount: 0 } });
   } catch (err) {
