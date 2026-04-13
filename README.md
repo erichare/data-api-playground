@@ -186,7 +186,7 @@ Demo mode is useful for exploring the UI, testing AI backends, and understanding
 - If Ollama is selected and a required model is missing, the app pulls it on demand and shows download progress in the UI.
 - General API requests are capped at 10 MB, while ingest routes are allowed up to 50 MB.
 - Auth sessions expire after 12 hours.
-- On connect, the app samples metadata (estimated count + field names) for up to 12 collections, skipping internal `dap_` collections. Large databases may not show counts for every collection.
+- On connect, the app samples metadata (estimated count + field names) for up to 12 collections. Large databases may not show counts for every collection.
 - Ingested documents are tracked with a `content_hash` (SHA-256 of the raw file bytes). Re-uploading the same file to the same collection is skipped as a duplicate.
 
 ## Scripts
