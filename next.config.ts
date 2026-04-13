@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   experimental: {
     proxyClientMaxBodySize: NEXT_PROXY_CLIENT_MAX_BODY_SIZE,
   },
-  serverExternalPackages: ["pdf-parse"],
+  serverExternalPackages: ["pdf-parse", "read-excel-file"],
   turbopack: {
     root: __dirname,
   },
