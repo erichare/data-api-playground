@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApiAuth } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { renameConversation, deleteConversation } from "@/lib/conversations/repository";
 import { createRequestLogContext, logError, sanitizeErrorForClient } from "@/lib/server/log";
 import { conversationUpdateBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
@@ -17,9 +17,8 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   if (isErrorResponse(result)) return result;
 
   try {
-    const db = getDb();
     const now = new Date().toISOString();
-    db.prepare("UPDATE conversations SET name = ?, updated_at = ? WHERE id = ?").run(result.name, now, id);
+    renameConversation({ id, name: result.name, now });
     return NextResponse.json({ updated: true });
   } catch (err) {
     logError(logContext, "conversations.update.failed", err, { conversationId: id });
@@ -39,8 +38,7 @@ export async function DELETE(req: Request, context: { params: Promise<{ id: stri
   await req.json().catch(() => null); // consume body if present
 
   try {
-    const db = getDb();
-    db.prepare("DELETE FROM conversations WHERE id = ?").run(id);
+    deleteConversation(id);
     return NextResponse.json({ deleted: true });
   } catch (err) {
     logError(logContext, "conversations.delete.failed", err, { conversationId: id });

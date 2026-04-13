@@ -1,34 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const allMessagesMock = vi.fn();
+const getConversationByIdMock = vi.fn();
+const listMessagesMock = vi.fn();
 const insertMessageMock = vi.fn();
-const updateConversationMock = vi.fn();
-const getConversationMock = vi.fn();
+const incrementMessageCountMock = vi.fn();
 
-const prepareMock = vi.fn((sql: string) => {
-  if (sql.includes("SELECT id FROM conversations")) {
-    return { get: getConversationMock };
-  }
-
-  if (sql.includes("SELECT * FROM messages")) {
-    return { all: allMessagesMock };
-  }
-
-  if (sql.includes("INSERT INTO messages")) {
-    return { run: insertMessageMock };
-  }
-
-  if (sql.includes("UPDATE conversations")) {
-    return { run: updateConversationMock };
-  }
-
-  throw new Error(`Unexpected SQL in test: ${sql}`);
-});
-
-vi.mock("@/lib/db", () => ({
-  getDb: vi.fn(() => ({
-    prepare: prepareMock,
-  })),
+vi.mock("@/lib/conversations/repository", () => ({
+  getConversationById: getConversationByIdMock,
+  listMessages: listMessagesMock,
+  insertMessage: insertMessageMock,
+  incrementMessageCount: incrementMessageCountMock,
 }));
 
 describe("/api/conversations/[id]/messages route", () => {
@@ -39,7 +20,7 @@ describe("/api/conversations/[id]/messages route", () => {
   });
 
   it("returns 404 when the conversation does not exist", async () => {
-    getConversationMock.mockReturnValueOnce(undefined);
+    getConversationByIdMock.mockReturnValueOnce(undefined);
 
     const { GET } = await import("./route");
     const response = await GET(
@@ -52,8 +33,8 @@ describe("/api/conversations/[id]/messages route", () => {
   });
 
   it("returns stored messages with parsed pipeline metadata", async () => {
-    getConversationMock.mockReturnValueOnce({ id: "conv-1" });
-    allMessagesMock.mockReturnValueOnce([
+    getConversationByIdMock.mockReturnValueOnce({ id: "conv-1" });
+    listMessagesMock.mockReturnValueOnce([
       {
         id: "msg-1",
         conversation_id: "conv-1",
@@ -90,7 +71,7 @@ describe("/api/conversations/[id]/messages route", () => {
   });
 
   it("increments the conversation count only when a new message row is inserted", async () => {
-    insertMessageMock.mockReturnValueOnce({ changes: 1 });
+    insertMessageMock.mockReturnValueOnce(1);
 
     const { POST } = await import("./route");
     const response = await POST(
@@ -111,15 +92,15 @@ describe("/api/conversations/[id]/messages route", () => {
 
     expect(await response.json()).toEqual({ saved: true });
     expect(insertMessageMock).toHaveBeenCalledTimes(1);
-    expect(updateConversationMock).toHaveBeenCalledTimes(1);
-    expect(updateConversationMock).toHaveBeenCalledWith(
-      expect.any(String),
-      "conv-1"
-    );
+    expect(incrementMessageCountMock).toHaveBeenCalledTimes(1);
+    expect(incrementMessageCountMock).toHaveBeenCalledWith({
+      conversationId: "conv-1",
+      now: expect.any(String),
+    });
   });
 
   it("does not inflate message_count when the same message id is retried", async () => {
-    insertMessageMock.mockReturnValueOnce({ changes: 0 });
+    insertMessageMock.mockReturnValueOnce(0);
 
     const { POST } = await import("./route");
     await POST(
@@ -139,6 +120,6 @@ describe("/api/conversations/[id]/messages route", () => {
     );
 
     expect(insertMessageMock).toHaveBeenCalledTimes(1);
-    expect(updateConversationMock).not.toHaveBeenCalled();
+    expect(incrementMessageCountMock).not.toHaveBeenCalled();
   });
 });

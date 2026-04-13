@@ -1,17 +1,16 @@
 import { NextResponse } from "next/server";
 import { requireApiAuth } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import {
+  getConversationById,
+  listMessages,
+  insertMessage,
+  incrementMessageCount,
+} from "@/lib/conversations/repository";
 import { createRequestLogContext, logError, sanitizeErrorForClient } from "@/lib/server/log";
 import { messageCreateBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
 export const runtime = "nodejs";
-
-type MsgRow = {
-  id: string; conversation_id: string; role: string; content: string;
-  timestamp: string; search_mode: string | null; latency_ms: number | null;
-  pipeline_steps: string | null; sources: string | null;
-};
 
 // GET /api/conversations/[id]/messages
 export async function GET(req: Request, context: { params: Promise<{ id: string }> }) {
@@ -21,16 +20,12 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
   const { id } = await context.params;
 
   try {
-    const db = getDb();
-
-    const conversation = db.prepare("SELECT id FROM conversations WHERE id = ?").get(id);
+    const conversation = getConversationById(id);
     if (!conversation) {
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
-    const rows = db
-      .prepare("SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC LIMIT 500")
-      .all(id) as MsgRow[];
+    const rows = listMessages(id);
 
     const messages = rows.map((r) => {
       let pipelineSteps: unknown;
@@ -70,24 +65,23 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const { message } = result;
 
   try {
-    const db = getDb();
     const now = new Date().toISOString();
 
-    const insertResult = db.prepare(`
-      INSERT INTO messages (id, conversation_id, role, content, timestamp, search_mode, latency_ms, pipeline_steps, sources)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO NOTHING
-    `).run(
-      message.id, id, message.role, message.content, message.timestamp,
-      message.searchMode ?? null,
-      message.latencyMs ?? null,
-      message.pipelineSteps ? JSON.stringify(message.pipelineSteps) : null,
-      message.sources ? JSON.stringify(message.sources) : null,
-    );
+    const changes = insertMessage({
+      id: message.id,
+      conversationId: id,
+      role: message.role,
+      content: message.content,
+      timestamp: message.timestamp,
+      searchMode: message.searchMode ?? null,
+      latencyMs: message.latencyMs ?? null,
+      pipelineSteps: message.pipelineSteps ? JSON.stringify(message.pipelineSteps) : null,
+      sources: message.sources ? JSON.stringify(message.sources) : null,
+    });
 
     // Avoid inflating counts when the client retries a message with the same ID.
-    if (insertResult.changes > 0) {
-      db.prepare("UPDATE conversations SET updated_at = ?, message_count = message_count + 1 WHERE id = ?").run(now, id);
+    if (changes > 0) {
+      incrementMessageCount({ conversationId: id, now });
     }
 
     return NextResponse.json({ saved: true });

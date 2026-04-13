@@ -1,12 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const prepareMock = vi.fn();
-const getDbMock = vi.fn(() => ({
-  prepare: prepareMock,
-}));
+const listConversationsMock = vi.fn();
+const createConversationMock = vi.fn();
 
-vi.mock("@/lib/db", () => ({
-  getDb: getDbMock,
+vi.mock("@/lib/conversations/repository", () => ({
+  listConversations: listConversationsMock,
+  createConversation: createConversationMock,
 }));
 
 describe("/api/conversations route", () => {
@@ -16,17 +15,15 @@ describe("/api/conversations route", () => {
   });
 
   it("returns conversation rows from sqlite in API shape", async () => {
-    prepareMock.mockReturnValueOnce({
-      all: () => [
-        {
-          id: "conv-1",
-          name: "Untitled",
-          created_at: "2026-03-30T12:00:00.000Z",
-          updated_at: "2026-03-30T13:00:00.000Z",
-          message_count: 2,
-        },
-      ],
-    });
+    listConversationsMock.mockReturnValueOnce([
+      {
+        id: "conv-1",
+        name: "Untitled",
+        created_at: "2026-03-30T12:00:00.000Z",
+        updated_at: "2026-03-30T13:00:00.000Z",
+        message_count: 2,
+      },
+    ]);
 
     const { GET } = await import("./route");
     const response = await GET(new Request("http://localhost/api/conversations"));
@@ -45,10 +42,6 @@ describe("/api/conversations route", () => {
   });
 
   it("creates a conversation row and returns the inserted metadata", async () => {
-    prepareMock.mockReturnValueOnce({
-      run: vi.fn(),
-    });
-
     const { POST } = await import("./route");
     const request = new Request("http://localhost/api/conversations", {
       method: "POST",
@@ -61,6 +54,10 @@ describe("/api/conversations route", () => {
 
     expect(body.conversation.name).toBe("Research Notes");
     expect(body.conversation.messageCount).toBe(0);
-    expect(prepareMock).toHaveBeenCalled();
+    expect(createConversationMock).toHaveBeenCalledWith({
+      id: expect.any(String),
+      name: "Research Notes",
+      now: expect.any(String),
+    });
   });
 });
