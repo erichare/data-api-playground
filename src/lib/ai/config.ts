@@ -1,3 +1,10 @@
+/**
+ * AI backend configuration and resolution.
+ *
+ * Provides default model names for Hugging Face and Ollama providers,
+ * and the `resolveBackend` function that selects a provider based on
+ * the availability of API keys (manual key > env key > local Ollama).
+ */
 import type { ResolvedAiBackend } from "./types";
 
 export const DEFAULT_HF_CHAT_MODEL = "Qwen/Qwen2.5-Coder-32B-Instruct";
@@ -10,10 +17,12 @@ function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
 }
 
+/** Return the Ollama API base URL from env or default, with trailing slashes stripped. */
 export function getOllamaBaseUrl() {
   return trimTrailingSlash(process.env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL);
 }
 
+/** Return the configured model names and Ollama URL, reading from env vars with defaults. */
 export function getAiModelConfig() {
   return {
     huggingfaceChatModel:
@@ -27,6 +36,17 @@ export function getAiModelConfig() {
   };
 }
 
+/**
+ * Select the AI provider and model configuration.
+ *
+ * Resolution order:
+ * 1. A manually supplied Hugging Face key (from the Connect dialog)
+ * 2. `HUGGINGFACE_API_KEY` from the server environment
+ * 3. Local Ollama fallback
+ *
+ * @param args.huggingfaceApiKey - Optional manual key from the client.
+ * @returns A resolved backend with provider, credentials, and model names.
+ */
 export function resolveBackend(args: {
   huggingfaceApiKey?: string;
 }): ResolvedAiBackend {

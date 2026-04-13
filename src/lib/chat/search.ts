@@ -21,6 +21,11 @@ function sanitizeFilterOp(op: string | null): string | null {
   return ALLOWED_FILTER_OPS.has(op) ? op : null;
 }
 
+/**
+ * Validate a user-supplied field name for use in database queries.
+ * Rejects `$`-prefixed system fields and names with unsafe characters.
+ * @returns The field name if safe, or `null` if it should be rejected.
+ */
 export function sanitizeFilterField(field: string | null): string | null {
   if (!field) return null;
   if (field.startsWith("$")) return null;
@@ -54,6 +59,10 @@ export interface EmbedResult {
   embedError?: string;
 }
 
+/**
+ * Extract up to 4 user-visible fields from a document for search result previews.
+ * Excludes system fields (`_id`, `$vector`, `$similarity`, etc.).
+ */
 export function docPreview(
   doc: Record<string, unknown>
 ): Record<string, string | number> {
@@ -75,6 +84,10 @@ export function docPreview(
   return preview;
 }
 
+/**
+ * Generate an embedding vector for a user query.
+ * Returns a zero-length vector for vectorize-enabled collections (embedding is server-side).
+ */
 export async function embedQuery(args: {
   backend: ResolvedAiBackend;
   query: string;
@@ -141,6 +154,14 @@ function assertVectorDimension(args: {
   }
 }
 
+/**
+ * Execute collection searches against Astra DB.
+ *
+ * Supports vector, hybrid, and lexical search modes, optional field-based
+ * sorting and filtering, and multi-collection fan-out. When searching a
+ * single collection with low-confidence results, automatically fans out
+ * to other available collections as a fallback.
+ */
 export async function searchCollections(args: {
   token?: string;
   endpoint?: string;

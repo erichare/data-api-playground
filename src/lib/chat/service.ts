@@ -25,6 +25,13 @@ interface RunChatWorkflowArgs {
   send: (event: StepEvent) => void;
 }
 
+/**
+ * Execute the full RAG chat pipeline: analyze -> embed -> search -> respond.
+ *
+ * Each stage emits `StepEvent` objects via `send()` so the client can render
+ * a real-time pipeline trace. Supports multi-collection fan-out search,
+ * server-side vectorize, and automatic Ollama model preparation.
+ */
 export async function runChatWorkflow({
   payload,
   token,

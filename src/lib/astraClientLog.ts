@@ -1,5 +1,13 @@
+/**
+ * Request-scoped logging of Astra DB TypeScript client calls.
+ *
+ * Uses `AsyncLocalStorage` to isolate call logs per HTTP request, preventing
+ * cross-request pollution. The API Explorer's "Code" tab consumes these
+ * recorded calls to display live TypeScript SDK examples.
+ */
 import { AsyncLocalStorage } from "node:async_hooks";
 
+/** A recorded Astra DB SDK call with its TypeScript representation. */
 export interface AstraClientCallEntry {
   id: string;
   label: string;
@@ -31,14 +39,17 @@ export function withRequestLog<T>(fn: () => T): T {
   return requestLogStorage.run([], fn);
 }
 
+/** Return the most recent recorded calls, scoped to the current request if available. */
 export function listAstraClientCalls(limit = 60): AstraClientCallEntry[] {
   return getEntries().slice(0, limit);
 }
 
+/** Clear all recorded calls in the current scope. */
 export function clearAstraClientCalls() {
   getEntries().length = 0;
 }
 
+/** Record an Astra DB SDK call for display in the API Explorer. */
 export function recordAstraClientCall(input: {
   label: string;
   code: string;
@@ -67,6 +78,7 @@ export function recordAstraClientCall(input: {
   }
 }
 
+/** Create a raw TypeScript snippet that will be emitted verbatim (not JSON-stringified). */
 export function rawTs(value: string): RawTsSnippet {
   return {
     __rawTsSnippet: true,
@@ -91,6 +103,7 @@ function indent(text: string, spaces: number) {
     .join("\n");
 }
 
+/** Serialize a value as TypeScript source code. Handles raw snippets and JSON-safe values. */
 export function formatTsValue(value: unknown): string {
   if (isRawTsSnippet(value)) {
     return value.value;
@@ -100,6 +113,7 @@ export function formatTsValue(value: unknown): string {
   return serialized === undefined ? "undefined" : serialized;
 }
 
+/** Format a method call as TypeScript (e.g., `.find({}, { limit: 5 })`). Auto-wraps long arguments. */
 export function formatTsMethodCall(method: string, args: unknown[]) {
   const serializedArgs = args.map((arg) => formatTsValue(arg));
 
@@ -120,6 +134,7 @@ export function formatTsMethodCall(method: string, args: unknown[]) {
     .join(",\n")}\n  )`;
 }
 
+/** Build a complete `await base.method().method()` TypeScript call string from a chain of method calls. */
 export function buildTsCall(base: string, chain: string[]) {
   return [`await ${base}`, ...chain.map((line) => `  ${line}`)].join("\n");
 }

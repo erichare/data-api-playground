@@ -1,3 +1,11 @@
+/**
+ * SQLite database initialization and schema management.
+ *
+ * Provides a singleton `Database` instance for local persistence of
+ * conversations, messages, and ingested document metadata. The database
+ * file defaults to `./data/app.db` and can be overridden via
+ * `DATA_API_PLAYGROUND_DB_PATH`.
+ */
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
@@ -50,6 +58,11 @@ function runMigrations(db: Database.Database) {
   }
 }
 
+/**
+ * Return the singleton SQLite database instance, creating it on first call.
+ * Enables WAL mode and foreign keys, creates tables if they don't exist,
+ * and runs any pending schema migrations.
+ */
 export function getDb(): Database.Database {
   if (_db) return _db;
 

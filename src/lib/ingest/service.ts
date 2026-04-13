@@ -57,6 +57,15 @@ function createNdjsonStream(
   });
 }
 
+/**
+ * Stream CSV row ingestion into an Astra DB collection via NDJSON progress events.
+ *
+ * Rows are batched, embedded (or $vectorize-tagged), and inserted in parallel.
+ * Emits `start`, `progress`, `complete`, and `error` events. Supports both
+ * server-side vectorize and client-side embedding via the resolved AI backend.
+ *
+ * @returns A `ReadableStream<Uint8Array>` of NDJSON-encoded progress events.
+ */
 export function streamCsvIngest(args: {
   token?: string;
   endpoint?: string;
@@ -193,6 +202,18 @@ export function streamCsvIngest(args: {
   });
 }
 
+/**
+ * Stream document file ingestion (PDF, DOCX, TXT, etc.) into Astra DB.
+ *
+ * Extracts text, chunks it, detects duplicates by content hash, handles
+ * filename conflicts (skip/overwrite), and inserts chunks with embeddings
+ * or $vectorize annotations. Persists metadata to SQLite.
+ *
+ * Emits NDJSON events: `extracting`, `chunked`, `chunk_progress`, `complete`,
+ * `skipped` (duplicate), `conflict` (name collision), or `error`.
+ *
+ * @returns A `ReadableStream<Uint8Array>` of NDJSON-encoded progress events.
+ */
 export function streamDocumentIngest(args: {
   filename: string;
   fileType: string;

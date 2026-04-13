@@ -1,5 +1,6 @@
 import { readNdjsonStream } from "@/lib/ndjson";
 
+/** Extract a human-readable error message from an AI provider's HTTP error response. */
 export async function readErrorBody(response: Response) {
   try {
     const payload = (await response.json()) as {
@@ -22,6 +23,7 @@ export async function readErrorBody(response: Response) {
   }
 }
 
+/** Read an NDJSON response body, calling `onEvent` for each parsed JSON object. */
 export async function consumeNdjsonStream(
   response: Response,
   onEvent: (event: Record<string, unknown>) => void,
@@ -55,6 +57,13 @@ function extractSseData(rawEvent: string) {
   return dataLines.join("\n").trim();
 }
 
+/**
+ * Consume an SSE or JSON chat completion stream from HuggingFace or Ollama.
+ * Handles both `text/event-stream` (SSE) and `application/json` (single-shot) responses.
+ * Calls `onChunk(accumulated, delta)` for each content token received.
+ *
+ * @returns The fully accumulated response text.
+ */
 export async function consumeChatCompletionStream(
   response: Response,
   onChunk: (content: string, delta: string) => void

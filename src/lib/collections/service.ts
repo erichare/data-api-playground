@@ -56,6 +56,10 @@ type DocumentCountRow = {
   document_count: number;
 };
 
+/**
+ * Query the SQLite document library, optionally filtered by collection name.
+ * Returns the 500 most recently ingested documents, sorted by ingestion date descending.
+ */
 export function listIngestedDocuments(collection?: string): IngestedDocumentSummary[] {
   const db = getDb();
   const rows = (collection
@@ -101,6 +105,15 @@ interface CollectionMetadata {
 }
 
 
+/**
+ * List all collections in the connected Astra DB and sample metadata for each.
+ *
+ * For up to 12 non-internal collections, fetches estimated document counts
+ * and samples field names from one document. Enriches each collection with
+ * its ingested document count from SQLite.
+ *
+ * @returns Collections with vector config and counts, plus a field-name map.
+ */
 export async function fetchCollectionMetadata(args: {
   token: string;
   endpoint: string;
@@ -210,6 +223,12 @@ export async function fetchCollectionMetadata(args: {
   return { collections: enrichedCollections, fields };
 }
 
+/**
+ * Create a new Astra DB collection with the specified vector configuration.
+ * Optionally configures server-side vectorize with a provider and model.
+ *
+ * @throws {ValidationError} If required fields (token, endpoint, name) are missing.
+ */
 export async function createCollectionInAstra(
   args: CreateCollectionArgs
 ): Promise<Collection> {
@@ -249,6 +268,10 @@ export async function createCollectionInAstra(
   };
 }
 
+/**
+ * Drop an Astra DB collection by name.
+ * @throws {ValidationError} If credentials or collection name are missing.
+ */
 export async function deleteCollectionInAstra(args: DeleteCollectionArgs) {
   const { token, endpoint, keyspace } = resolveAstraConnection(args, {
     includeDefaultKeyspace: true,
@@ -272,6 +295,11 @@ export async function deleteCollectionInAstra(args: DeleteCollectionArgs) {
   return { dropped: true };
 }
 
+/**
+ * Delete an ingested document's chunks from Astra DB and its metadata record from SQLite.
+ * Chunks are matched via `metadata.source_doc_id`. If Astra credentials are
+ * unavailable (demo mode), only the SQLite record is removed.
+ */
 export async function deleteIngestedDocument(
   args: DeleteIngestedDocumentArgs
 ): Promise<{ ok: true }> {

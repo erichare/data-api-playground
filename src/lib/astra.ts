@@ -5,12 +5,14 @@ export const SYSTEM_FIELDS = new Set([
   "_id", "$vector", "$vectorize", "$similarity", "$score", "$hybrid",
 ]);
 
+/** Credentials provided by the client or read from environment variables. */
 export interface AstraConnectionInput {
   token?: string;
   endpoint?: string;
   keyspace?: string;
 }
 
+/** Fully resolved Astra DB credentials ready for use. */
 export interface ResolvedAstraConnection {
   token: string;
   endpoint: string;
@@ -19,6 +21,7 @@ export interface ResolvedAstraConnection {
 
 export const DEFAULT_KEYSPACE = "default_keyspace";
 
+/** Strip the trailing slash from an Astra DB endpoint URL. */
 export function normalizeAstraEndpoint(endpoint: string) {
   return endpoint.replace(/\/$/, "");
 }
@@ -30,6 +33,10 @@ const ALLOWED_ASTRA_HOST_SUFFIXES = [
   ".apps.astra-dev.datastax.com",
 ];
 
+/**
+ * Validate that an endpoint URL belongs to a known Astra DB host.
+ * Prevents SSRF by rejecting arbitrary URLs passed through the proxy.
+ */
 export function isAllowedAstraEndpoint(endpoint: string) {
   try {
     const url = new URL(normalizeAstraEndpoint(endpoint));
@@ -42,6 +49,14 @@ export function isAllowedAstraEndpoint(endpoint: string) {
   }
 }
 
+/**
+ * Merge client-supplied Astra credentials with server environment variables.
+ * Client values take precedence; env vars fill in any gaps.
+ *
+ * @param input - Credentials from the request body.
+ * @param options - Pass `includeDefaultKeyspace: true` to fall back to "default_keyspace" when none is provided.
+ * @returns Resolved token, endpoint, and optional keyspace.
+ */
 export function resolveAstraConnection(
   input: AstraConnectionInput,
   options?: { includeDefaultKeyspace?: boolean }

@@ -1,8 +1,14 @@
+/**
+ * Core domain types shared between server and client code.
+ */
+
+/** Server-side vectorize configuration for an Astra DB collection. */
 export interface CollectionVectorizeService {
   provider: string;
   modelName: string;
 }
 
+/** An Astra DB collection with its vector config, document count, and creation state. */
 export interface Collection {
   name: string;
   count: number | null;
@@ -13,6 +19,7 @@ export interface Collection {
   pendingKey?: string;
 }
 
+/** A search result reference displayed alongside chat responses. */
 export interface DocumentSource {
   collection: string;
   id: string;
@@ -22,6 +29,7 @@ export interface DocumentSource {
 
 export type SearchMode = "vector" | "hybrid" | "lexical";
 
+/** A single chat message with optional search sources and pipeline trace. */
 export interface Message {
   id: string;
   role: "user" | "assistant";
@@ -33,6 +41,7 @@ export interface Message {
   pipelineSteps?: PipelineStep[];
 }
 
+/** A conversation thread persisted in SQLite with lazy-loaded messages. */
 export interface Conversation {
   id: string;
   name: string;
@@ -53,7 +62,7 @@ export type IngestFileType =
   | "docx"
   | "xlsx";
 
-// Grouped summary for the document library (one per source file, stored in SQLite)
+/** Summary record for the document library (one per source file, stored in SQLite). */
 export interface IngestedDocumentSummary {
   source_doc_id: string;
   source_filename: string;
@@ -68,6 +77,7 @@ export interface IngestedDocumentSummary {
 export type PipelineStepId = "prepare" | "analyze" | "embed" | "search" | "respond";
 export type PipelineStepStatus = "pending" | "running" | "complete" | "error" | "skipped";
 
+/** A single step in the RAG chat pipeline with its execution status and timing. */
 export interface PipelineStep {
   id: PipelineStepId;
   status: PipelineStepStatus;

@@ -7,6 +7,10 @@ import {
 import { getDb } from "@/lib/db";
 import type { ExistingIngestedDocument } from "@/lib/ingest/types";
 
+/**
+ * Find the most recent ingested document with the same content hash in a collection.
+ * Used to detect and skip duplicate uploads before processing.
+ */
 export function getLatestDuplicateByHash(args: {
   collection: string;
   contentHash: string;
@@ -24,6 +28,10 @@ export function getLatestDuplicateByHash(args: {
     .get(args.collection, args.contentHash) as ExistingIngestedDocument | undefined;
 }
 
+/**
+ * Find all ingested documents in a collection that share the same filename.
+ * Used to detect name conflicts and prompt the user for overwrite/skip.
+ */
 export function listFilenameConflicts(args: {
   collection: string;
   filename: string;
@@ -40,6 +48,12 @@ export function listFilenameConflicts(args: {
     .all(args.collection, args.filename) as ExistingIngestedDocument[];
 }
 
+/**
+ * Remove existing document records and their Astra DB chunks before re-ingestion.
+ * Deletes SQLite records first (authoritative), then cleans up remote Astra chunks
+ * on a best-effort basis. Orphaned Astra chunks are harmless; orphaned SQLite
+ * records pointing to deleted chunks would break retry logic.
+ */
 export async function deleteDocumentsForOverwrite(args: {
   collectionName: string;
   token?: string;
@@ -101,6 +115,7 @@ export async function deleteDocumentsForOverwrite(args: {
   }
 }
 
+/** Persist a new ingested document metadata record to SQLite. */
 export function insertIngestedDocumentRecord(args: {
   sourceDocId: string;
   filename: string;
@@ -143,6 +158,7 @@ export function insertIngestedDocumentRecord(args: {
     );
 }
 
+/** Insert or update an ingested document record (updates chunk count and timestamp on conflict). */
 export function upsertIngestedDocumentRecord(args: {
   sourceDocId: string;
   filename: string;

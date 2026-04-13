@@ -59,6 +59,10 @@ function rowsToTabularObjects(
     );
 }
 
+/**
+ * Serialize a tabular row into a searchable `key: value; key: value` string.
+ * Optionally prefixes with the sheet name for multi-sheet Excel files.
+ */
 export function serializeTabularRow(
   row: Record<string, unknown>,
   sheetName?: string
@@ -120,6 +124,10 @@ async function extractXlsxRowChunks(buffer: Buffer): Promise<string[]> {
   return chunks;
 }
 
+/**
+ * Extract rows from CSV or XLSX files as one serialized string per row.
+ * @returns An array of serialized row strings, or `null` for non-tabular file types.
+ */
 export async function extractTabularRowChunks(
   buffer: Buffer,
   fileType: string
@@ -134,6 +142,16 @@ export async function extractTabularRowChunks(
   }
 }
 
+/**
+ * Split text into chunks using a paragraph-aware strategy.
+ *
+ * Groups consecutive paragraphs up to `chunkSize` characters, then starts a
+ * new chunk. Paragraphs longer than `chunkSize` are split with `overlap`
+ * character overlap. Fragments shorter than 20 characters are discarded.
+ *
+ * @param chunkSize - Maximum characters per chunk (default 1200).
+ * @param overlap - Character overlap between chunks for long paragraphs (default 150).
+ */
 export function chunkText(
   text: string,
   chunkSize = DEFAULT_CHUNK_SIZE,
@@ -170,6 +188,11 @@ export function chunkText(
   return chunks;
 }
 
+/**
+ * Extract plain text from a file buffer based on its type.
+ * Supports PDF, DOCX, JSON, CSV, XLSX, TXT, and Markdown.
+ * Tabular files (CSV/XLSX) are serialized as one row per line.
+ */
 export async function extractText(
   buffer: Buffer,
   fileType: string
@@ -220,6 +243,15 @@ function parseNameConflictAction(value: string | null | undefined) {
     : undefined;
 }
 
+/**
+ * Parse and validate a multipart form-data document upload.
+ *
+ * Extracts the file, connection credentials, chunk size, metadata, and
+ * conflict resolution action from the form data. Sanitizes the filename,
+ * validates file size (max 50 MB), and resolves the Astra connection.
+ *
+ * @throws If no file is provided or the file exceeds the size limit.
+ */
 export async function parseDocumentUpload(
   formData: FormData
 ): Promise<ParsedDocumentUpload> {
