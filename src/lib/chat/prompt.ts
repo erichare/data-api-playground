@@ -1,3 +1,10 @@
+/**
+ * Build the JSON-only prompt used to analyze a user's database query.
+ *
+ * The AI model responds with a structured JSON object containing the target
+ * collection, search mode, intent, limit, optional sort/filter parameters,
+ * and flags for skip-search and all-collections queries.
+ */
 export function buildAnalyzePrompt(args: {
   collectionList: string;
   defaultCollection: string;

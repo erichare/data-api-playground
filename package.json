@@ -1,6 +1,8 @@
 {
-  "name": "playground",
+  "name": "data-api-playground",
   "version": "0.1.0",
+  "description": "Interactive web app for exploring DataStax Astra DB via the Data API",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "dev": "next dev",

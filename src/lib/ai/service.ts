@@ -57,6 +57,11 @@ function hasInstalledModel(
 
 // ── Status ──────────────────────────────────────────────────────────────────
 
+/**
+ * Report the current AI backend availability.
+ * Checks for a Hugging Face env key, Ollama reachability, and whether the
+ * configured chat and embed models are installed in Ollama.
+ */
 export async function getAiStatus(): Promise<AiStatus> {
   const config = getAiModelConfig();
   const status: AiStatus = {
@@ -81,6 +86,7 @@ export async function getAiStatus(): Promise<AiStatus> {
   return status;
 }
 
+/** Check whether a specific Ollama model (chat or embed) is already downloaded. */
 export async function isOllamaModelInstalled(
   backend: ResolvedAiBackend,
   kind: AiModelKind
@@ -93,6 +99,12 @@ export async function isOllamaModelInstalled(
 
 // ── Model management ────────────────────────────────────────────────────────
 
+/**
+ * Ensure an Ollama model is available, pulling it on demand if allowed.
+ * No-ops for Hugging Face backends. Reports download progress via `onProgress`.
+ *
+ * @throws When the model is missing and `allowPull` is `false`.
+ */
 export async function ensureModel(args: {
   backend: ResolvedAiBackend;
   kind: AiModelKind;
@@ -160,6 +172,13 @@ export async function ensureModel(args: {
 
 // ── Text generation ─────────────────────────────────────────────────────────
 
+/**
+ * Generate a non-streaming chat completion from the resolved AI backend.
+ * Automatically ensures the Ollama model is available before calling.
+ *
+ * @returns The generated text content, provider name, and model used.
+ * @throws On provider HTTP errors or empty responses.
+ */
 export async function generateText(args: {
   backend: ResolvedAiBackend;
   messages: ProviderMessage[];
@@ -254,6 +273,12 @@ export async function generateText(args: {
 
 // ── Streaming text generation ───────────────────────────────────────────────
 
+/**
+ * Generate a streaming chat completion, invoking `onChunk` for each token delta.
+ * Uses SSE for Hugging Face and Ollama's streaming chat completions endpoint.
+ *
+ * @returns The fully accumulated text, provider name, and model used.
+ */
 export async function streamText(args: {
   backend: ResolvedAiBackend;
   messages: ProviderMessage[];
@@ -361,6 +386,13 @@ export async function streamText(args: {
 
 // ── Embeddings ──────────────────────────────────────────────────────────────
 
+/**
+ * Generate embedding vectors for one or more input strings.
+ * Uses the Hugging Face feature-extraction pipeline or Ollama's embed API.
+ *
+ * @param args.skipEnsure - Skip the model availability check (use after a prior `ensureModel` call).
+ * @returns An array of embedding vectors, one per input string.
+ */
 export async function embedMany(args: {
   backend: ResolvedAiBackend;
   input: string[];

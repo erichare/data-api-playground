@@ -1,11 +1,20 @@
 import { NextResponse } from "next/server";
 
+/**
+ * Structured JSON logging utilities for API route handlers.
+ *
+ * Every request gets a unique ID via `createRequestLogContext`, which is
+ * included in all log entries and error responses for traceability.
+ */
+
+/** Context attached to every log entry and error response for a single request. */
 export interface RequestLogContext {
   requestId: string;
   route: string;
   method: string;
 }
 
+/** Initialize a request context with a unique ID for structured logging. */
 export function createRequestLogContext(req: Pick<Request, "method">, route: string): RequestLogContext {
   return {
     requestId: crypto.randomUUID(),
@@ -14,6 +23,7 @@ export function createRequestLogContext(req: Pick<Request, "method">, route: str
   };
 }
 
+/** Emit an info-level structured JSON log entry. */
 export function logInfo(context: RequestLogContext, event: string, details?: Record<string, unknown>) {
   console.info(
     JSON.stringify({
@@ -27,6 +37,7 @@ export function logInfo(context: RequestLogContext, event: string, details?: Rec
   );
 }
 
+/** Emit an error-level structured JSON log entry with stack trace when available. */
 export function logError(
   context: RequestLogContext,
   event: string,
@@ -67,6 +78,7 @@ export function sanitizeErrorForClient(err: unknown, fallback: string): string {
   return message.slice(0, 500);
 }
 
+/** Return a JSON error response with the request ID in both the body and headers. */
 export function jsonError(
   context: RequestLogContext,
   status: number,

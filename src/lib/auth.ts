@@ -1,7 +1,18 @@
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 
+/**
+ * HMAC-based session authentication for the playground.
+ *
+ * When `PLAYGROUND_AUTH_PASSWORD` and `PLAYGROUND_AUTH_SECRET` are both set,
+ * all API routes require a valid session cookie. Sessions are 12-hour tokens
+ * signed with HMAC-SHA256. When neither variable is set, auth is disabled
+ * and all routes are publicly accessible.
+ */
+
+/** Name of the httpOnly session cookie. */
 export const AUTH_COOKIE_NAME = "dap_auth";
+/** Sessions expire after 12 hours. */
 const AUTH_SESSION_TTL_SECONDS = 60 * 60 * 12;
 
 function getAuthPassword() {
@@ -46,6 +57,7 @@ function parseCookie(header: string, name: string) {
   return "";
 }
 
+/** Check whether password authentication is configured and active. */
 export function isAuthEnabled() {
   const enabled = getAuthPassword().length > 0 && getAuthSecret().length > 0;
   if (!enabled && !_authWarningEmitted && typeof process !== "undefined") {
@@ -69,6 +81,11 @@ export function _resetAuthWarning() {
   _authWarningEmitted = false;
 }
 
+/**
+ * Generate an HMAC-SHA256 signed session token.
+ * Token format: `{expiresAt}.{nonce}.{hmac}` where expiresAt is a Unix timestamp.
+ * @returns A signed token string, or empty string if auth is disabled.
+ */
 export function createSessionToken() {
   if (!isAuthEnabled()) return "";
   const expiresAt = Math.floor(Date.now() / 1000) + AUTH_SESSION_TTL_SECONDS;
@@ -81,6 +98,10 @@ export function createSessionToken() {
 
 const HEX_64_RE = /^[0-9a-f]{64}$/;
 
+/**
+ * Validate a session token's HMAC signature and expiration.
+ * @returns `true` if the token is valid and not expired, or if auth is disabled.
+ */
 export function verifySessionToken(token: string): boolean {
   if (!isAuthEnabled()) return true;
 
@@ -108,28 +129,36 @@ export function verifySessionToken(token: string): boolean {
   return safeEqual(hmac, expected);
 }
 
+/** Compare a candidate password against the configured auth password using timing-safe equality. */
 export function verifyPassword(candidate: string) {
   if (!isAuthEnabled()) return true;
   return safeEqual(candidate.trim(), getAuthPassword());
 }
 
+/** Check whether a raw cookie value contains a valid, non-expired session token. */
 export function isAuthenticatedCookieValue(value?: string | null) {
   if (!isAuthEnabled()) return true;
   if (!value) return false;
   return verifySessionToken(value);
 }
 
+/** Extract the session cookie from a request and verify it. */
 export function isAuthenticatedRequest(req: Pick<Request, "headers">) {
   if (!isAuthEnabled()) return true;
   const cookieHeader = req.headers.get("cookie") ?? "";
   return isAuthenticatedCookieValue(parseCookie(cookieHeader, AUTH_COOKIE_NAME));
 }
 
+/**
+ * Guard for API route handlers. Returns a 401 response if the request
+ * is not authenticated; returns `null` to indicate the request may proceed.
+ */
 export function requireApiAuth(req: Pick<Request, "headers">) {
   if (isAuthenticatedRequest(req)) return null;
   return NextResponse.json({ error: "Authentication required" }, { status: 401 });
 }
 
+/** Attach a signed session cookie to a response. */
 export function setAuthCookie(response: NextResponse) {
   response.cookies.set({
     name: AUTH_COOKIE_NAME,
@@ -143,6 +172,7 @@ export function setAuthCookie(response: NextResponse) {
   return response;
 }
 
+/** Remove the session cookie from a response (sign-out). */
 export function clearAuthCookie(response: NextResponse) {
   response.cookies.set({
     name: AUTH_COOKIE_NAME,

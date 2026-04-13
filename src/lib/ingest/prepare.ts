@@ -4,6 +4,13 @@ import type {
 } from "@/lib/ai/service";
 import type { IngestPrepareEvent } from "@/lib/ingest/types";
 
+/**
+ * Create a prepare-tracking wrapper for ingest workflows.
+ *
+ * Returns an async function that wraps a task with Ollama model preparation
+ * progress reporting. Emits `prepare` events via `send()` only when the
+ * backend is Ollama and actually needs to pull a model.
+ */
 export function createPrepareTracker(
   send: (event: Record<string, unknown> | IngestPrepareEvent) => void
 ) {

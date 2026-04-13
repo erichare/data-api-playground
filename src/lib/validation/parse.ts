@@ -77,6 +77,11 @@ async function assertStreamWithinLimit(
   }
 }
 
+/**
+ * Pre-parse body size check. Streams the request body to count bytes and
+ * returns a 413 response if the limit is exceeded. Route-aware: ingest
+ * routes get a 50 MB limit, others get 10 MB (unless overridden).
+ */
 export async function assertRequestBodySize(
   req: Request,
   options: BodyLimitOptions = {}
@@ -128,6 +133,7 @@ export async function parseJsonBody<T>(
   return result.data;
 }
 
+/** Type guard to check if a `parseJsonBody` result is an error response. */
 export function isErrorResponse(value: unknown): value is NextResponse {
   return value instanceof NextResponse;
 }

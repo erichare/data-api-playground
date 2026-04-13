@@ -13,6 +13,10 @@ import type {
   IngestBackendHint,
 } from "@/lib/ingest/types";
 
+/**
+ * Inspect a collection description to determine if it uses server-side vectorize.
+ * @returns Configuration including whether vectorize is enabled, vector dimensions, and provider info.
+ */
 export function getCollectionConfig(description: CollectionDescription | undefined) {
   const vectorDef = description?.definition?.vector;
   const service = vectorDef?.service ?? null;
@@ -25,6 +29,7 @@ export function getCollectionConfig(description: CollectionDescription | undefin
   };
 }
 
+/** Report which provider/model will be used for embedding during ingestion. */
 export function getBackendHint(
   description: CollectionDescription | undefined,
   backend: ResolvedAiBackend | null
@@ -51,6 +56,10 @@ export function getBackendHint(
   };
 }
 
+/**
+ * Assert that embedding dimensions match the collection's expected vector size.
+ * @throws If the dimensions don't match.
+ */
 export function validateVectorDimension(args: {
   collection: string;
   expected: number | null;
@@ -67,6 +76,11 @@ export function validateVectorDimension(args: {
   }
 }
 
+/**
+ * Resolve the full ingestion context for a collection: Astra DB handle,
+ * collection config (vectorize vs client-side embedding), AI backend, and
+ * a human-readable hint about which provider/model will be used.
+ */
 export async function resolveIngestCollectionContext(args: {
   token: string;
   endpoint: string;

@@ -6,6 +6,15 @@ import {
   INGEST_API_BODY_LIMIT_BYTES,
 } from "@/lib/server/requestLimits";
 
+/**
+ * Next.js middleware that enforces body size limits and authentication.
+ *
+ * Runs before route handlers to:
+ * 1. Reject API requests with bodies exceeding the limit (10 MB general, 50 MB ingest).
+ * 2. Require a valid session cookie when `PLAYGROUND_AUTH_PASSWORD` is configured.
+ * 3. Redirect unauthenticated users to `/login` for page requests.
+ * 4. Allow `/api/auth/*` and `/login` routes to bypass auth checks.
+ */
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const mayHaveBody =

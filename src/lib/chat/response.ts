@@ -9,6 +9,14 @@ import {
 import { RESPOND_MAX_TOKENS } from "@/lib/chat/constants";
 import type { SearchResult } from "@/lib/chat/types";
 
+/**
+ * Generate a natural language response from search results using the AI backend.
+ *
+ * Builds a system prompt scoped to the active collection(s), includes recent
+ * conversation history, and handles several response modes: search results,
+ * no-results, collection overview, and reformat follow-ups.
+ * Supports both streaming (`onTextChunk`) and non-streaming modes.
+ */
 export async function generateResponse(args: {
   backend: ResolvedAiBackend;
   query: string;
