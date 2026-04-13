@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   chunkText,
   extractTabularRowChunks,
+  extractText,
   serializeTabularRow,
 } from "./text";
 
@@ -113,6 +114,75 @@ describe("serializeTabularRow", () => {
     const result = serializeTabularRow(row, "Sheet1");
 
     expect(result).toBe("sheet: Sheet1; col1: value1");
+  });
+});
+
+describe("extractText", () => {
+  it("extracts plain text from a txt buffer", async () => {
+    const text = "Hello world, this is plain text.";
+    const result = await extractText(Buffer.from(text, "utf-8"), "txt");
+    expect(result).toBe(text);
+  });
+
+  it("extracts plain text from a markdown buffer", async () => {
+    const md = "# Title\n\nSome markdown content.";
+    const result = await extractText(Buffer.from(md, "utf-8"), "md");
+    expect(result).toBe(md);
+  });
+
+  it("pretty-prints valid JSON files", async () => {
+    const json = '{"name":"Alice","age":30}';
+    const result = await extractText(Buffer.from(json, "utf-8"), "json");
+    expect(result).toContain('"name": "Alice"');
+    expect(result).toContain('"age": 30');
+  });
+
+  it("returns raw content for malformed JSON files", async () => {
+    const badJson = "{ not valid json at all }}}";
+    const result = await extractText(Buffer.from(badJson, "utf-8"), "json");
+    expect(result).toBe(badJson);
+  });
+
+  it("returns CSV rows as serialized text", async () => {
+    const csv = 'name,city\nAlice,Portland\nBob,Seattle\n';
+    const result = await extractText(Buffer.from(csv, "utf-8"), "csv");
+    expect(result).toContain("name: Alice; city: Portland");
+    expect(result).toContain("name: Bob; city: Seattle");
+  });
+
+  it("treats unknown extensions as plain text", async () => {
+    const content = "Some arbitrary content for unknown file type";
+    const result = await extractText(Buffer.from(content, "utf-8"), "xyz");
+    expect(result).toBe(content);
+  });
+});
+
+describe("chunkText edge cases", () => {
+  it("discards trailing fragments shorter than 20 characters", () => {
+    const text = "A meaningful paragraph here with good content.\n\nTiny.";
+    const chunks = chunkText(text, 1200);
+    // "Tiny." is < 20 chars so gets discarded
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]).toContain("A meaningful paragraph");
+  });
+
+  it("groups multiple small paragraphs into a single chunk", () => {
+    const p1 = "First small paragraph here with enough content.";
+    const p2 = "Second paragraph also small enough.";
+    const text = `${p1}\n\n${p2}`;
+    // chunkSize large enough to fit both
+    const chunks = chunkText(text, 200);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]).toBe(`${p1}\n\n${p2}`);
+  });
+
+  it("discards short trailing content when it is under 20 chars", () => {
+    const p1 = "A meaningful paragraph that has good content and length for testing purposes.";
+    const text = `${p1}\n\nHi`;
+    // Hi is the last paragraph. p1 becomes first chunk. "Hi" is < 20 chars so discarded.
+    const chunks = chunkText(text, 80);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]).toBe(p1);
   });
 });
 

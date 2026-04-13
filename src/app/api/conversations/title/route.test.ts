@@ -37,6 +37,22 @@ describe("/api/conversations/title route", () => {
     else process.env.PLAYGROUND_AUTH_SECRET = originalSecret;
   });
 
+  it("returns 401 when auth is enabled and no cookie is provided", async () => {
+    process.env.PLAYGROUND_AUTH_PASSWORD = "test-password";
+    process.env.PLAYGROUND_AUTH_SECRET = "test-secret-that-is-long-enough";
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      new Request("http://localhost/api/conversations/title", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ firstMessage: "hello" }),
+      }) as never
+    );
+
+    expect(response.status).toBe(401);
+  });
+
   it("generates and sanitizes a short title", async () => {
     generateTextMock.mockResolvedValueOnce({
       content: '"Customer Feedback Trends"',

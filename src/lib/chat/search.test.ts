@@ -413,6 +413,269 @@ describe("chat search helpers", () => {
     });
   });
 
+  it("sanitizes $-prefixed and invalid filter field names", async () => {
+    const { sanitizeFilterField } = await import("./search");
+    expect(sanitizeFilterField(null)).toBeNull();
+    expect(sanitizeFilterField("$vector")).toBeNull();
+    expect(sanitizeFilterField("field with spaces!")).toBeNull();
+    expect(sanitizeFilterField("valid_field")).toBe("valid_field");
+    expect(sanitizeFilterField("nested.field.path")).toBe("nested.field.path");
+  });
+
+  it("uses vectorize (non-hybrid) search mode when isVectorize is true and mode is vector", async () => {
+    const vectorizeFindToArrayMock = vi.fn().mockResolvedValue([
+      {
+        _id: "doc-1",
+        title: "Vectorize Doc",
+        $similarity: 0.93,
+      },
+    ]);
+    const findMock = vi.fn(() => ({
+      toArray: vectorizeFindToArrayMock,
+    }));
+    getAstraDbMock.mockReturnValue({
+      collection: vi.fn(() => ({
+        find: findMock,
+      })),
+    });
+
+    const { searchCollections } = await import("./search");
+    const result = await searchCollections({
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      keyspace: "default_keyspace",
+      isConnected: true,
+      query: "find relevant docs",
+      collection: "docs",
+      collections: [{ name: "docs", isVectorize: true, vectorDimension: null }],
+      collectionsToSearch: [{ name: "docs", isVec: true, vectorDimension: null }],
+      userCollections: ["docs"],
+      searchMode: "vector",
+      sortField: null,
+      sortDir: "desc",
+      limit: 5,
+      filterField: null,
+      filterOp: null,
+      filterValue: null,
+      embeddingVector: [],
+    });
+
+    expect(findMock).toHaveBeenCalledWith(
+      {},
+      {
+        sort: { $vectorize: "find relevant docs" },
+        limit: 5,
+        includeSimilarity: true,
+      }
+    );
+    expect(result.searchResults[0]).toMatchObject({
+      id: "doc-1",
+      similarity: 0.93,
+    });
+  });
+
+  it("falls back to plain find when there is no embedding vector and not vectorize", async () => {
+    const plainFindToArrayMock = vi.fn().mockResolvedValue([
+      { _id: "doc-1", title: "Plain Doc" },
+    ]);
+    const findMock = vi.fn(() => ({
+      toArray: plainFindToArrayMock,
+    }));
+    getAstraDbMock.mockReturnValue({
+      collection: vi.fn(() => ({
+        find: findMock,
+      })),
+    });
+
+    const { searchCollections } = await import("./search");
+    const result = await searchCollections({
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      keyspace: "default_keyspace",
+      isConnected: true,
+      query: "show everything",
+      collection: "docs",
+      collections: [{ name: "docs", isVectorize: false, vectorDimension: null }],
+      collectionsToSearch: [{ name: "docs", isVec: false, vectorDimension: null }],
+      userCollections: ["docs"],
+      searchMode: "vector",
+      sortField: null,
+      sortDir: "desc",
+      limit: 5,
+      filterField: null,
+      filterOp: null,
+      filterValue: null,
+      embeddingVector: [],
+    });
+
+    expect(findMock).toHaveBeenCalledWith({}, { limit: 5 });
+    expect(result.searchResults[0]).toMatchObject({
+      id: "doc-1",
+      similarity: 1,
+      preview: { title: "Plain Doc" },
+    });
+  });
+
+  it("throws a search error when no filter is present and search fails", async () => {
+    const toArrayMock = vi.fn().mockRejectedValue(new Error("network timeout"));
+    const findMock = vi.fn(() => ({
+      toArray: toArrayMock,
+    }));
+    getAstraDbMock.mockReturnValue({
+      collection: vi.fn(() => ({
+        find: findMock,
+      })),
+    });
+
+    const { searchCollections } = await import("./search");
+
+    await expect(
+      searchCollections({
+        token: "AstraCS:secret",
+        endpoint: "https://db.apps.astra.datastax.com",
+        keyspace: "default_keyspace",
+        isConnected: true,
+        query: "show active records",
+        collection: "orders",
+        collections: [{ name: "orders", isVectorize: false, vectorDimension: 3 }],
+        collectionsToSearch: [{ name: "orders", isVec: false, vectorDimension: 3 }],
+        userCollections: ["orders"],
+        searchMode: "vector",
+        sortField: null,
+        sortDir: "desc",
+        limit: 5,
+        filterField: null,
+        filterOp: null,
+        filterValue: null,
+        embeddingVector: [0.1, 0.2, 0.3],
+      })
+    ).rejects.toThrow("Search failed: network timeout");
+  });
+
+  it("uses $eq shorthand for filter when filterOp is $eq", async () => {
+    const findToArrayMock = vi.fn().mockResolvedValue([
+      { _id: "doc-1", title: "Match", $similarity: 0.85 },
+    ]);
+    const findMock = vi.fn(() => ({
+      toArray: findToArrayMock,
+    }));
+    getAstraDbMock.mockReturnValue({
+      collection: vi.fn(() => ({
+        find: findMock,
+      })),
+    });
+
+    const { searchCollections } = await import("./search");
+    await searchCollections({
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      keyspace: "default_keyspace",
+      isConnected: true,
+      query: "find status active",
+      collection: "docs",
+      collections: [{ name: "docs", isVectorize: false, vectorDimension: 3 }],
+      collectionsToSearch: [{ name: "docs", isVec: false, vectorDimension: 3 }],
+      userCollections: ["docs"],
+      searchMode: "vector",
+      sortField: null,
+      sortDir: "desc",
+      limit: 5,
+      filterField: "status",
+      filterOp: "$eq",
+      filterValue: "active",
+      embeddingVector: [0.1, 0.2, 0.3],
+    });
+
+    // $eq uses the shorthand filter { status: "active" } not { status: { $eq: "active" } }
+    expect(findMock).toHaveBeenCalledWith(
+      { status: "active" },
+      expect.any(Object)
+    );
+  });
+
+  it("rejects unsafe filter values like objects", async () => {
+    const findToArrayMock = vi.fn().mockResolvedValue([]);
+    const findMock = vi.fn(() => ({
+      toArray: findToArrayMock,
+    }));
+    getAstraDbMock.mockReturnValue({
+      collection: vi.fn(() => ({
+        find: findMock,
+      })),
+    });
+
+    const { searchCollections } = await import("./search");
+    await searchCollections({
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      keyspace: "default_keyspace",
+      isConnected: true,
+      query: "find data",
+      collection: "docs",
+      collections: [{ name: "docs", isVectorize: false, vectorDimension: 3 }],
+      collectionsToSearch: [{ name: "docs", isVec: false, vectorDimension: 3 }],
+      userCollections: ["docs"],
+      searchMode: "vector",
+      sortField: null,
+      sortDir: "desc",
+      limit: 5,
+      filterField: "status",
+      filterOp: "$eq",
+      filterValue: { $where: "malicious" },
+      embeddingVector: [0.1, 0.2, 0.3],
+    });
+
+    // Object values are rejected by isSafeFilterValue, so filter becomes {}
+    expect(findMock).toHaveBeenCalledWith(
+      {},
+      expect.any(Object)
+    );
+  });
+
+  it("handles successful hybrid rerank for vectorize collection", async () => {
+    const rerankToArrayMock = vi.fn().mockResolvedValue([
+      {
+        document: { _id: "doc-1", title: "Reranked" },
+        scores: { $vector: 0.95, $reranker: 0.88 },
+      },
+    ]);
+    const findAndRerankMock = vi.fn(() => ({
+      toArray: rerankToArrayMock,
+    }));
+    getAstraDbMock.mockReturnValue({
+      collection: vi.fn(() => ({
+        findAndRerank: findAndRerankMock,
+        find: vi.fn(),
+      })),
+    });
+
+    const { searchCollections } = await import("./search");
+    const result = await searchCollections({
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      keyspace: "default_keyspace",
+      isConnected: true,
+      query: "find relevant docs",
+      collection: "docs",
+      collections: [{ name: "docs", isVectorize: true, vectorDimension: null }],
+      collectionsToSearch: [{ name: "docs", isVec: true, vectorDimension: null }],
+      userCollections: ["docs"],
+      searchMode: "hybrid",
+      sortField: null,
+      sortDir: "desc",
+      limit: 5,
+      filterField: null,
+      filterOp: null,
+      filterValue: null,
+      embeddingVector: [],
+    });
+
+    expect(result.searchResults[0]).toMatchObject({
+      id: "doc-1",
+      similarity: 0.95,
+    });
+  });
+
   it("aggregates multi-collection searches and reports how many succeeded", async () => {
     const collectionRefs = {
       orders: {
