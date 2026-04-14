@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
 
 /**
  * HMAC-based session authentication for the playground.
@@ -162,10 +163,22 @@ export function verifySessionToken(token: string): boolean {
   return safeEqual(hmac, expected);
 }
 
-/** Compare a candidate password against the configured auth password using timing-safe equality. */
+function isBcryptHash(value: string) {
+  return /^\$2[aby]\$\d{2}\$/.test(value);
+}
+
+/** Compare a candidate password against the configured auth password. */
 export function verifyPassword(candidate: string) {
   if (!isAuthEnabled()) return true;
-  return safeEqual(candidate.trim(), getAuthPassword());
+  const provided = candidate.trim();
+  const configured = getAuthPassword();
+
+  if (isBcryptHash(configured)) {
+    return bcrypt.compareSync(provided, configured);
+  }
+
+  // Backward-compatible fallback for legacy plaintext env configuration.
+  return safeEqual(provided, configured);
 }
 
 /** Check whether a raw cookie value contains a valid, non-expired session token. */
