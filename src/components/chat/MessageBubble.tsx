@@ -7,8 +7,6 @@ import {
   MessageSquare,
   Copy,
   Check,
-  Activity,
-  ChevronDown,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -16,9 +14,21 @@ import type {
   Message,
   PipelineStep,
   PipelineStepId,
-  PipelineStepStatus,
 } from "@/lib/types";
 import { StepDataPreview } from "./PipelineTrace";
+import { PipelineSummary, hasStepDetails } from "./PipelineSummary";
+import {
+  type CodeLang,
+  LANG_LABELS,
+  LANG_SDK,
+  getCodeForLang,
+} from "./messageCodeGenerators";
+import {
+  renderTsCode,
+  renderPythonCode,
+  renderJavaCode,
+  renderCurlCode,
+} from "./codeSyntaxHighlight";
 
 interface MessageBubbleProps {
   message: Message;
@@ -26,145 +36,16 @@ interface MessageBubbleProps {
   streaming?: boolean;
 }
 
-type CodeLang = "ts" | "python" | "java" | "curl";
-
-const LANG_LABELS: Record<CodeLang, string> = { ts: "TypeScript", python: "Python", java: "Java", curl: "cURL" };
-const LANG_SDK: Record<CodeLang, string> = {
-  ts: "astra-db-ts",
-  python: "astrapy",
-  java: "astra-db-java",
-  curl: "Data API",
-};
-
-const PIPELINE_SUMMARY_ORDER: PipelineStepId[] = [
-  "prepare",
-  "analyze",
-  "embed",
-  "search",
-  "respond",
-];
-
-const PIPELINE_SUMMARY_LABELS: Record<PipelineStepId, string> = {
-  prepare: "Prep",
-  analyze: "Analyze",
-  embed: "Embed",
-  search: "Search",
-  respond: "Respond",
-};
-
-// ── Code generators ──────────────────────────────────────────────────────────
-
-function toPythonCommand(tsCmd: string): string {
-  const limit = tsCmd.match(/limit:\s*(\d+)/)?.[1] ?? "5";
-  if (tsCmd.includes(".findAndRerank(")) {
-    return `collection.find_and_rerank(\n    {},\n    sort={"$hybrid": {"$vectorize": query}},\n    limit=${limit}\n)`;
-  }
-  if (tsCmd.includes("$vectorize")) {
-    return `collection.find(\n    {},\n    sort={"$vectorize": query},\n    limit=${limit},\n    include_similarity=True\n)`;
-  }
-  if (tsCmd.includes("$vector")) {
-    return `collection.find(\n    {},\n    sort={"$vector": embedding},\n    limit=${limit},\n    include_similarity=True\n)`;
-  }
-  const sortMatch = tsCmd.match(/sort:\s*\{\s*(\w+):\s*(-?1)/);
-  if (sortMatch) {
-    const dir = sortMatch[2] === "1" ? "ASCENDING" : "DESCENDING";
-    return `from astrapy.constants import SortDocuments\ncollection.find(\n    {},\n    sort={"${sortMatch[1]}": SortDocuments.${dir}},\n    limit=${limit}\n)`;
-  }
-  return `collection.find({}, limit=${limit})`;
-}
-
-function toJavaCommand(tsCmd: string): string {
-  const limit = tsCmd.match(/limit:\s*(\d+)/)?.[1] ?? "5";
-  if (tsCmd.includes(".findAndRerank(")) {
-    return `collection.findAndRerank(\n    Filter.empty(),\n    new FindOneAndRerankOptions()\n        .sort(Sorts.hybrid(query))\n        .limit(${limit})\n)`;
-  }
-  if (tsCmd.includes("$vectorize")) {
-    return `collection.find(\n    Filter.empty(),\n    new FindOptions()\n        .sort(Sorts.vectorize(query))\n        .limit(${limit})\n)`;
-  }
-  if (tsCmd.includes("$vector")) {
-    return `collection.find(\n    Filter.empty(),\n    new FindOptions()\n        .sort(Sorts.vector(embedding))\n        .limit(${limit})\n)`;
-  }
-  const sortMatch = tsCmd.match(/sort:\s*\{\s*(\w+):\s*(-?1)/);
-  if (sortMatch) {
-    const dir = sortMatch[2] === "1" ? "ascending" : "descending";
-    return `collection.find(\n    Filter.empty(),\n    new FindOptions()\n        .sort(Sorts.${dir}("${sortMatch[1]}"))\n        .limit(${limit})\n)`;
-  }
-  return `collection.find(Filter.empty(), new FindOptions().limit(${limit}))`;
-}
-
-function toCurlCommand(tsCmd: string, collection?: string): string {
-  const limit = tsCmd.match(/limit:\s*(\d+)/)?.[1] ?? "5";
-  const col = collection ?? "<COLLECTION>";
-  const endpoint = `"$ASTRA_DB_API_ENDPOINT/api/json/v1/$KEYSPACE/${col}"`;
-  const headers = `-H "Token: $ASTRA_DB_APPLICATION_TOKEN" \\\n  -H "Content-Type: application/json"`;
-
-  let body: string;
-  if (tsCmd.includes(".findAndRerank(")) {
-    body = JSON.stringify({
-      findAndRerank: {
-        filter: {},
-        sort: { $hybrid: { $vectorize: "<query>" } },
-        options: { limit: Number(limit) },
-      }
-    }, null, 2);
-  } else if (tsCmd.includes("$vectorize")) {
-    body = JSON.stringify({
-      find: {
-        filter: {},
-        sort: { $vectorize: "<query>" },
-        options: { limit: Number(limit), includeSimilarity: true },
-      }
-    }, null, 2);
-  } else if (tsCmd.includes("$vector")) {
-    body = JSON.stringify({
-      find: {
-        filter: {},
-        sort: { $vector: ["<embedding>"] },
-        options: { limit: Number(limit), includeSimilarity: true },
-      }
-    }, null, 2);
-  } else {
-    const sortMatch = tsCmd.match(/sort:\s*\{\s*(\w+):\s*(-?1)/);
-    if (sortMatch) {
-      body = JSON.stringify({
-        find: {
-          filter: {},
-          sort: { [sortMatch[1]]: Number(sortMatch[2]) },
-          options: { limit: Number(limit) },
-        }
-      }, null, 2);
-    } else {
-      body = JSON.stringify({ find: { filter: {}, options: { limit: Number(limit) } } }, null, 2);
-    }
-  }
-
-  return `curl -X POST ${endpoint} \\\n  ${headers} \\\n  -d '${body}'`;
-}
-
-function getCodeForLang(lang: CodeLang, searchStep?: PipelineStep): string {
-  const command = searchStep?.data?.command as string | undefined;
-  const collection = searchStep?.data?.collection as string | undefined;
-  if (!command) return "# No search was executed for this response";
-
-  switch (lang) {
-    case "ts": {
-      const lines = command.split("\n");
-      return `await db.collection("${collection ?? "…"}")\n${lines.slice(1).map((l) => "  " + l.trim()).join("\n")}`;
-    }
-    case "python": return toPythonCommand(command);
-    case "java": return toJavaCommand(command);
-    case "curl": return toCurlCommand(command, collection);
-  }
-}
-
 // ── CopyButton ───────────────────────────────────────────────────────────────
+
+const COPY_FEEDBACK_MS = 1800;
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = async () => {
     await navigator.clipboard.writeText(text);
     setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+    setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
   };
   return (
     <button
@@ -183,126 +64,7 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function getPipelineTone(status: PipelineStepStatus) {
-  switch (status) {
-    case "complete":
-      return {
-        backgroundColor: "rgba(34,197,94,0.12)",
-        color: "#22c55e",
-        dotClassName: "",
-      };
-    case "running":
-      return {
-        backgroundColor: "var(--interactive-light)",
-        color: "var(--interactive)",
-        dotClassName: "animate-pulse",
-      };
-    case "error":
-      return {
-        backgroundColor: "rgba(239,68,68,0.12)",
-        color: "#ef4444",
-        dotClassName: "",
-      };
-    default:
-      return {
-        backgroundColor: "var(--bg-hover)",
-        color: "var(--text-muted)",
-        dotClassName: "",
-      };
-  }
-}
-
-function hasStepDetails(step: PipelineStep) {
-  return !!step.data && Object.keys(step.data).length > 0;
-}
-
-function PipelineSummary(args: {
-  steps: PipelineStep[];
-  activeStepId: PipelineStepId | null;
-  onToggleStep: (stepId: PipelineStepId) => void;
-}) {
-  const { steps, activeStepId, onToggleStep } = args;
-  if (steps.length === 0) return null;
-
-  const stepMap = new Map(steps.map((step) => [step.id, step]));
-  const visibleSteps = PIPELINE_SUMMARY_ORDER.filter((stepId) => stepMap.has(stepId));
-
-  if (visibleSteps.length === 0) return null;
-
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-      <div className="flex items-center gap-1">
-        <Activity size={11} style={{ color: "var(--text-muted)" }} />
-        <span
-          className="text-[10px] font-semibold uppercase tracking-[0.18em]"
-          style={{ color: "var(--text-muted)" }}
-        >
-          Pipeline
-        </span>
-      </div>
-      {visibleSteps.map((stepId) => {
-        const step = stepMap.get(stepId);
-        if (!step) return null;
-        const tone = getPipelineTone(step.status);
-        const isActive = activeStepId === stepId;
-        const isInteractive = hasStepDetails(step);
-
-        if (!isInteractive) {
-          return (
-            <span
-              key={stepId}
-              className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium"
-              style={{
-                backgroundColor: tone.backgroundColor,
-                color: tone.color,
-              }}
-            >
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${tone.dotClassName}`}
-                style={{ backgroundColor: tone.color }}
-              />
-              {PIPELINE_SUMMARY_LABELS[stepId]}
-            </span>
-          );
-        }
-
-        return (
-          <button
-            key={stepId}
-            type="button"
-            onClick={() => onToggleStep(stepId)}
-            aria-pressed={isActive}
-            className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium transition-all"
-            style={{
-              backgroundColor: tone.backgroundColor,
-              color: tone.color,
-              border: `1px solid ${
-                isActive ? tone.color : "rgba(255,255,255,0.06)"
-              }`,
-              boxShadow: isActive ? `0 0 0 1px ${tone.backgroundColor}` : "none",
-            }}
-          >
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${tone.dotClassName}`}
-              style={{ backgroundColor: tone.color }}
-            />
-            {PIPELINE_SUMMARY_LABELS[stepId]}
-            <ChevronDown
-              size={10}
-              className="transition-transform"
-              style={{
-                color: tone.color,
-                transform: isActive ? "rotate(180deg)" : "rotate(0deg)",
-              }}
-            />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── CodeTab ───────────────────────────────────────────────────────────────────
+// ── CodeTab ──────────────────────────────────────────────────────────────────
 
 function CodeTab({ searchStep }: { searchStep?: PipelineStep }) {
   const [lang, setLang] = useState<CodeLang>("ts");
@@ -360,92 +122,7 @@ function CodeTab({ searchStep }: { searchStep?: PipelineStep }) {
   );
 }
 
-// Simple syntax highlighting helpers
-function Kw({ children }: { children: React.ReactNode }) {
-  return <span style={{ color: "var(--interactive)" }}>{children}</span>;
-}
-function Str({ children }: { children: React.ReactNode }) {
-  return <span style={{ color: "var(--step-respond)" }}>{children}</span>;
-}
-function Key({ children }: { children: React.ReactNode }) {
-  return <span style={{ color: "var(--step-embed)" }}>{children}</span>;
-}
-function Muted({ children }: { children: React.ReactNode }) {
-  return <span style={{ color: "var(--text-muted)" }}>{children}</span>;
-}
-
-function renderTsCode(code: string) {
-  return code.split("\n").map((line, i) => (
-    <span key={i}>
-      {line
-        .replace(/^(await )/, "⟨await⟩")
-        .split(/(⟨await⟩|"[^"]*"|\$[a-zA-Z]+|\.find(?:AndRerank)?|\b(?:db|collection)\b)/g)
-        .map((part, j) => {
-          if (part === "⟨await⟩") return <Kw key={j}>await </Kw>;
-          if (part.startsWith('"')) return <Str key={j}>{part}</Str>;
-          if (part.startsWith("$")) return <Key key={j}>{part}</Key>;
-          if (part === ".find" || part === ".findAndRerank") return <Kw key={j}>{part}</Kw>;
-          if (part === "db" || part === "collection") return <span key={j} style={{ color: "var(--text-primary)" }}>{part}</span>;
-          return <span key={j}>{part}</span>;
-        })}
-      {"\n"}
-    </span>
-  ));
-}
-
-function renderPythonCode(code: string) {
-  return code.split("\n").map((line, i) => (
-    <span key={i}>
-      {line
-        .split(/(from\s+\w+|import\s+\w+|"[^"]*"|'\$[^']*'|\$\w+|\b(?:collection|SortDocuments)\b)/g)
-        .map((part, j) => {
-          if (part.startsWith("from ") || part.startsWith("import ")) return <Kw key={j}>{part}</Kw>;
-          if (part.startsWith('"') || part.startsWith("'")) return <Str key={j}>{part}</Str>;
-          if (part.startsWith("$")) return <Key key={j}>{part}</Key>;
-          if (part === "collection") return <span key={j} style={{ color: "var(--text-primary)" }}>{part}</span>;
-          return <span key={j}>{part}</span>;
-        })}
-      {"\n"}
-    </span>
-  ));
-}
-
-function renderJavaCode(code: string) {
-  return code.split("\n").map((line, i) => (
-    <span key={i}>
-      {line
-        .split(/(new\s+\w+|Filter\.empty\(\)|Sorts\.\w+|"[^"]*"|\b(?:collection)\b)/g)
-        .map((part, j) => {
-          if (part.startsWith("new ")) return <Kw key={j}>{part}</Kw>;
-          if (part === "Filter.empty()") return <Muted key={j}>{part}</Muted>;
-          if (part.startsWith("Sorts.")) return <Key key={j}>{part}</Key>;
-          if (part.startsWith('"')) return <Str key={j}>{part}</Str>;
-          if (part === "collection") return <span key={j} style={{ color: "var(--text-primary)" }}>{part}</span>;
-          return <span key={j}>{part}</span>;
-        })}
-      {"\n"}
-    </span>
-  ));
-}
-
-function renderCurlCode(code: string) {
-  return code.split("\n").map((line, i) => (
-    <span key={i}>
-      {line
-        .split(/(curl|-[XH]|"[^"]*"|\$[A-Z_]+|'[\s\S]*')/g)
-        .map((part, j) => {
-          if (part === "curl") return <Kw key={j}>{part}</Kw>;
-          if (part === "-X" || part === "-H") return <Muted key={j}>{part}</Muted>;
-          if (part.startsWith('"')) return <Str key={j}>{part}</Str>;
-          if (part.startsWith("$")) return <Key key={j}>{part}</Key>;
-          return <span key={j}>{part}</span>;
-        })}
-      {"\n"}
-    </span>
-  ));
-}
-
-// ── MessageBubble ─────────────────────────────────────────────────────────────
+// ── MessageBubble ────────────────────────────────────────────────────────────
 
 export function MessageBubble({
   message,

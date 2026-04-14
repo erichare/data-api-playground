@@ -41,15 +41,16 @@ function getAllowUnauthenticatedOverride() {
   return process.env.PLAYGROUND_ALLOW_UNAUTHENTICATED?.trim().toLowerCase() === "true";
 }
 
+/**
+ * Constant-time string comparison that does not leak input lengths.
+ * Both values are hashed to a fixed 32-byte digest before comparison,
+ * eliminating the timing side-channel from early-exit length checks.
+ */
 function safeEqual(left: string, right: string) {
-  const leftBuffer = Buffer.from(left);
-  const rightBuffer = Buffer.from(right);
-
-  if (leftBuffer.length !== rightBuffer.length) {
-    return false;
-  }
-
-  return timingSafeEqual(leftBuffer, rightBuffer);
+  const key = Buffer.alloc(32);
+  const leftDigest = createHmac("sha256", key).update(left).digest();
+  const rightDigest = createHmac("sha256", key).update(right).digest();
+  return timingSafeEqual(leftDigest, rightDigest);
 }
 
 function parseCookie(header: string, name: string) {
