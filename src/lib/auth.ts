@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from "crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 /**
@@ -43,14 +43,22 @@ function getAllowUnauthenticatedOverride() {
 
 /**
  * Constant-time string comparison that does not leak input lengths.
- * Both values are hashed to a fixed 32-byte digest before comparison,
- * eliminating the timing side-channel from early-exit length checks.
+ *
+ * Both buffers are zero-padded to the same length so `timingSafeEqual`
+ * always performs a full constant-time scan.  The length check is a
+ * separate boolean combined *after* the comparison completes, avoiding
+ * any early-exit timing oracle.
  */
 function safeEqual(left: string, right: string) {
-  const key = Buffer.alloc(32);
-  const leftDigest = createHmac("sha256", key).update(left).digest();
-  const rightDigest = createHmac("sha256", key).update(right).digest();
-  return timingSafeEqual(leftDigest, rightDigest);
+  const leftBuf = Buffer.from(left);
+  const rightBuf = Buffer.from(right);
+  const padLen = Math.max(leftBuf.length, rightBuf.length, 1);
+  const leftPadded = Buffer.concat([leftBuf, Buffer.alloc(padLen - leftBuf.length)]);
+  const rightPadded = Buffer.concat([rightBuf, Buffer.alloc(padLen - rightBuf.length)]);
+  // Always run the constant-time comparison; then check lengths separately.
+  const contentsMatch = timingSafeEqual(leftPadded, rightPadded);
+  const lengthsMatch = leftBuf.length === rightBuf.length;
+  return contentsMatch && lengthsMatch;
 }
 
 function parseCookie(header: string, name: string) {
