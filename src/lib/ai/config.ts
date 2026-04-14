@@ -17,9 +17,24 @@ function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
 }
 
-/** Return the Ollama API base URL from env or default, with trailing slashes stripped. */
+/**
+ * Return the Ollama API base URL from env or default, with trailing slashes stripped.
+ * Validates that the URL uses http or https to prevent SSRF via arbitrary protocols.
+ */
 export function getOllamaBaseUrl() {
-  return trimTrailingSlash(process.env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL);
+  const raw = trimTrailingSlash(process.env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL);
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error(`OLLAMA_BASE_URL is not a valid URL: ${raw}`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(
+      `OLLAMA_BASE_URL must use http or https protocol, got: ${parsed.protocol}`
+    );
+  }
+  return raw;
 }
 
 /** Return the configured model names and Ollama URL, reading from env vars with defaults. */

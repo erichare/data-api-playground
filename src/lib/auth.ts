@@ -1,5 +1,6 @@
-import { createHmac, randomBytes, timingSafeEqual } from "crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
 
 /**
  * HMAC-based session authentication for the playground.
@@ -41,15 +42,24 @@ function getAllowUnauthenticatedOverride() {
   return process.env.PLAYGROUND_ALLOW_UNAUTHENTICATED?.trim().toLowerCase() === "true";
 }
 
+/**
+ * Constant-time string comparison that does not leak input lengths.
+ *
+ * Both buffers are zero-padded to the same length so `timingSafeEqual`
+ * always performs a full constant-time scan.  The length check is a
+ * separate boolean combined *after* the comparison completes, avoiding
+ * any early-exit timing oracle.
+ */
 function safeEqual(left: string, right: string) {
-  const leftBuffer = Buffer.from(left);
-  const rightBuffer = Buffer.from(right);
-
-  if (leftBuffer.length !== rightBuffer.length) {
-    return false;
-  }
-
-  return timingSafeEqual(leftBuffer, rightBuffer);
+  const leftBuf = Buffer.from(left);
+  const rightBuf = Buffer.from(right);
+  const padLen = Math.max(leftBuf.length, rightBuf.length, 1);
+  const leftPadded = Buffer.concat([leftBuf, Buffer.alloc(padLen - leftBuf.length)]);
+  const rightPadded = Buffer.concat([rightBuf, Buffer.alloc(padLen - rightBuf.length)]);
+  // Always run the constant-time comparison; then check lengths separately.
+  const contentsMatch = timingSafeEqual(leftPadded, rightPadded);
+  const lengthsMatch = leftBuf.length === rightBuf.length;
+  return contentsMatch && lengthsMatch;
 }
 
 function parseCookie(header: string, name: string) {
@@ -153,10 +163,22 @@ export function verifySessionToken(token: string): boolean {
   return safeEqual(hmac, expected);
 }
 
-/** Compare a candidate password against the configured auth password using timing-safe equality. */
+function isBcryptHash(value: string) {
+  return /^\$2[aby]\$\d{2}\$/.test(value);
+}
+
+/** Compare a candidate password against the configured auth password. */
 export function verifyPassword(candidate: string) {
   if (!isAuthEnabled()) return true;
-  return safeEqual(candidate.trim(), getAuthPassword());
+  const provided = candidate.trim();
+  const configured = getAuthPassword();
+
+  if (isBcryptHash(configured)) {
+    return bcrypt.compareSync(provided, configured);
+  }
+
+  // Backward-compatible fallback for legacy plaintext env configuration.
+  return safeEqual(provided, configured);
 }
 
 /** Check whether a raw cookie value contains a valid, non-expired session token. */

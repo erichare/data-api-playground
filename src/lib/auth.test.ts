@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import bcrypt from "bcryptjs";
 import {
   AUTH_COOKIE_NAME,
   createSessionToken,
@@ -160,5 +161,41 @@ describe("auth helpers", () => {
     delete process.env.PLAYGROUND_AUTH_SECRET;
 
     expect(createSessionToken()).toBe("");
+  });
+
+  describe("bcrypt password verification", () => {
+    it("accepts a correct password when configured with a bcrypt hash", () => {
+      const plaintext = "super-secret-pw";
+      const hash = bcrypt.hashSync(plaintext, 10);
+      process.env.PLAYGROUND_AUTH_PASSWORD = hash;
+      process.env.PLAYGROUND_AUTH_SECRET = "test-secret";
+
+      expect(verifyPassword(plaintext)).toBe(true);
+    });
+
+    it("rejects a wrong password when configured with a bcrypt hash", () => {
+      const hash = bcrypt.hashSync("correct-password", 10);
+      process.env.PLAYGROUND_AUTH_PASSWORD = hash;
+      process.env.PLAYGROUND_AUTH_SECRET = "test-secret";
+
+      expect(verifyPassword("wrong-password")).toBe(false);
+    });
+
+    it("falls back to plaintext comparison when password is not a bcrypt hash", () => {
+      process.env.PLAYGROUND_AUTH_PASSWORD = "swordfish";
+      process.env.PLAYGROUND_AUTH_SECRET = "top-secret";
+
+      expect(verifyPassword("swordfish")).toBe(true);
+      expect(verifyPassword("wrong")).toBe(false);
+    });
+
+    it("trims whitespace from candidate before bcrypt comparison", () => {
+      const plaintext = "trimmed";
+      const hash = bcrypt.hashSync(plaintext, 10);
+      process.env.PLAYGROUND_AUTH_PASSWORD = hash;
+      process.env.PLAYGROUND_AUTH_SECRET = "test-secret";
+
+      expect(verifyPassword("  trimmed  ")).toBe(true);
+    });
   });
 });

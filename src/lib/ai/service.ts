@@ -170,31 +170,31 @@ export async function ensureModel(args: {
   return { downloaded: true, model };
 }
 
-// ── Text generation ─────────────────────────────────────────────────────────
+// ── Shared chat completion helper ───────────────────────────────────────────
+
+/** Human-friendly provider label for error messages. */
+function providerLabel(provider: "huggingface" | "ollama"): string {
+  return provider === "huggingface" ? "Hugging Face" : "Ollama";
+}
 
 /**
- * Generate a non-streaming chat completion from the resolved AI backend.
- * Automatically ensures the Ollama model is available before calling.
+ * Construct and send a chat-completion request to the resolved AI backend.
  *
- * @returns The generated text content, provider name, and model used.
- * @throws On provider HTTP errors or empty responses.
+ * Handles provider-specific URL, headers, timeout, and model preparation.
+ * Returns the raw `Response` so callers can choose between JSON and SSE
+ * consumption, eliminating the duplication between `generateText` and
+ * `streamText`.
  */
-export async function generateText(args: {
+async function fetchChatCompletion(args: {
   backend: ResolvedAiBackend;
   messages: ProviderMessage[];
   maxTokens: number;
-  allowPull?: boolean;
+  stream: boolean;
+  allowPull: boolean;
   onPrepareProgress?: (progress: EnsureModelProgress) => void;
   onPrepared?: (result: EnsureModelResult) => void;
-}) {
-  const {
-    backend,
-    messages,
-    maxTokens,
-    allowPull = true,
-    onPrepareProgress,
-    onPrepared,
-  } = args;
+}): Promise<{ response: Response; provider: "huggingface" | "ollama"; model: string }> {
+  const { backend, messages, maxTokens, stream, allowPull, onPrepareProgress, onPrepared } = args;
 
   if (backend.provider === "huggingface") {
     const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
@@ -207,6 +207,7 @@ export async function generateText(args: {
         model: backend.chatModel,
         messages,
         max_tokens: maxTokens,
+        ...(stream ? { stream: true } : {}),
       }),
       signal: AbortSignal.timeout(60_000),
     });
@@ -217,19 +218,7 @@ export async function generateText(args: {
       );
     }
 
-    const payload = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = payload.choices?.[0]?.message?.content?.trim();
-    if (!content) {
-      throw new Error("Hugging Face returned an empty chat response");
-    }
-
-    return {
-      content,
-      provider: "huggingface" as const,
-      model: backend.chatModel,
-    };
+    return { response, provider: "huggingface", model: backend.chatModel };
   }
 
   const preparedModel = await ensureModel({
@@ -247,7 +236,7 @@ export async function generateText(args: {
       model: backend.chatModel,
       messages,
       max_tokens: maxTokens,
-      stream: false,
+      stream,
     }),
     signal: AbortSignal.timeout(10 * 60 * 1000),
   });
@@ -256,19 +245,41 @@ export async function generateText(args: {
     throw new Error(`Ollama ${response.status}: ${await readErrorBody(response)}`);
   }
 
+  return { response, provider: "ollama", model: backend.chatModel };
+}
+
+// ── Text generation ─────────────────────────────────────────────────────────
+
+/**
+ * Generate a non-streaming chat completion from the resolved AI backend.
+ * Automatically ensures the Ollama model is available before calling.
+ *
+ * @returns The generated text content, provider name, and model used.
+ * @throws On provider HTTP errors or empty responses.
+ */
+export async function generateText(args: {
+  backend: ResolvedAiBackend;
+  messages: ProviderMessage[];
+  maxTokens: number;
+  allowPull?: boolean;
+  onPrepareProgress?: (progress: EnsureModelProgress) => void;
+  onPrepared?: (result: EnsureModelResult) => void;
+}) {
+  const { backend, messages, maxTokens, allowPull = true, onPrepareProgress, onPrepared } = args;
+
+  const { response, provider, model } = await fetchChatCompletion({
+    backend, messages, maxTokens, stream: false, allowPull, onPrepareProgress, onPrepared,
+  });
+
   const payload = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
   };
   const content = payload.choices?.[0]?.message?.content?.trim();
   if (!content) {
-    throw new Error("Ollama returned an empty chat response");
+    throw new Error(`${providerLabel(provider)} returned an empty chat response`);
   }
 
-  return {
-    content,
-    provider: "ollama" as const,
-    model: backend.chatModel,
-  };
+  return { content, provider, model };
 }
 
 // ── Streaming text generation ───────────────────────────────────────────────
@@ -288,100 +299,21 @@ export async function streamText(args: {
   onPrepared?: (result: EnsureModelResult) => void;
   onChunk: (chunk: TextGenerationChunk) => void;
 }) {
-  const {
-    backend,
-    messages,
-    maxTokens,
-    allowPull = true,
-    onPrepareProgress,
-    onPrepared,
-    onChunk,
-  } = args;
+  const { backend, messages, maxTokens, allowPull = true, onPrepareProgress, onPrepared, onChunk } = args;
 
-  if (backend.provider === "huggingface") {
-    const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${backend.huggingfaceApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: backend.chatModel,
-        messages,
-        max_tokens: maxTokens,
-        stream: true,
-      }),
-      signal: AbortSignal.timeout(60_000),
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        `Hugging Face ${response.status}: ${await readErrorBody(response)}`
-      );
-    }
-
-    const content = await consumeChatCompletionStream(response, (nextContent, delta) => {
-      onChunk({
-        content: nextContent,
-        delta,
-        provider: "huggingface",
-        model: backend.chatModel,
-      });
-    });
-
-    if (!content) {
-      throw new Error("Hugging Face returned an empty chat response");
-    }
-
-    return {
-      content,
-      provider: "huggingface" as const,
-      model: backend.chatModel,
-    };
-  }
-
-  const preparedModel = await ensureModel({
-    backend,
-    kind: "chat",
-    allowPull,
-    onProgress: onPrepareProgress,
+  const { response, provider, model } = await fetchChatCompletion({
+    backend, messages, maxTokens, stream: true, allowPull, onPrepareProgress, onPrepared,
   });
-  onPrepared?.(preparedModel);
-
-  const response = await fetch(`${backend.ollamaBaseUrl}/v1/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: backend.chatModel,
-      messages,
-      max_tokens: maxTokens,
-      stream: true,
-    }),
-    signal: AbortSignal.timeout(10 * 60 * 1000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Ollama ${response.status}: ${await readErrorBody(response)}`);
-  }
 
   const content = await consumeChatCompletionStream(response, (nextContent, delta) => {
-    onChunk({
-      content: nextContent,
-      delta,
-      provider: "ollama",
-      model: backend.chatModel,
-    });
+    onChunk({ content: nextContent, delta, provider, model });
   });
 
   if (!content) {
-    throw new Error("Ollama returned an empty chat response");
+    throw new Error(`${providerLabel(provider)} returned an empty chat response`);
   }
 
-  return {
-    content,
-    provider: "ollama" as const,
-    model: backend.chatModel,
-  };
+  return { content, provider, model };
 }
 
 // ── Embeddings ──────────────────────────────────────────────────────────────
