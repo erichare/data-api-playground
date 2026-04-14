@@ -73,6 +73,7 @@ Supported variables are documented in [`.env.example`](.env.example).
 Production safety default:
 
 - In `NODE_ENV=production`, the app requires `PLAYGROUND_AUTH_PASSWORD` and `PLAYGROUND_AUTH_SECRET` unless you explicitly set `PLAYGROUND_ALLOW_UNAUTHENTICATED=true`.
+- `PLAYGROUND_AUTH_PASSWORD` accepts either a plaintext value or a bcrypt hash (e.g. `$2b$10$...`). Bcrypt hashes are recommended for production.
 - In local development and tests, public access remains allowed by default.
 
 You can also enter credentials at runtime:
@@ -107,7 +108,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 1. Connect to Astra DB with a token and endpoint. Optionally specify a keyspace if your database has multiple keyspaces (defaults to `default_keyspace`).
 2. Optionally add a Hugging Face key in the Connect dialog.
-3. Chat with your collections and inspect the Output, Code, and Trace tabs.
+3. Chat with your collections and inspect the Output and Code tabs, and click pipeline step chips to expand details.
 4. Use the ingest workspace to upload CSV or document files, inspect ingested documents, and browse raw collection records.
 5. Switch to the API Explorer to run raw Data API requests and compare them with live `astra-db-ts` client calls.
 6. If no Hugging Face key is available, make sure Ollama is running locally and let the app pull missing models on demand.
