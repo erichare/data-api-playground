@@ -63,6 +63,27 @@ describe("createRateLimiter", () => {
     limiter.reset();
     expect(limiter.check("ip1").limited).toBe(false);
   });
+
+  it("reports retryAfterMs from the oldest hit still in the window", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-13T12:00:00.000Z"));
+
+    const timerAwareLimiter = createRateLimiter({ windowMs: 1_000, max: 2 });
+
+    try {
+      timerAwareLimiter.check("ip1");
+      vi.advanceTimersByTime(400);
+      timerAwareLimiter.check("ip1");
+      vi.advanceTimersByTime(100);
+
+      const result = timerAwareLimiter.check("ip1");
+      expect(result.limited).toBe(true);
+      expect(result.retryAfterMs).toBe(500);
+    } finally {
+      timerAwareLimiter.reset();
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("getClientIp", () => {
@@ -87,5 +108,19 @@ describe("getClientIp", () => {
       headers: { "user-agent": "curl/7.68" },
     });
     expect(getClientIp(req1)).not.toBe(getClientIp(req2));
+  });
+
+  it("returns the same fingerprint for the same stable headers", () => {
+    const requestInit = {
+      headers: {
+        "user-agent": "Mozilla/5.0",
+        "accept-language": "en-US",
+        "accept-encoding": "gzip",
+      },
+    };
+
+    expect(
+      getClientIp(new Request("http://localhost/test", requestInit))
+    ).toBe(getClientIp(new Request("http://localhost/test", requestInit)));
   });
 });

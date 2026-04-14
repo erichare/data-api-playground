@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   FileIcon,
   TypeBadge,
+  fileKey,
   formatBytes,
   formatDate,
   getFileType,
@@ -22,6 +23,7 @@ describe("ingestShared", () => {
   it("detects known file types and falls back to txt", () => {
     expect(getFileType("report.pdf")).toBe("pdf");
     expect(getFileType("notes.MD")).toBe("md");
+    expect(getFileType("README")).toBe("txt");
     expect(getFileType("archive.unknown")).toBe("txt");
   });
 
@@ -30,15 +32,29 @@ describe("ingestShared", () => {
     expect(getMockDocuments("customers")).toEqual([]);
   });
 
-  it("renders file affordances", () => {
+  it("builds stable file keys and renders file affordances across types", () => {
+    const file = new File(["spreadsheet"], "quarterly.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    expect(fileKey(file)).toBe("quarterly.xlsx__11");
+
     const { container } = render(
       <div>
-        <FileIcon type="pdf" />
-        <TypeBadge type="pdf" />
+        {(["pdf", "docx", "md", "csv", "xlsx", "json", "txt"] as const).map(
+          (type) => (
+            <div key={type}>
+              <FileIcon type={type} />
+              <TypeBadge type={type} />
+            </div>
+          )
+        )}
       </div>
     );
 
     expect(screen.getByText("pdf")).toBeTruthy();
-    expect(container.querySelector("svg")).toBeTruthy();
+    expect(screen.getByText("xlsx")).toBeTruthy();
+    expect(screen.getByText("json")).toBeTruthy();
+    expect(container.querySelectorAll("svg")).toHaveLength(7);
   });
 });

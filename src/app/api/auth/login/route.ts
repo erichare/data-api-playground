@@ -11,7 +11,23 @@ import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
 import { loginBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 
-const loginLimiter = createRateLimiter({ windowMs: 60_000, max: 5 });
+const DEFAULT_LOGIN_LIMIT_MAX = 5;
+
+function getLoginLimitMax() {
+  const configuredMax = Number.parseInt(
+    process.env.PLAYGROUND_AUTH_LOGIN_RATE_LIMIT_MAX ?? "",
+    10
+  );
+
+  return Number.isFinite(configuredMax) && configuredMax > 0
+    ? configuredMax
+    : DEFAULT_LOGIN_LIMIT_MAX;
+}
+
+const loginLimiter = createRateLimiter({
+  windowMs: 60_000,
+  max: getLoginLimitMax(),
+});
 
 export async function POST(req: NextRequest) {
   const logContext = createRequestLogContext(req, "/api/auth/login");

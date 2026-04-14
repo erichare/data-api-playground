@@ -35,6 +35,9 @@ jobs:
       - name: Lint
         run: npm run lint -- --quiet
 
+      - name: Check OpenAPI route coverage
+        run: npm run check:openapi
+
       - name: Build application
         run: npm run build
 

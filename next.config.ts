@@ -6,6 +6,9 @@ const isProduction = process.env.NODE_ENV === "production";
 const nextConfig: NextConfig = {
   experimental: {
     proxyClientMaxBodySize: NEXT_PROXY_CLIENT_MAX_BODY_SIZE,
+    sri: {
+      algorithm: "sha256",
+    },
   },
   serverExternalPackages: ["pdf-parse", "read-excel-file"],
   turbopack: {
@@ -32,6 +35,7 @@ const nextConfig: NextConfig = {
               "font-src 'self'",
               "object-src 'none'",
               "base-uri 'self'",
+              "form-action 'self'",
               "frame-ancestors 'none'",
             ].join("; "),
           },

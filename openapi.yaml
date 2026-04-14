@@ -452,6 +452,28 @@ paths:
       responses:
         "200":
           description: Document metadata
+    delete:
+      tags: [Documents]
+      summary: Delete a single ingested document
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AstraConnection"
+                - type: object
+                  required: [source_doc_id, collection]
+                  properties:
+                    source_doc_id:
+                      type: string
+                    collection:
+                      type: string
+      responses:
+        "200":
+          description: Document deleted
 
   /api/documents/chunks:
     post:

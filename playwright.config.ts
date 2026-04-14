@@ -27,6 +27,7 @@ export default defineConfig({
       DATA_API_PLAYGROUND_DB_PATH: E2E_DB_PATH,
       PLAYGROUND_AUTH_PASSWORD: "playwright-secret",
       PLAYGROUND_AUTH_SECRET: "playwright-secret-key",
+      PLAYGROUND_AUTH_LOGIN_RATE_LIMIT_MAX: "50",
     },
   },
   projects: [

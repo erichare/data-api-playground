@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { login } from "./helpers";
+import { login, submitLogin } from "./helpers";
 
 test("redirects unauthenticated users to login and allows sign-in", async ({ page }) => {
   await page.goto("/");
@@ -7,8 +7,7 @@ test("redirects unauthenticated users to login and allows sign-in", async ({ pag
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByText("Playground Login")).toBeVisible();
 
-  await page.getByTestId("login-password").fill("playwright-secret");
-  await page.getByTestId("login-submit").click();
+  await submitLogin(page);
 
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByText("Data API Playground")).toBeVisible();
