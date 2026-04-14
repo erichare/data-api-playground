@@ -310,11 +310,10 @@ async function analyzeChatRequest({
   const analyzeStart = Date.now();
 
   const collectionNames = payload.collections?.map((collection) => collection.name) ?? [];
-  const userCollections = collectionNames.filter((name) => !name.startsWith("dap_"));
   const defaultCollection =
-    payload.activeCollection && !payload.activeCollection.startsWith("dap_")
+    payload.activeCollection
       ? payload.activeCollection
-      : userCollections[0] || "documents";
+      : collectionNames[0] || "documents";
 
   let collection = defaultCollection;
   let searchMode = payload.searchMode ?? "hybrid";
@@ -331,7 +330,7 @@ async function analyzeChatRequest({
   let requestedCollectionMissing: string | undefined;
 
   const allCollectionFields = payload.allCollectionFields ?? {};
-  const perCollectionFieldsLines = userCollections
+  const perCollectionFieldsLines = collectionNames
     .map((name) => {
       const fields = allCollectionFields[name];
       return fields && fields.length > 0 ? `  - ${name}: ${fields.join(", ")}` : null;
@@ -347,7 +346,7 @@ async function analyzeChatRequest({
   let analysisModel = backend.chatModel;
 
   const collectionList =
-    userCollections.length > 0 ? userCollections.join(", ") : "documents";
+    collectionNames.length > 0 ? collectionNames.join(", ") : "documents";
   try {
     const analyzePrompt = buildAnalyzePrompt({
       collectionList,
@@ -425,7 +424,7 @@ async function analyzeChatRequest({
   const regexOverrides = applyRegexFallbacks({
     query: payload.query,
     hasHistory: (payload.history?.length ?? 0) > 0,
-    userCollections,
+    userCollections: collectionNames,
     allCollections,
     skipSearch,
   });
@@ -438,7 +437,7 @@ async function analyzeChatRequest({
   if (!requestedCollectionMissing && collectionNames.length > 0) {
     const missingRef = detectMissingCollectionReference(
       payload.query,
-      userCollections
+      collectionNames
     );
     if (missingRef) {
       requestedCollectionMissing = missingRef;
@@ -447,14 +446,14 @@ async function analyzeChatRequest({
   }
 
   if (allCollections) {
-    intent = `Overview across all collections: ${userCollections.join(", ")}`;
+    intent = `Overview across all collections: ${collectionNames.join(", ")}`;
   } else if (targetedCollections) {
     intent = `${intent} [searching: ${targetedCollections.join(", ")}]`;
   }
 
   const collectionFields = allCollectionFields[collection] ?? [];
   const analyzeCollections = allCollections
-    ? userCollections
+    ? collectionNames
     : targetedCollections ?? undefined;
 
   send({
@@ -497,7 +496,7 @@ async function analyzeChatRequest({
     analyzeCollections,
     collectionFields,
     rawAnalysis,
-    userCollections,
+    userCollections: collectionNames,
     requestedCollectionMissing,
   };
 }

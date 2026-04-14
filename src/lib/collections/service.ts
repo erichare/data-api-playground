@@ -146,7 +146,6 @@ export async function fetchCollectionMetadata(args: {
   });
 
   const sampledCollectionNames = collections
-    .filter((collection) => !collection.name.startsWith("dap_"))
     .slice(0, CONNECT_METADATA_SAMPLE_LIMIT)
     .map((collection) => collection.name);
 

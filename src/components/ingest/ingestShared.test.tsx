@@ -28,7 +28,7 @@ describe("ingestShared", () => {
   });
 
   it("returns the lightweight mock document list by collection", () => {
-    expect(getMockDocuments("dap_documents")).toHaveLength(5);
+    expect(getMockDocuments("documents")).toHaveLength(5);
     expect(getMockDocuments("customers")).toEqual([]);
   });
 

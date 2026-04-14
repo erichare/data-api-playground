@@ -37,7 +37,6 @@ export function IngestTab({
   const selectedCollection = useMemo(
     () =>
       activeCollection ??
-      collections.find((collection) => !collection.name.startsWith("dap_"))?.name ??
       collections[0]?.name ??
       "",
     [activeCollection, collections]

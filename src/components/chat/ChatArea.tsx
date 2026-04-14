@@ -139,7 +139,7 @@ export function ChatArea({
             isConnected={isConnected}
             initializing={initializing}
             collectionFields={collectionFields ?? {}}
-            collections={collections?.map((c) => c.name).filter((n) => !n.startsWith("dap_")) ?? []}
+            collections={collections?.map((c) => c.name) ?? []}
             activeCollection={activeCollection}
           />
         ) : (

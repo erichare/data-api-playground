@@ -61,7 +61,7 @@ export function Sidebar({
     null
   );
   const [deleteCollectionError, setDeleteCollectionError] = useState("");
-  const visibleCollections = collections.filter((c) => !c.name.startsWith("dap_"));
+  const visibleCollections = collections;
 
   const convActive = viewMode === "chat";
   const collActive = viewMode === "ingest" || viewMode === "api";

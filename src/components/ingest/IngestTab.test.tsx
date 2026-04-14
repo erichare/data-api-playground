@@ -136,7 +136,6 @@ function renderTab(overrides: Partial<Parameters<typeof IngestTab>[0]> = {}) {
       astraEndpoint="https://db-id-us-east1.apps.astra.datastax.com"
       keyspace="default_keyspace"
       collections={[
-        { name: "dap_internal", count: 1, vectorDim: 768, vectorizeService: null },
         { name: "orders", count: 12, vectorDim: 768, vectorizeService: null },
         { name: "customers", count: 4, vectorDim: null, vectorizeService: null },
       ]}
@@ -199,14 +198,14 @@ describe("IngestTab", () => {
     expect(screen.getByTestId("document-viewer").textContent).toContain("doc-1");
   });
 
-  it("falls back to the first collection when only internal collections exist", () => {
+  it("falls back to the first collection when activeCollection is not set", () => {
     renderTab({
-      collections: [{ name: "dap_internal", count: 1, vectorDim: 768, vectorizeService: null }],
+      collections: [{ name: "archive", count: 1, vectorDim: 768, vectorizeService: null }],
     });
 
     expect(useDocumentLibraryMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        selectedCollection: "dap_internal",
+        selectedCollection: "archive",
       })
     );
   });

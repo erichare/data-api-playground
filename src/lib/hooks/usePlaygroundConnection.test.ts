@@ -17,7 +17,6 @@ vi.mock("@/lib/playground/client", () => ({
 function makeConnectionResult(overrides: Partial<Awaited<ReturnType<typeof fetchCollectionsFromApiMock>>> = {}) {
   return {
     collections: [
-      { name: "dap_internal", count: 1, vectorDim: 768, vectorizeService: null },
       { name: "orders", count: 12, vectorDim: 768, vectorizeService: null },
       { name: "customers", count: 4, vectorDim: null, vectorizeService: null },
     ],
@@ -357,7 +356,6 @@ describe("usePlaygroundConnection", () => {
 
     expect(result.current.selectedKeyspace).toBe("ks1");
     expect(result.current.collections.map((collection) => collection.name)).toEqual([
-      "dap_internal",
       "orders",
       "customers",
     ]);
@@ -368,7 +366,6 @@ describe("usePlaygroundConnection", () => {
 
     expect(result.current.selectedKeyspace).toBe("ks1");
     expect(result.current.collections.map((collection) => collection.name)).toEqual([
-      "dap_internal",
       "orders",
       "customers",
     ]);
@@ -471,7 +468,6 @@ describe("usePlaygroundConnection", () => {
     });
 
     expect(result.current.collections.map((collection) => collection.name)).toEqual([
-      "dap_internal",
       "customers",
     ]);
     expect(result.current.activeCollection).toBe("customers");

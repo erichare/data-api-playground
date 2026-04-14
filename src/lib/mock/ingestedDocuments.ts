@@ -9,7 +9,7 @@ export const mockIngestedDocuments: IngestedDocumentSummary[] = [
     content_hash: "a3f4b2c1d5e6f7a8",
     chunk_total: 12,
     ingested_at: "2026-03-20T14:23:00Z",
-    collection: "dap_documents",
+    collection: "documents",
   },
   {
     source_doc_id: "demo-doc-2",
@@ -19,7 +19,7 @@ export const mockIngestedDocuments: IngestedDocumentSummary[] = [
     content_hash: "b5e6d7a8c9f0e1b2",
     chunk_total: 4,
     ingested_at: "2026-03-21T09:15:00Z",
-    collection: "dap_documents",
+    collection: "documents",
   },
   {
     source_doc_id: "demo-doc-3",
@@ -29,7 +29,7 @@ export const mockIngestedDocuments: IngestedDocumentSummary[] = [
     content_hash: "c9f0e1b2d3a4b5c6",
     chunk_total: 2,
     ingested_at: "2026-03-22T16:45:00Z",
-    collection: "dap_documents",
+    collection: "documents",
   },
   {
     source_doc_id: "demo-doc-4",
@@ -39,7 +39,7 @@ export const mockIngestedDocuments: IngestedDocumentSummary[] = [
     content_hash: "d1a2b3c4e5f6a7b8",
     chunk_total: 8,
     ingested_at: "2026-03-24T11:00:00Z",
-    collection: "dap_documents",
+    collection: "documents",
   },
   {
     source_doc_id: "demo-doc-5",
@@ -49,6 +49,6 @@ export const mockIngestedDocuments: IngestedDocumentSummary[] = [
     content_hash: "e9f0a1b2c3d4e5f6",
     chunk_total: 3,
     ingested_at: "2026-03-25T08:30:00Z",
-    collection: "dap_documents",
+    collection: "documents",
   },
 ];

@@ -221,7 +221,6 @@ describe("runChatWorkflow", () => {
         collections: [
           { name: "orders", isVectorize: false },
           { name: "customers", isVectorize: true },
-          { name: "dap_internal", isVectorize: false },
         ],
         allCollectionFields: {
           orders: ["customer_id"],
@@ -750,44 +749,6 @@ describe("runChatWorkflow", () => {
         requestedCollectionMissing: undefined,
       })
     );
-  });
-
-  it("uses dap_-prefixed active collection fallback to first user collection", async () => {
-    generateTextMock.mockResolvedValueOnce({
-      content: JSON.stringify({
-        searchMode: "hybrid",
-        intent: "Find data",
-        limit: 5,
-      }),
-      provider: "huggingface",
-      model: huggingFaceBackend.chatModel,
-    });
-
-    const send = vi.fn();
-    const { runChatWorkflow } = await import("./service");
-    await runChatWorkflow({
-      payload: {
-        query: "Show data",
-        searchMode: "hybrid",
-        activeCollection: "dap_internal",
-        collections: [
-          { name: "dap_internal", isVectorize: false },
-          { name: "products", isVectorize: false },
-        ],
-        allCollectionFields: { products: ["name"] },
-        history: [],
-      },
-      token: "AstraCS:secret",
-      endpoint: "https://db.apps.astra.datastax.com",
-      backend: huggingFaceBackend,
-      send,
-    });
-
-    const analyzeEvent = send.mock.calls.find(
-      ([e]) => e.step === "analyze" && e.status === "complete"
-    );
-    // Active collection starts with dap_, so default falls to first user collection
-    expect(analyzeEvent[0].data.collection).toBe("products");
   });
 
   it("handles vectorize collections and multi-collection fan-out search", async () => {

@@ -44,7 +44,6 @@ function makeSidebarProps(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}
   return {
     collections: [
       { name: "orders", count: 12, documentCount: 3, vectorDim: 768, vectorizeService: null },
-      { name: "dap_internal", count: 3, documentCount: 1, vectorDim: 768, vectorizeService: null },
     ],
     activeCollection: "orders",
     collectionCreateError: "",
@@ -77,17 +76,14 @@ describe("Sidebar", () => {
     cleanup();
   });
 
-  it("keeps internal collections hidden in both expanded and collapsed modes", () => {
+  it("shows all collections in both expanded and collapsed modes", () => {
     const props = makeSidebarProps();
     render(<Sidebar {...props} />);
 
-    expect(screen.queryByText("dap_internal")).toBeNull();
     expect(screen.getByText("orders")).toBeTruthy();
     expect(screen.getByText("3 docs, 12 chunks")).toBeTruthy();
 
     fireEvent.click(screen.getByTitle("Collapse sidebar"));
-
-    expect(screen.queryByTitle("dap_internal")).toBeNull();
 
     fireEvent.click(screen.getByTitle("orders"));
     expect(props.onSelectCollection).toHaveBeenCalledWith("orders");

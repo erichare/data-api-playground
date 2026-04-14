@@ -76,7 +76,7 @@ export function usePlaygroundConnection({
     setAstraFromEnv(fromEnv);
     setCollections(result.collections);
     setCollectionFields(result.fields);
-    const firstUserCollection = result.collections.find((c) => !c.name.startsWith("dap_"))?.name ?? result.collections[0]?.name ?? "";
+    const firstUserCollection = result.collections[0]?.name ?? "";
     setActiveCollection(firstUserCollection);
     setKeyspaces(result.keyspaces);
     if (result.keyspaces.length > 0) setSelectedKeyspace(result.keyspaces[0]);
@@ -86,7 +86,7 @@ export function usePlaygroundConnection({
     const result = await fetchCollectionsFromApi(token, endpoint, keyspace);
     setCollections(result.collections);
     setCollectionFields(result.fields);
-    setActiveCollection(result.collections.find((c) => !c.name.startsWith("dap_"))?.name ?? result.collections[0]?.name ?? "");
+    setActiveCollection(result.collections[0]?.name ?? "");
     return result;
   }, []);
 

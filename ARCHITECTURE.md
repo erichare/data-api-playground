@@ -145,7 +145,6 @@ Pipeline order:
 
 Additional behavior:
 
-- Internal `dap_` collections are filtered out of AI collection selection.
 - `skipSearch` requests skip both embedding and search steps.
 - Provider and model metadata are attached to `prepare`, `analyze`, `embed`, and `respond` completion events.
 - Collections with server-side vectorize continue to bypass client-side embedding.

@@ -183,8 +183,6 @@ export function useCollectionLifecycle({
         return next;
       });
       setActiveCollection(
-        nextCollections.find((collection) => !collection.name.startsWith("dap_"))
-          ?.name ??
         nextCollections[0]?.name ??
         ""
       );
