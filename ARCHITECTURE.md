@@ -10,7 +10,7 @@ All API routes run as Next.js route handlers in the Node.js runtime. The fronten
 
 - Browser clients talk only to this app's route handlers.
 - Route handlers resolve Astra and AI credentials server-side before calling Astra, Hugging Face, or Ollama.
-- Optional app-level auth is enforced in the proxy and route handlers through `requireApiAuth`.
+- Optional app-level auth is enforced in the proxy and route handlers through `requireApiAuth`. `PLAYGROUND_AUTH_PASSWORD` accepts either a plaintext value or a bcrypt hash.
 
 Body-size limits are intentionally split:
 
@@ -36,6 +36,7 @@ Normalized operations:
 - `getAiStatus()`
 - `ensureModel(kind)`
 - `generateText(...)`
+- `streamText(...)`
 - `embedMany(...)`
 
 Default models:
@@ -206,7 +207,7 @@ Derived into in-memory connection state:
 
 ## Environment Variables
 
-See [.env.example](/Users/erichare/GitHub/data-api-playground/.env.example).
+See [.env.example](.env.example).
 
 Key variables:
 
@@ -221,6 +222,7 @@ Key variables:
 - `PLAYGROUND_AUTH_PASSWORD`
 - `PLAYGROUND_AUTH_SECRET`
 - `PLAYGROUND_ALLOW_UNAUTHENTICATED`
+- `DATA_API_PLAYGROUND_DB_PATH`
 
 Important behavior:
 
