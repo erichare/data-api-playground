@@ -132,6 +132,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | Animation | Framer Motion |
 | Database | DataStax Astra DB (`@datastax/astra-db-ts`) |
 | AI | Hugging Face router or local Ollama |
+| Auth | `bcryptjs` (password hashing) + HMAC-SHA256 (sessions) |
 | Storage | SQLite via `better-sqlite3` |
 
 ## Project Structure
@@ -140,32 +141,50 @@ Open [http://localhost:3000](http://localhost:3000).
 src/
   app/
     api/
-      ai-status/
-      astra-status/
-      chat/
-      conversations/
-      ingest/
-      ingest-document/
+      ai-status/          # AI backend availability
+      astra-status/       # Astra DB connection health
+      auth/               # login, logout, status
+      browse/             # raw collection record browser
+      chat/               # streaming RAG pipeline
+      connect/            # Astra DB connection setup
+      conversations/      # conversation CRUD + messages
+      count/              # collection document counts
+      create-collection/  # new collection creation
+      data-api-proxy/     # proxied Data API requests
+      delete-collection/  # collection deletion
+      delete-documents/   # document removal
+      documents/          # ingested document metadata + chunks
+      embedding-providers/# available embedding providers
+      ingest/             # CSV ingest with streaming progress
+      ingest-document/    # document file ingest (PDF, DOCX, …)
+      keyspaces/          # Astra keyspace listing
+      sample-fields/      # collection field sampling
+      typescript-client-calls/ # live astra-db-ts call log
   components/
-    api/
-    chat/
-    collection/
-    connection/
-    ingest/
-    onboarding/
-    shell/
+    api/                  # API Explorer panels and hooks
+    auth/                 # login form
+    chat/                 # message bubbles, pipeline trace, code tabs
+    collection/           # collection management dialogs
+    connection/           # Astra DB connect dialog
+    ingest/               # document upload and CSV ingest UI
+    onboarding/           # quick-start guide
+    shell/                # top-level layout, sidebar, header
+    ui/                   # shadcn/Radix base components
   lib/
-    ai/
-    astra.ts
-    chat/
-    collections/
-    context/
-    ingest/
-    hooks/
-    mock/
-    playground/
-    server/
-    validation/
+    ai/                   # provider abstraction (HF + Ollama)
+    astra.ts              # Astra client wrapper
+    auth.ts               # HMAC session auth + bcrypt passwords
+    chat/                 # RAG pipeline (search, response, service)
+    collections/          # Astra collection operations
+    context/              # React context providers
+    conversations/        # SQLite conversation persistence
+    db.ts                 # SQLite initialization
+    hooks/                # global React state hooks
+    ingest/               # document processing and chunking
+    mock/                 # demo-mode mock data
+    playground/           # client-side API wrapper
+    server/               # server utilities (logging, request limits)
+    validation/           # Zod schemas and parsing
 ```
 
 ## Rate Limiting
