@@ -159,4 +159,25 @@ describe("DocumentLibraryPanel", () => {
     );
     expect(onDelete).toHaveBeenCalledWith(baseDoc);
   });
+
+  it("hides hover actions on mouse leave and closes the delete dialog when cancelled", () => {
+    renderPanel();
+
+    const filename = screen.getByText("report.pdf");
+    const row = filename.closest(".cursor-pointer");
+    if (!row) throw new Error("Expected a document row");
+
+    fireEvent.mouseEnter(row);
+    expect(screen.getByTitle("Delete document")).toBeTruthy();
+
+    fireEvent.mouseLeave(row);
+    expect(screen.queryByTitle("Delete document")).toBeNull();
+
+    fireEvent.mouseEnter(row);
+    fireEvent.click(screen.getByTitle("Delete document"));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
 });

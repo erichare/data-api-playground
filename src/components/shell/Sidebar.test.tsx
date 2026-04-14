@@ -154,6 +154,31 @@ describe("Sidebar", () => {
     expect(props.onDeleteCollection).toHaveBeenCalledWith("orders");
   });
 
+  it("shows collection deletion errors and clears them when the dialog is closed", async () => {
+    const props = makeSidebarProps({
+      onDeleteCollection: vi.fn().mockRejectedValue(new Error("Delete failed")),
+    });
+    render(<Sidebar {...props} />);
+
+    fireEvent.click(screen.getByTitle("Delete collection"));
+
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByPlaceholderText("orders"), {
+      target: { value: "orders" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Delete collection",
+      })
+    );
+
+    expect(await screen.findByText("Delete failed")).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("supports renaming and deleting conversations", () => {
     const props = makeSidebarProps();
     render(<Sidebar {...props} />);

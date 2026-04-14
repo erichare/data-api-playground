@@ -6,6 +6,10 @@ We provide security fixes for:
 - The latest code on `main`
 - The most recent release, if releases are being cut
 
+For public or shared deployments, configure `PLAYGROUND_AUTH_PASSWORD` and
+`PLAYGROUND_AUTH_SECRET`. In `NODE_ENV=production`, the app now fails closed by
+default unless `PLAYGROUND_ALLOW_UNAUTHENTICATED=true` is set intentionally.
+
 Older versions may not receive security updates.
 
 ## Reporting a Vulnerability

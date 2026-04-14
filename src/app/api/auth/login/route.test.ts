@@ -3,14 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 describe("/api/auth/login route", () => {
   const originalPassword = process.env.PLAYGROUND_AUTH_PASSWORD;
   const originalSecret = process.env.PLAYGROUND_AUTH_SECRET;
+  const originalAllowUnauthenticated = process.env.PLAYGROUND_ALLOW_UNAUTHENTICATED;
+  const originalNodeEnv = process.env.NODE_ENV;
 
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    process.env.NODE_ENV = "test";
     vi.spyOn(console, "info").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
     delete process.env.PLAYGROUND_AUTH_PASSWORD;
     delete process.env.PLAYGROUND_AUTH_SECRET;
+    delete process.env.PLAYGROUND_ALLOW_UNAUTHENTICATED;
   });
 
   afterEach(() => {
@@ -20,6 +24,15 @@ describe("/api/auth/login route", () => {
 
     if (originalSecret === undefined) delete process.env.PLAYGROUND_AUTH_SECRET;
     else process.env.PLAYGROUND_AUTH_SECRET = originalSecret;
+
+    if (originalAllowUnauthenticated === undefined) {
+      delete process.env.PLAYGROUND_ALLOW_UNAUTHENTICATED;
+    } else {
+      process.env.PLAYGROUND_ALLOW_UNAUTHENTICATED = originalAllowUnauthenticated;
+    }
+
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = originalNodeEnv;
   });
 
   it("returns disabled when playground auth is not configured", async () => {
@@ -36,6 +49,26 @@ describe("/api/auth/login route", () => {
     expect(await response.json()).toEqual({
       authenticated: true,
       disabled: true,
+    });
+  });
+
+  it("returns 503 when production auth is not configured", async () => {
+    process.env.NODE_ENV = "production";
+
+    const { POST } = await import("./route");
+
+    const response = await POST(
+      new Request("http://localhost/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: "anything" }),
+      }) as never
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: expect.stringContaining("Authentication is required in production"),
+      requestId: expect.any(String),
     });
   });
 

@@ -130,6 +130,38 @@ describe("ChatArea", () => {
     );
   });
 
+  it("renders initializing and field-aware empty-state suggestions", () => {
+    render(
+      <ChatArea
+        {...makeChatProps({
+          initializing: true,
+          collections: [
+            { name: "orders", isVectorize: false, vectorDimension: 768 },
+            { name: "customers", isVectorize: false, vectorDimension: null },
+          ],
+          collectionFields: {
+            orders: ["created_at", "status", "customer_name", "misc"],
+            customers: ["lifetime_value"],
+          },
+        })}
+      />
+    );
+
+    expect(screen.getByText("Restoring session…")).toBeTruthy();
+    expect(screen.getByText("Tell me about my data")).toBeTruthy();
+    expect(screen.getByText("Show me the most recent records by created_at")).toBeTruthy();
+    expect(screen.getByText("What are the distinct values of status?")).toBeTruthy();
+
+    const hintButton = screen.getByText(/Find records where customer_name mentions/);
+    fireEvent.mouseEnter(hintButton);
+    expect((hintButton as HTMLButtonElement).style.color).toBe("var(--interactive)");
+
+    fireEvent.mouseLeave(hintButton);
+    expect((hintButton as HTMLButtonElement).style.color).toBe("var(--text-secondary)");
+
+    expect(screen.getByText("Filter by misc")).toBeTruthy();
+  });
+
   it("does not show demo mode copy when the app is connected via env-backed Astra credentials", () => {
     render(
       <ChatArea
@@ -143,6 +175,67 @@ describe("ChatArea", () => {
     expect(
       screen.queryByText("Demo mode — connect to Astra DB to query real data")
     ).toBeNull();
+  });
+
+  it("sends on Enter, but not on Shift+Enter or a disabled send button", async () => {
+    global.fetch = vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.close();
+            },
+          })
+        )
+    ) as typeof fetch;
+
+    const onMessagesUpdate = vi.fn();
+    render(<ChatArea {...makeChatProps({ onMessagesUpdate })} />);
+
+    const input = screen.getByTestId("chat-input");
+    const sendButton = screen.getByTestId("chat-send-button");
+
+    fireEvent.click(sendButton);
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(onMessagesUpdate).not.toHaveBeenCalled();
+
+    fireEvent.change(input, {
+      target: { value: "Find active orders" },
+    });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(onMessagesUpdate).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(onMessagesUpdate).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("shows and dismisses the chat error banner when a send fails", async () => {
+    global.fetch = vi.fn(async () => {
+      throw new Error("Network down");
+    }) as typeof fetch;
+
+    render(<ChatArea {...makeChatProps()} />);
+
+    fireEvent.change(screen.getByTestId("chat-input"), {
+      target: { value: "Find active orders" },
+    });
+    fireEvent.click(screen.getByTestId("chat-send-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-error-banner").textContent).toContain("Network down");
+    });
+
+    fireEvent.click(screen.getByLabelText("Dismiss chat error"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("chat-error-banner")).toBeNull();
+    });
   });
 
   it("streams chat events into a final assistant message with sources and pipeline steps", async () => {

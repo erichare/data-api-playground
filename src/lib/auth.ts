@@ -6,14 +6,18 @@ import { NextResponse } from "next/server";
  *
  * When `PLAYGROUND_AUTH_PASSWORD` and `PLAYGROUND_AUTH_SECRET` are both set,
  * all API routes require a valid session cookie. Sessions are 12-hour tokens
- * signed with HMAC-SHA256. When neither variable is set, auth is disabled
- * and all routes are publicly accessible.
+ * signed with HMAC-SHA256. Public access is allowed by default in local
+ * development and tests, but production now fails closed unless
+ * `PLAYGROUND_ALLOW_UNAUTHENTICATED=true` is set intentionally.
  */
 
 /** Name of the httpOnly session cookie. */
 export const AUTH_COOKIE_NAME = "dap_auth";
 /** Sessions expire after 12 hours. */
 const AUTH_SESSION_TTL_SECONDS = 60 * 60 * 12;
+/** Public-facing explanation when production auth is not configured. */
+export const AUTH_MISCONFIGURED_MESSAGE =
+  "Authentication is required in production. Set PLAYGROUND_AUTH_PASSWORD and PLAYGROUND_AUTH_SECRET, or explicitly set PLAYGROUND_ALLOW_UNAUTHENTICATED=true to allow public access.";
 
 function getAuthPassword() {
   return process.env.PLAYGROUND_AUTH_PASSWORD?.trim() ?? "";
@@ -31,6 +35,10 @@ function getAuthSecret(): string {
     );
   }
   return secret;
+}
+
+function getAllowUnauthenticatedOverride() {
+  return process.env.PLAYGROUND_ALLOW_UNAUTHENTICATED?.trim().toLowerCase() === "true";
 }
 
 function safeEqual(left: string, right: string) {
@@ -63,15 +71,31 @@ export function isAuthEnabled() {
   if (!enabled && !_authWarningEmitted && typeof process !== "undefined") {
     _authWarningEmitted = true;
     const hasPassword = getAuthPassword().length > 0;
-    if (!hasPassword) {
+    if (!hasPassword && isPublicAccessAllowed()) {
       console.warn(
         "[auth] PLAYGROUND_AUTH_PASSWORD is not set — authentication is DISABLED. " +
           "All API routes are publicly accessible. Set PLAYGROUND_AUTH_PASSWORD and " +
           "PLAYGROUND_AUTH_SECRET to enable authentication."
       );
+    } else if (!hasPassword) {
+      console.warn(`[auth] ${AUTH_MISCONFIGURED_MESSAGE}`);
     }
   }
   return enabled;
+}
+
+/** Public access is opt-in in production, but remains available by default in local dev/test. */
+export function isPublicAccessAllowed() {
+  if (getAllowUnauthenticatedOverride()) {
+    return true;
+  }
+
+  return process.env.NODE_ENV !== "production";
+}
+
+/** Production safety check for deployments that forgot to configure auth. */
+export function isAuthMisconfigured() {
+  return !isAuthEnabled() && !isPublicAccessAllowed();
 }
 
 let _authWarningEmitted = false;
@@ -154,6 +178,9 @@ export function isAuthenticatedRequest(req: Pick<Request, "headers">) {
  * is not authenticated; returns `null` to indicate the request may proceed.
  */
 export function requireApiAuth(req: Pick<Request, "headers">) {
+  if (isAuthMisconfigured()) {
+    return NextResponse.json({ error: AUTH_MISCONFIGURED_MESSAGE }, { status: 503 });
+  }
   if (isAuthenticatedRequest(req)) return null;
   return NextResponse.json({ error: "Authentication required" }, { status: 401 });
 }

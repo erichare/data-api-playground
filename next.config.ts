@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 import { NEXT_PROXY_CLIENT_MAX_BODY_SIZE } from "./src/lib/server/requestLimits";
 
+const isProduction = process.env.NODE_ENV === "production";
+
 const nextConfig: NextConfig = {
   experimental: {
     proxyClientMaxBodySize: NEXT_PROXY_CLIENT_MAX_BODY_SIZE,
@@ -23,11 +25,13 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              `script-src 'self' 'unsafe-inline'${isProduction ? "" : " 'unsafe-eval'"}`,
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data:",
-              "connect-src 'self' https://*.astra.datastax.com https://router.huggingface.co",
+              "img-src 'self' data: blob:",
+              `connect-src 'self'${isProduction ? "" : " ws: wss:"}`,
               "font-src 'self'",
+              "object-src 'none'",
+              "base-uri 'self'",
               "frame-ancestors 'none'",
             ].join("; "),
           },

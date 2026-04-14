@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IngestTab } from "./IngestTab";
 
@@ -25,12 +25,20 @@ vi.mock("@/components/ingest/IngestUploadPanel", () => ({
   IngestUploadPanel: ({
     selectedCollection,
     uploading,
+    onIngest,
+    onResolveConflict,
   }: {
     selectedCollection: string;
     uploading: boolean;
+    onIngest: () => void;
+    onResolveConflict: (file: unknown, action: string, applyToAll: boolean) => void;
   }) => (
     <div data-testid="ingest-upload-panel">
       {JSON.stringify({ selectedCollection, uploading })}
+      <button onClick={onIngest}>Ingest now</button>
+      <button onClick={() => onResolveConflict("report.pdf", "replace", true)}>
+        Resolve conflict
+      </button>
     </div>
   ),
 }));
@@ -39,12 +47,15 @@ vi.mock("@/components/ingest/DocumentLibraryPanel", () => ({
   DocumentLibraryPanel: ({
     filteredDocs,
     isConnected,
+    loadDocuments,
   }: {
     filteredDocs: Array<{ source_doc_id: string }>;
     isConnected: boolean;
+    loadDocuments: () => void;
   }) => (
     <div data-testid="document-library-panel">
       {JSON.stringify({ docIds: filteredDocs.map((doc) => doc.source_doc_id), isConnected })}
+      <button onClick={loadDocuments}>Reload docs</button>
     </div>
   ),
 }));
@@ -58,8 +69,17 @@ vi.mock("@/components/ingest/RawCollectionBrowser", () => ({
 }));
 
 vi.mock("@/components/ingest/DocumentViewer", () => ({
-  DocumentViewer: ({ doc }: { doc: { source_doc_id: string } }) => (
-    <div data-testid="document-viewer">{doc.source_doc_id}</div>
+  DocumentViewer: ({
+    doc,
+    onClose,
+  }: {
+    doc: { source_doc_id: string };
+    onClose: () => void;
+  }) => (
+    <div data-testid="document-viewer">
+      {doc.source_doc_id}
+      <button onClick={onClose}>Close viewer</button>
+    </div>
   ),
 }));
 
@@ -176,7 +196,7 @@ describe("IngestTab", () => {
 
     renderTab();
 
-    expect(screen.getByTestId("document-viewer").textContent).toBe("doc-1");
+    expect(screen.getByTestId("document-viewer").textContent).toContain("doc-1");
   });
 
   it("falls back to the first collection when only internal collections exist", () => {
@@ -189,5 +209,34 @@ describe("IngestTab", () => {
         selectedCollection: "dap_internal",
       })
     );
+  });
+
+  it("wires ingest, reload, and close callbacks through to the hook helpers", () => {
+    const handleIngest = vi.fn();
+    const resolveConflict = vi.fn();
+    const loadDocuments = vi.fn();
+    const setViewingDoc = vi.fn();
+
+    mockDocumentLibrary({
+      viewingDoc: doc,
+      loadDocuments,
+      setViewingDoc,
+    });
+    mockIngestUpload({
+      handleIngest,
+      resolveConflict,
+    });
+
+    renderTab();
+
+    fireEvent.click(screen.getByText("Ingest now"));
+    fireEvent.click(screen.getByText("Resolve conflict"));
+    fireEvent.click(screen.getByText("Reload docs"));
+    fireEvent.click(screen.getByText("Close viewer"));
+
+    expect(handleIngest).toHaveBeenCalledTimes(1);
+    expect(resolveConflict).toHaveBeenCalledWith("report.pdf", "replace", true);
+    expect(loadDocuments).toHaveBeenCalledTimes(1);
+    expect(setViewingDoc).toHaveBeenCalledWith(null);
   });
 });

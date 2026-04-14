@@ -123,10 +123,11 @@ components:
     cookieAuth:
       type: apiKey
       in: cookie
-      name: playground_session
+      name: dap_auth
       description: >
         HMAC-SHA256 session cookie set by POST /api/auth/login.
-        Only required when PLAYGROUND_AUTH_PASSWORD is configured.
+        In production, password auth is required unless
+        PLAYGROUND_ALLOW_UNAUTHENTICATED=true is set intentionally.
 
 paths:
   # ── Auth ─────────────────────────────────────────────────────────────
@@ -154,7 +155,9 @@ paths:
               schema:
                 type: object
                 properties:
-                  success:
+                  authenticated:
+                    type: boolean
+                  disabled:
                     type: boolean
         "401":
           description: Invalid password
@@ -164,6 +167,8 @@ paths:
                 $ref: "#/components/schemas/Error"
         "429":
           description: Rate limit exceeded
+        "503":
+          description: Authentication is required in production but not configured
 
   /api/auth/logout:
     post:
@@ -185,9 +190,13 @@ paths:
               schema:
                 type: object
                 properties:
-                  authEnabled:
+                  enabled:
                     type: boolean
                   authenticated:
+                    type: boolean
+                  publicAccessAllowed:
+                    type: boolean
+                  misconfigured:
                     type: boolean
 
   # ── Status ───────────────────────────────────────────────────────────
@@ -364,6 +373,30 @@ paths:
       responses:
         "200":
           description: Document count
+
+  /api/sample-fields:
+    post:
+      tags: [Collections]
+      summary: Sample field names from a collection
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AstraConnection"
+                - type: object
+                  required: [collection]
+                  properties:
+                    collection:
+                      type: string
+      responses:
+        "200":
+          description: Field sample
+        "400":
+          description: Validation error
 
   /api/embedding-providers:
     post:

@@ -70,6 +70,11 @@ cp .env.example .env.local
 
 Supported variables are documented in [`.env.example`](.env.example).
 
+Production safety default:
+
+- In `NODE_ENV=production`, the app requires `PLAYGROUND_AUTH_PASSWORD` and `PLAYGROUND_AUTH_SECRET` unless you explicitly set `PLAYGROUND_ALLOW_UNAUTHENTICATED=true`.
+- In local development and tests, public access remains allowed by default.
+
 You can also enter credentials at runtime:
 
 - Astra DB token and endpoint in the Connect dialog
@@ -186,6 +191,7 @@ Demo mode is useful for exploring the UI, testing AI backends, and understanding
 - If Ollama is selected and a required model is missing, the app pulls it on demand and shows download progress in the UI.
 - General API requests are capped at 10 MB, while ingest routes are allowed up to 50 MB.
 - Auth sessions expire after 12 hours.
+- Production deployments fail closed unless password auth is configured or `PLAYGROUND_ALLOW_UNAUTHENTICATED=true` is set intentionally.
 - On connect, the app samples metadata (estimated count + field names) for up to 12 collections. Large databases may not show counts for every collection.
 - Ingested documents are tracked with a `content_hash` (SHA-256 of the raw file bytes). Re-uploading the same file to the same collection is skipped as a duplicate.
 

@@ -229,6 +229,55 @@ describe("MessageBubble", () => {
     expect(screen.queryByText("Trace")).toBeNull();
   });
 
+  it("renders rich markdown output with headings, ordered lists, tables, and inline code", () => {
+    render(
+      <MessageBubble
+        index={0}
+        message={makeMessage({
+          content: [
+            "# Summary",
+            "",
+            "1. Alice",
+            "2. Bob",
+            "",
+            "| Name | Spend |",
+            "| --- | --- |",
+            "| Alice | 120 |",
+            "",
+            "Use `orders` for the next query.",
+          ].join("\n"),
+          pipelineSteps: undefined,
+          latencyMs: undefined,
+        })}
+      />
+    );
+
+    expect(screen.getByText("Summary")).toBeTruthy();
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getByText("Name")).toBeTruthy();
+    expect(screen.getByText("Spend")).toBeTruthy();
+    expect(screen.getAllByText("Alice").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("orders").length).toBeGreaterThan(0);
+  });
+
+  it("shows a streaming fallback message when the assistant has not emitted content yet", () => {
+    render(
+      <MessageBubble
+        index={0}
+        streaming
+        message={makeMessage({
+          content: "   ",
+          latencyMs: undefined,
+          pipelineSteps: undefined,
+        })}
+      />
+    );
+
+    expect(screen.getByText("Working through the pipeline...")).toBeTruthy();
+    expect(screen.queryByText("Code")).toBeNull();
+    expect(screen.queryByText("Trace")).toBeNull();
+  });
+
   it("switches assistant tabs and copies generated search code", async () => {
     render(<MessageBubble index={1} message={makeMessage()} />);
 

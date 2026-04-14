@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isAuthEnabled, setAuthCookie, verifyPassword } from "@/lib/auth";
+import {
+  AUTH_MISCONFIGURED_MESSAGE,
+  isAuthEnabled,
+  isAuthMisconfigured,
+  setAuthCookie,
+  verifyPassword,
+} from "@/lib/auth";
 import { createRequestLogContext, jsonError, logError, logInfo } from "@/lib/server/log";
 import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
 import { loginBodySchema } from "@/lib/validation/schemas";
@@ -9,6 +15,9 @@ const loginLimiter = createRateLimiter({ windowMs: 60_000, max: 5 });
 
 export async function POST(req: NextRequest) {
   const logContext = createRequestLogContext(req, "/api/auth/login");
+  if (isAuthMisconfigured()) {
+    return jsonError(logContext, 503, AUTH_MISCONFIGURED_MESSAGE);
+  }
   if (!isAuthEnabled()) {
     return NextResponse.json({ authenticated: true, disabled: true });
   }

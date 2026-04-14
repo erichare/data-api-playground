@@ -10,10 +10,14 @@ import { config, proxy } from "./proxy";
 describe("proxy", () => {
   const originalPassword = process.env.PLAYGROUND_AUTH_PASSWORD;
   const originalSecret = process.env.PLAYGROUND_AUTH_SECRET;
+  const originalAllowUnauthenticated = process.env.PLAYGROUND_ALLOW_UNAUTHENTICATED;
+  const originalNodeEnv = process.env.NODE_ENV;
 
   beforeEach(() => {
+    process.env.NODE_ENV = "test";
     delete process.env.PLAYGROUND_AUTH_PASSWORD;
     delete process.env.PLAYGROUND_AUTH_SECRET;
+    delete process.env.PLAYGROUND_ALLOW_UNAUTHENTICATED;
     _resetAuthWarning();
     vi.spyOn(console, "warn").mockImplementation(() => {});
   });
@@ -24,6 +28,15 @@ describe("proxy", () => {
 
     if (originalSecret === undefined) delete process.env.PLAYGROUND_AUTH_SECRET;
     else process.env.PLAYGROUND_AUTH_SECRET = originalSecret;
+
+    if (originalAllowUnauthenticated === undefined) {
+      delete process.env.PLAYGROUND_ALLOW_UNAUTHENTICATED;
+    } else {
+      process.env.PLAYGROUND_ALLOW_UNAUTHENTICATED = originalAllowUnauthenticated;
+    }
+
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = originalNodeEnv;
 
     _resetAuthWarning();
     vi.restoreAllMocks();
@@ -55,6 +68,22 @@ describe("proxy", () => {
 
     expect(response.headers.get("x-middleware-next")).toBe("1");
     expect(getRedirectUrl(response)).toBeNull();
+  });
+
+  it("fails closed in production when auth is not configured", async () => {
+    process.env.NODE_ENV = "production";
+
+    const apiResponse = proxy(new NextRequest("http://localhost/api/connect"));
+    expect(apiResponse.status).toBe(503);
+    await expect(apiResponse.json()).resolves.toEqual({
+      error: expect.stringContaining("Authentication is required in production"),
+    });
+
+    const pageResponse = proxy(new NextRequest("http://localhost/collections"));
+    expect(pageResponse.status).toBe(503);
+    await expect(pageResponse.text()).resolves.toContain(
+      "Authentication is required in production"
+    );
   });
 
   it("allows auth routes without a session cookie", () => {

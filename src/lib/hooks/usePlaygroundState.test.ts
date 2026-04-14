@@ -32,23 +32,62 @@ vi.mock("@/lib/hooks/useThemeState", () => ({
   useThemeState: useThemeStateMock,
 }));
 
+function createConversationState(overrides: Record<string, unknown> = {}) {
+  return {
+    conversations: [],
+    activeConversationId: "conv-1",
+    creatingConversation: false,
+    messages: [],
+    bootstrapConversations: vi.fn().mockResolvedValue("conv-1"),
+    resetConversationTracking: vi.fn(),
+    handleConversationChange: vi.fn(),
+    handleMessagesUpdate: vi.fn(),
+    handleNewConversation: vi.fn(),
+    handleRenameConversation: vi.fn(),
+    handleDeleteConversation: vi.fn(),
+    ...overrides,
+  };
+}
+
+function createConnectionState(overrides: Record<string, unknown> = {}) {
+  return {
+    astraToken: "",
+    astraEndpoint: "",
+    astraFromEnv: false,
+    envReady: false,
+    initializing: false,
+    isConnected: false,
+    connectDialogOpen: false,
+    setConnectDialogOpen: vi.fn(),
+    connectError: "",
+    setConnectError: vi.fn(),
+    handleConnect: vi.fn(),
+    handleDisconnect: vi.fn(),
+    collections: [],
+    setCollections: vi.fn(),
+    collectionFields: {},
+    activeCollection: "",
+    activeCollectionObj: undefined,
+    collectionCreateError: "",
+    keyspaces: [],
+    selectedKeyspace: "default_keyspace",
+    handleSelectCollection: vi.fn(),
+    handleKeyspaceChange: vi.fn(),
+    handleCollectionCreateStarted: vi.fn(),
+    handleCollectionCreated: vi.fn(),
+    handleCollectionCreateFailed: vi.fn(),
+    clearCollectionCreateError: vi.fn(),
+    handleCollectionStatsDelta: vi.fn(),
+    handleDeleteCollection: vi.fn(),
+    ...overrides,
+  };
+}
+
 describe("usePlaygroundState", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    useConversationStateMock.mockImplementation(() => ({
-      conversations: [],
-      activeConversationId: "conv-1",
-      creatingConversation: false,
-      messages: [],
-      bootstrapConversations: vi.fn().mockResolvedValue("conv-1"),
-      resetConversationTracking: vi.fn(),
-      handleConversationChange: vi.fn(),
-      handleMessagesUpdate: vi.fn(),
-      handleNewConversation: vi.fn(),
-      handleRenameConversation: vi.fn(),
-      handleDeleteConversation: vi.fn(),
-    }));
+    useConversationStateMock.mockImplementation(() => createConversationState());
 
     usePlaygroundAuthMock.mockImplementation(() => ({
       authEnabled: true,
@@ -60,36 +99,7 @@ describe("usePlaygroundState", () => {
       toggleTheme: vi.fn(),
     }));
 
-    usePlaygroundConnectionMock.mockImplementation(() => ({
-      astraToken: "",
-      astraEndpoint: "",
-      astraFromEnv: false,
-      envReady: false,
-      initializing: false,
-      isConnected: false,
-      connectDialogOpen: false,
-      setConnectDialogOpen: vi.fn(),
-      connectError: "",
-      setConnectError: vi.fn(),
-      handleConnect: vi.fn(),
-      handleDisconnect: vi.fn(),
-      collections: [],
-      setCollections: vi.fn(),
-      collectionFields: {},
-      activeCollection: "",
-      activeCollectionObj: undefined,
-      collectionCreateError: "",
-      keyspaces: [],
-      selectedKeyspace: "default_keyspace",
-      handleSelectCollection: vi.fn(),
-      handleKeyspaceChange: vi.fn(),
-      handleCollectionCreateStarted: vi.fn(),
-      handleCollectionCreated: vi.fn(),
-      handleCollectionCreateFailed: vi.fn(),
-      clearCollectionCreateError: vi.fn(),
-      handleCollectionStatsDelta: vi.fn(),
-      handleDeleteCollection: vi.fn(),
-    }));
+    usePlaygroundConnectionMock.mockImplementation(() => createConnectionState());
   });
 
   it("passes the current Hugging Face key into useConversationState", async () => {
@@ -153,50 +163,24 @@ describe("usePlaygroundState", () => {
     const handleConversationChange = vi.fn().mockResolvedValue(undefined);
     const handleCollectionStatsDelta = vi.fn();
 
-    useConversationStateMock.mockImplementation(() => ({
-      conversations: [],
-      activeConversationId: "conv-1",
-      creatingConversation: false,
-      messages: [],
-      bootstrapConversations: vi.fn().mockResolvedValue("conv-1"),
-      resetConversationTracking: vi.fn(),
-      handleConversationChange,
-      handleMessagesUpdate: vi.fn(),
-      handleNewConversation: vi.fn(),
-      handleRenameConversation: vi.fn(),
-      handleDeleteConversation: vi.fn(),
-    }));
+    useConversationStateMock.mockImplementation(() =>
+      createConversationState({
+        handleConversationChange,
+      })
+    );
 
-    usePlaygroundConnectionMock.mockImplementation(() => ({
-      astraToken: "",
-      astraEndpoint: "",
-      astraFromEnv: false,
-      envReady: true,
-      initializing: false,
-      isConnected: false,
-      connectDialogOpen: false,
-      setConnectDialogOpen,
-      connectError: "Connection failed",
-      setConnectError,
-      handleConnect: vi.fn(),
-      handleDisconnect,
-      collections: [],
-      setCollections: vi.fn(),
-      collectionFields: {},
-      activeCollection: "",
-      activeCollectionObj: undefined,
-      collectionCreateError: "",
-      keyspaces: [],
-      selectedKeyspace: "default_keyspace",
-      handleSelectCollection,
-      handleKeyspaceChange: vi.fn(),
-      handleCollectionCreateStarted: vi.fn(),
-      handleCollectionCreated: vi.fn(),
-      handleCollectionCreateFailed: vi.fn(),
-      clearCollectionCreateError,
-      handleCollectionStatsDelta,
-      handleDeleteCollection: vi.fn(),
-    }));
+    usePlaygroundConnectionMock.mockImplementation(() =>
+      createConnectionState({
+        envReady: true,
+        setConnectDialogOpen,
+        connectError: "Connection failed",
+        setConnectError,
+        handleDisconnect,
+        handleSelectCollection,
+        clearCollectionCreateError,
+        handleCollectionStatsDelta,
+      })
+    );
 
     const { result } = renderHook(() => usePlaygroundState());
 
@@ -226,5 +210,117 @@ describe("usePlaygroundState", () => {
     expect(handleConversationChange).toHaveBeenCalledWith("conv-2");
     expect(setConnectDialogOpen).toHaveBeenLastCalledWith(false);
     expect(setConnectError).toHaveBeenCalledWith("");
+  });
+
+  it("disconnects directly from the header when already connected", () => {
+    const handleDisconnect = vi.fn();
+    const setConnectDialogOpen = vi.fn();
+
+    usePlaygroundConnectionMock.mockImplementation(() =>
+      createConnectionState({
+        envReady: true,
+        isConnected: true,
+        handleDisconnect,
+        setConnectDialogOpen,
+      })
+    );
+
+    const { result } = renderHook(() => usePlaygroundState());
+
+    act(() => {
+      result.current.headerProps.onConnectionClick?.();
+    });
+
+    expect(handleDisconnect).toHaveBeenCalledTimes(1);
+    expect(setConnectDialogOpen).not.toHaveBeenCalled();
+    expect(result.current.headerProps.envReady).toBe(false);
+  });
+
+  it("tracks dialog toggles and resolves the first non-creating collection", () => {
+    const clearCollectionCreateError = vi.fn();
+
+    usePlaygroundConnectionMock.mockImplementation(() =>
+      createConnectionState({
+        activeCollection: "missing",
+        collections: [
+          { name: "pending", creating: true },
+          { name: "orders", creating: false },
+          { name: "customers", creating: false },
+        ],
+        clearCollectionCreateError,
+      })
+    );
+
+    const { result } = renderHook(() => usePlaygroundState());
+
+    expect(result.current.connectionValue.collections).toEqual([
+      expect.objectContaining({ name: "orders" }),
+      expect.objectContaining({ name: "customers" }),
+    ]);
+    expect(result.current.connectionValue.activeCollectionObj).toEqual(
+      expect.objectContaining({ name: "orders" })
+    );
+    expect(result.current.dialogsProps.quickStartOpen).toBe(false);
+    expect(result.current.dialogsProps.newCollectionOpen).toBe(false);
+
+    act(() => {
+      result.current.headerProps.onSettingsClick();
+    });
+    expect(result.current.dialogsProps.quickStartOpen).toBe(true);
+
+    act(() => {
+      result.current.dialogsProps.onCloseQuickStart();
+    });
+    expect(result.current.dialogsProps.quickStartOpen).toBe(false);
+
+    act(() => {
+      result.current.sidebarProps.onNewCollection();
+    });
+    expect(clearCollectionCreateError).toHaveBeenCalledTimes(1);
+    expect(result.current.dialogsProps.newCollectionOpen).toBe(true);
+
+    act(() => {
+      result.current.dialogsProps.onCloseNewCollection();
+    });
+    expect(result.current.dialogsProps.newCollectionOpen).toBe(false);
+  });
+
+  it("forwards sidebar management callbacks to the underlying hooks", () => {
+    const handleKeyspaceChange = vi.fn();
+    const handleDeleteCollection = vi.fn();
+    const handleNewConversation = vi.fn();
+    const handleRenameConversation = vi.fn();
+    const handleDeleteConversation = vi.fn();
+
+    useConversationStateMock.mockImplementation(() =>
+      createConversationState({
+        handleNewConversation,
+        handleRenameConversation,
+        handleDeleteConversation,
+      })
+    );
+
+    usePlaygroundConnectionMock.mockImplementation(() =>
+      createConnectionState({
+        handleKeyspaceChange,
+        handleDeleteCollection,
+      })
+    );
+
+    const { result } = renderHook(() => usePlaygroundState());
+
+    act(() => {
+      result.current.sidebarProps.onKeyspaceChange("analytics");
+      result.current.sidebarProps.onNewConversation();
+      result.current.sidebarProps.onRenameConversation("conv-1", "Renamed");
+      result.current.sidebarProps.onDeleteConversation("conv-1");
+      result.current.sidebarProps.onDeleteCollection("orders");
+    });
+
+    expect(handleKeyspaceChange).toHaveBeenCalledWith("analytics");
+    expect(handleNewConversation).toHaveBeenCalledTimes(1);
+    expect(handleRenameConversation).toHaveBeenCalledWith("conv-1", "Renamed");
+    expect(handleDeleteConversation).toHaveBeenCalledWith("conv-1");
+    expect(handleDeleteCollection).toHaveBeenCalledWith("orders");
   });
 });

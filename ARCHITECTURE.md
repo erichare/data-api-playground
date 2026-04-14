@@ -218,9 +218,13 @@ Key variables:
 - `OLLAMA_BASE_URL`
 - `OLLAMA_CHAT_MODEL`
 - `OLLAMA_EMBED_MODEL`
+- `PLAYGROUND_AUTH_PASSWORD`
+- `PLAYGROUND_AUTH_SECRET`
+- `PLAYGROUND_ALLOW_UNAUTHENTICATED`
 
 Important behavior:
 
 - a manual Hugging Face key overrides `HUGGINGFACE_API_KEY` for the current page session only
 - if Hugging Face is selected but the key is invalid, the app returns the provider error and does not auto-fallback to Ollama
 - if no Hugging Face key is available, the app resolves to Ollama automatically
+- production fails closed unless password auth is configured or `PLAYGROUND_ALLOW_UNAUTHENTICATED=true` is set intentionally

@@ -5,12 +5,17 @@ import {
   isAuthenticatedCookieValue,
   isAuthenticatedRequest,
   isAuthEnabled,
+  isAuthMisconfigured,
+  isPublicAccessAllowed,
+  requireApiAuth,
   verifyPassword,
   verifySessionToken,
 } from "./auth";
 
 const originalPassword = process.env.PLAYGROUND_AUTH_PASSWORD;
 const originalSecret = process.env.PLAYGROUND_AUTH_SECRET;
+const originalAllowUnauthenticated = process.env.PLAYGROUND_ALLOW_UNAUTHENTICATED;
+const originalNodeEnv = process.env.NODE_ENV;
 
 describe("auth helpers", () => {
   afterEach(() => {
@@ -21,6 +26,15 @@ describe("auth helpers", () => {
 
     if (originalSecret === undefined) delete process.env.PLAYGROUND_AUTH_SECRET;
     else process.env.PLAYGROUND_AUTH_SECRET = originalSecret;
+
+    if (originalAllowUnauthenticated === undefined) {
+      delete process.env.PLAYGROUND_ALLOW_UNAUTHENTICATED;
+    } else {
+      process.env.PLAYGROUND_ALLOW_UNAUTHENTICATED = originalAllowUnauthenticated;
+    }
+
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = originalNodeEnv;
   });
 
   it("treats auth as disabled when no password is configured", () => {
@@ -30,6 +44,29 @@ describe("auth helpers", () => {
     expect(isAuthEnabled()).toBe(false);
     expect(verifyPassword("anything")).toBe(true);
     expect(isAuthenticatedRequest(new Request("http://localhost"))).toBe(true);
+  });
+
+  it("fails closed in production unless public access is explicitly allowed", () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.PLAYGROUND_AUTH_PASSWORD;
+    delete process.env.PLAYGROUND_AUTH_SECRET;
+    delete process.env.PLAYGROUND_ALLOW_UNAUTHENTICATED;
+
+    expect(isAuthEnabled()).toBe(false);
+    expect(isPublicAccessAllowed()).toBe(false);
+    expect(isAuthMisconfigured()).toBe(true);
+    expect(requireApiAuth(new Request("http://localhost"))?.status).toBe(503);
+  });
+
+  it("allows an explicit unauthenticated production override", () => {
+    process.env.NODE_ENV = "production";
+    process.env.PLAYGROUND_ALLOW_UNAUTHENTICATED = "true";
+    delete process.env.PLAYGROUND_AUTH_PASSWORD;
+    delete process.env.PLAYGROUND_AUTH_SECRET;
+
+    expect(isAuthEnabled()).toBe(false);
+    expect(isPublicAccessAllowed()).toBe(true);
+    expect(isAuthMisconfigured()).toBe(false);
   });
 
   it("treats auth as disabled when password is set but secret is missing", () => {

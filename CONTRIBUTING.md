@@ -42,8 +42,8 @@ npm run test
 # Unit tests with coverage report
 npm run test:coverage
 
-# End-to-end browser tests (requires a built app)
-npm run build && npm run test:e2e
+# End-to-end browser tests
+npm run test:e2e
 ```
 
 All pull requests must pass the CI checks before merging. The project enforces:
