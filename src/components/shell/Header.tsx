@@ -124,7 +124,7 @@ export function Header({
             title={
               envReady
                 ? `${getBackendDisplayName(selectedBackend)} credentials detected — click to connect`
-                : "Open connections"
+                : "Open backend"
             }
           >
             <Plug size={12} className="shrink-0" />
@@ -134,7 +134,7 @@ export function Header({
               animate={envReady ? { opacity: [1, 0.4, 1] } : { opacity: 1 }}
               transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
             />
-            {envReady ? "Env Ready" : "Connections"}
+            {envReady ? "Env Ready" : "Backend"}
           </motion.button>
         )}
 

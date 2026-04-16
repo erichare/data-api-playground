@@ -406,7 +406,8 @@ describe("chat search helpers", () => {
     });
 
     expect(result.collection).toBe("customers");
-    expect(result.commandStr).toBe("// Low-confidence fallback: searched customers");
+    expect(result.commandStr).toContain("// Low-confidence fallback: searched customers");
+    expect(result.commandStr).toContain('await db.collection("customers")');
     expect(result.searchResults[0]).toMatchObject({
       id: "doc-high",
       collection: "customers",
@@ -723,7 +724,8 @@ describe("chat search helpers", () => {
       embeddingVector: [0.1, 0.2, 0.3],
     });
 
-    expect(result.commandStr).toBe("// Searched 1 collection: orders, customers");
+    expect(result.commandStr).toContain("// Searched 1 collection: orders, customers");
+    expect(result.commandStr).toContain('await db.collection("orders")');
     expect(result.searchResults).toEqual([
       {
         id: "doc-1",

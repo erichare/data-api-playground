@@ -43,15 +43,24 @@ export function usePlaygroundState() {
     resetConversationTracking: conversationState.resetConversationTracking,
     onDisconnectViewReset: () => setViewMode("chat"),
   });
+  const openragConfigured =
+    knowledgeBackendMode === "openrag" && openragConnection?.kind === "openrag";
+  const appConnected = connectionState.isConnected || openragConfigured;
+
+  const handleDisconnect = useCallback(() => {
+    setKnowledgeBackendMode("connected");
+    setOpenragConnection(null);
+    connectionState.handleDisconnect();
+  }, [connectionState]);
 
   const handleConnectionClick = useCallback(() => {
-    if (connectionState.isConnected) {
-      connectionState.handleDisconnect();
+    if (appConnected) {
+      handleDisconnect();
       return;
     }
 
     connectionState.setConnectDialogOpen(true);
-  }, [connectionState]);
+  }, [appConnected, connectionState, handleDisconnect]);
 
   const handleCloseConnect = useCallback(() => {
     connectionState.setConnectDialogOpen(false);
@@ -107,7 +116,7 @@ export function usePlaygroundState() {
     openragConnection,
     capabilities: connectionState.capabilities,
     keyspace: connectionState.selectedKeyspace,
-    isConnected: connectionState.isConnected,
+    isConnected: appConnected,
     initializing: connectionState.initializing,
     collections: resolvedCollections,
     activeCollection: connectionState.activeCollection,
@@ -119,8 +128,8 @@ export function usePlaygroundState() {
   return {
     connectionValue,
     headerProps: {
-      connected: connectionState.isConnected,
-      envReady: connectionState.envReady && !connectionState.isConnected,
+      connected: appConnected,
+      envReady: connectionState.envReady && !appConnected,
       selectedBackend: connectionState.selectedBackend,
       onConnectionClick: handleConnectionClick,
       onSettingsClick: () => setQuickStartOpen(true),
@@ -188,11 +197,12 @@ export function usePlaygroundState() {
       connectDialogOpen: connectionState.connectDialogOpen,
       onCloseConnect: handleCloseConnect,
       onConnect: connectionState.handleConnect,
-      onDisconnect: connectionState.handleDisconnect,
+      onDisconnect: handleDisconnect,
       huggingfaceApiKey,
       onHuggingfaceApiKeyChange: handleHuggingfaceApiKeyChange,
       connectError: connectionState.connectError,
       isConnected: connectionState.isConnected,
+      backendConnected: appConnected,
     },
   };
 }

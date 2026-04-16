@@ -63,6 +63,46 @@ export function useDocumentLibrary({
   const [viewingDoc, setViewingDoc] = useState<IngestedDocumentSummary | null>(null);
   const [loadError, setLoadError] = useState("");
 
+  const buildDocumentQueryString = useCallback(() => {
+    const params = new URLSearchParams({ collection: selectedCollection, keyspace });
+
+    if (knowledgeBackendMode === "openrag") {
+      params.set("knowledgeBackend", "openrag");
+      if (openragConnection?.baseUrl && !openragConnection.fromEnv) {
+        params.set("openragBaseUrl", openragConnection.baseUrl);
+      }
+      return params.toString();
+    }
+
+    params.set("backend", selectedBackend);
+    if (resolvedConnection?.backend === "astra") {
+      if (resolvedConnection.fromAstraCli) {
+        params.set("fromAstraCli", "true");
+        if (resolvedConnection.astraCliProfile) {
+          params.set("astraCliProfile", resolvedConnection.astraCliProfile);
+        }
+        if (resolvedConnection.astraCliDatabase) {
+          params.set("astraCliDatabase", resolvedConnection.astraCliDatabase);
+        }
+      } else if (resolvedConnection.endpoint) {
+        params.set("endpoint", resolvedConnection.endpoint);
+      }
+    }
+
+    if (resolvedConnection?.backend === "hcd" && resolvedConnection.endpoint) {
+      params.set("endpoint", resolvedConnection.endpoint);
+    }
+
+    return params.toString();
+  }, [
+    keyspace,
+    knowledgeBackendMode,
+    openragConnection,
+    resolvedConnection,
+    selectedBackend,
+    selectedCollection,
+  ]);
+
   const loadDocuments = useCallback(async () => {
     setLoadingDocs(true);
     setLoadError("");
@@ -72,8 +112,7 @@ export function useDocumentLibrary({
       return;
     }
     try {
-      const params = new URLSearchParams({ collection: selectedCollection });
-      const res = await fetch(`/api/documents?${params}`);
+      const res = await fetch(`/api/documents?${buildDocumentQueryString()}`);
       const data = await res.json() as {
         documents?: IngestedDocumentSummary[];
         error?: string;
@@ -94,7 +133,7 @@ export function useDocumentLibrary({
     } finally {
       setLoadingDocs(false);
     }
-  }, [isConnected, selectedCollection]);
+  }, [buildDocumentQueryString, isConnected, selectedCollection]);
 
   useEffect(() => { void loadDocuments(); }, [loadDocuments]);
 

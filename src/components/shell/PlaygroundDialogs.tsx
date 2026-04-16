@@ -44,6 +44,7 @@ export interface PlaygroundDialogsProps {
   onHuggingfaceApiKeyChange: (value: string) => void;
   connectError: string;
   isConnected: boolean;
+  backendConnected?: boolean;
 }
 
 export function PlaygroundDialogs({
@@ -84,6 +85,7 @@ export function PlaygroundDialogs({
   onHuggingfaceApiKeyChange,
   connectError,
   isConnected,
+  backendConnected = isConnected,
 }: PlaygroundDialogsProps) {
   const resolvedConnection =
     connection ??
@@ -119,7 +121,7 @@ export function PlaygroundDialogs({
         onClose={onCloseConnect}
         onConnect={onConnect}
         onDisconnect={onDisconnect}
-        connected={isConnected}
+        connected={backendConnected}
         selectedBackend={selectedBackend}
         onSelectedBackendChange={onSelectedBackendChange}
         knowledgeBackendMode={knowledgeBackendMode}

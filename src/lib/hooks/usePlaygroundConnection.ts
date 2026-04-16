@@ -151,10 +151,7 @@ export function usePlaygroundConnection({
     nextConnection: BackendConnectionState,
     keyspace?: string
   ) => {
-    const result =
-      nextConnection.backend === "astra"
-        ? await fetchCollectionsFromApi(nextConnection.token, nextConnection.endpoint, keyspace)
-        : await fetchCollectionsFromApi(nextConnection, keyspace);
+    const result = await fetchCollectionsFromApi(nextConnection, keyspace);
     setCollections(result.collections);
     setCollectionFields(result.fields);
     setKeyspaces(result.keyspaces);
@@ -198,9 +195,7 @@ export function usePlaygroundConnection({
                   fromEnv: true,
                 }
               : createEnvConnection(statuses.defaultBackend);
-          await (envConnection.backend === "astra"
-            ? fetchCollectionsFromApi(envConnection.token, envConnection.endpoint)
-            : fetchCollectionsFromApi(envConnection))
+          await fetchCollectionsFromApi(envConnection)
             .then((result) => {
               applyConnectionResult(result, envConnection);
             })

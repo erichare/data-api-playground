@@ -16,7 +16,7 @@ const DB_PATH = process.env.DATA_API_PLAYGROUND_DB_PATH || path.join(DATA_DIR, "
 const DB_DIR = path.dirname(DB_PATH);
 
 let _db: Database.Database | null = null;
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 type TableInfoRow = { name: string };
 
@@ -102,6 +102,19 @@ function runMigrations(db: Database.Database) {
     `);
   }
 
+  if (currentVersion < 4) {
+    const ingestedDocumentColumns = getColumnNames(db, "ingested_documents");
+
+    if (!ingestedDocumentColumns.has("backend_scope")) {
+      db.exec("ALTER TABLE ingested_documents ADD COLUMN backend_scope TEXT");
+    }
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_docs_backend_scope
+      ON ingested_documents(backend_kind, backend_scope, collection)
+    `);
+  }
+
   if (currentVersion < SCHEMA_VERSION) {
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
@@ -152,6 +165,7 @@ export function getDb(): Database.Database {
       chunk_total     INTEGER NOT NULL,
       collection      TEXT NOT NULL,
       backend_kind    TEXT NOT NULL DEFAULT 'astra',
+      backend_scope   TEXT,
       backend_source  TEXT,
       backend_document_ref TEXT,
       ingested_at     TEXT NOT NULL,

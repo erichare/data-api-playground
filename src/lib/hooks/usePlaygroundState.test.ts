@@ -236,6 +236,44 @@ describe("usePlaygroundState", () => {
     expect(result.current.headerProps.envReady).toBe(false);
   });
 
+  it("treats OpenRAG as connected for the shell and clears it on disconnect", () => {
+    const handleDisconnect = vi.fn();
+
+    usePlaygroundConnectionMock.mockImplementation(() =>
+      createConnectionState({
+        isConnected: false,
+        handleDisconnect,
+      })
+    );
+
+    const { result } = renderHook(() => usePlaygroundState());
+
+    act(() => {
+      result.current.dialogsProps.onKnowledgeBackendModeChange("openrag");
+      result.current.dialogsProps.onOpenragConnectionChange({
+        kind: "openrag",
+        apiKey: "orag_manual",
+        baseUrl: "https://openrag.example.com",
+        fromEnv: false,
+      });
+    });
+
+    expect(result.current.connectionValue.isConnected).toBe(true);
+    expect(result.current.headerProps.connected).toBe(true);
+    expect(result.current.mainPanelProps.showApiExplorer).toBe(false);
+    expect(result.current.sidebarProps.showCollections).toBe(false);
+    expect(result.current.dialogsProps.backendConnected).toBe(true);
+    expect(result.current.dialogsProps.isConnected).toBe(false);
+
+    act(() => {
+      result.current.headerProps.onConnectionClick?.();
+    });
+
+    expect(handleDisconnect).toHaveBeenCalledTimes(1);
+    expect(result.current.connectionValue.knowledgeBackendMode).toBe("connected");
+    expect(result.current.connectionValue.openragConnection).toBeNull();
+  });
+
   it("tracks dialog toggles and resolves the first non-creating collection", () => {
     const clearCollectionCreateError = vi.fn();
 

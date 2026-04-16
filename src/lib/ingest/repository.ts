@@ -19,18 +19,29 @@ type StoredChunkRow = {
 export function getLatestDuplicateByHash(args: {
   collection: string;
   contentHash: string;
+  backendKind: string;
+  backendScope?: string | null;
 }): ExistingIngestedDocument | undefined {
   return getDb()
     .prepare(
       `
         SELECT source_doc_id, source_filename, content_hash, ingested_at, collection
+             , backend_kind, backend_scope
         FROM ingested_documents
-        WHERE collection = ? AND content_hash = ?
+        WHERE collection = ?
+          AND backend_kind = ?
+          AND (backend_scope = ? OR backend_scope IS NULL OR TRIM(backend_scope) = '')
+          AND content_hash = ?
         ORDER BY ingested_at DESC
         LIMIT 1
       `
     )
-    .get(args.collection, args.contentHash) as ExistingIngestedDocument | undefined;
+    .get(
+      args.collection,
+      args.backendKind,
+      args.backendScope ?? "",
+      args.contentHash
+    ) as ExistingIngestedDocument | undefined;
 }
 
 /**
@@ -40,18 +51,28 @@ export function getLatestDuplicateByHash(args: {
 export function listFilenameConflicts(args: {
   collection: string;
   filename: string;
+  backendKind: string;
+  backendScope?: string | null;
 }): ExistingIngestedDocument[] {
   return getDb()
     .prepare(
       `
         SELECT source_doc_id, source_filename, content_hash, ingested_at, collection
-             , backend_kind, backend_source, backend_document_ref
+             , backend_kind, backend_scope, backend_source, backend_document_ref
         FROM ingested_documents
-        WHERE collection = ? AND source_filename = ?
+        WHERE collection = ?
+          AND backend_kind = ?
+          AND (backend_scope = ? OR backend_scope IS NULL OR TRIM(backend_scope) = '')
+          AND source_filename = ?
         ORDER BY ingested_at DESC
       `
     )
-    .all(args.collection, args.filename) as ExistingIngestedDocument[];
+    .all(
+      args.collection,
+      args.backendKind,
+      args.backendScope ?? "",
+      args.filename
+    ) as ExistingIngestedDocument[];
 }
 
 /** Load a persisted document record including backend metadata. */
@@ -223,6 +244,7 @@ export function insertIngestedDocumentRecord(args: {
   chunkTotal: number;
   collection: string;
   backendKind: string;
+  backendScope?: string | null;
   backendSource: string;
   backendDocumentRef: string;
   ingestedAt: string;
@@ -237,6 +259,7 @@ export function insertIngestedDocumentRecord(args: {
     chunkTotal,
     collection,
     backendKind,
+    backendScope,
     backendSource,
     backendDocumentRef,
     ingestedAt,
@@ -246,8 +269,8 @@ export function insertIngestedDocumentRecord(args: {
   getDb()
     .prepare(`
       INSERT INTO ingested_documents
-        (source_doc_id, source_filename, file_type, file_size, content_hash, chunk_total, collection, backend_kind, backend_source, backend_document_ref, ingested_at, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (source_doc_id, source_filename, file_type, file_size, content_hash, chunk_total, collection, backend_kind, backend_scope, backend_source, backend_document_ref, ingested_at, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .run(
       sourceDocId,
@@ -258,6 +281,7 @@ export function insertIngestedDocumentRecord(args: {
       chunkTotal,
       collection,
       backendKind,
+      backendScope ?? null,
       backendSource,
       backendDocumentRef,
       ingestedAt,
@@ -275,6 +299,7 @@ export function upsertIngestedDocumentRecord(args: {
   chunkTotal: number;
   collection: string;
   backendKind: string;
+  backendScope?: string | null;
   backendSource: string;
   backendDocumentRef: string;
   ingestedAt: string;
@@ -289,6 +314,7 @@ export function upsertIngestedDocumentRecord(args: {
     chunkTotal,
     collection,
     backendKind,
+    backendScope,
     backendSource,
     backendDocumentRef,
     ingestedAt,
@@ -298,11 +324,12 @@ export function upsertIngestedDocumentRecord(args: {
   getDb()
     .prepare(`
       INSERT INTO ingested_documents
-        (source_doc_id, source_filename, file_type, file_size, content_hash, chunk_total, collection, backend_kind, backend_source, backend_document_ref, ingested_at, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (source_doc_id, source_filename, file_type, file_size, content_hash, chunk_total, collection, backend_kind, backend_scope, backend_source, backend_document_ref, ingested_at, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(source_doc_id) DO UPDATE SET
         chunk_total = excluded.chunk_total,
         backend_kind = excluded.backend_kind,
+        backend_scope = excluded.backend_scope,
         backend_source = excluded.backend_source,
         backend_document_ref = excluded.backend_document_ref,
         ingested_at = excluded.ingested_at
@@ -316,6 +343,7 @@ export function upsertIngestedDocumentRecord(args: {
       chunkTotal,
       collection,
       backendKind,
+      backendScope ?? null,
       backendSource,
       backendDocumentRef,
       ingestedAt,

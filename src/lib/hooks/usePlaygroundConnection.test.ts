@@ -114,7 +114,12 @@ describe("usePlaygroundConnection", () => {
       expect(result.current.initializing).toBe(false);
     });
 
-    expect(fetchCollectionsFromApiMock).toHaveBeenCalledWith("", "");
+    expect(fetchCollectionsFromApiMock).toHaveBeenCalledWith({
+      backend: "astra",
+      endpoint: "",
+      token: "",
+      fromEnv: true,
+    });
     expect(result.current.envReady).toBe(true);
     expect(result.current.isConnected).toBe(true);
     expect(result.current.astraFromEnv).toBe(true);
@@ -162,8 +167,11 @@ describe("usePlaygroundConnection", () => {
     });
 
     expect(fetchCollectionsFromApiMock).toHaveBeenLastCalledWith(
-      "AstraCS:secret",
-      "https://db-id-us-east1.apps.astra.datastax.com",
+      {
+        backend: "astra",
+        token: "AstraCS:secret",
+        endpoint: "https://db-id-us-east1.apps.astra.datastax.com",
+      },
       undefined
     );
     expect(result.current.isConnected).toBe(true);
@@ -313,8 +321,11 @@ describe("usePlaygroundConnection", () => {
     });
 
     expect(fetchCollectionsFromApiMock).toHaveBeenLastCalledWith(
-      "AstraCS:secret",
-      "https://db-id-us-east1.apps.astra.datastax.com",
+      {
+        backend: "astra",
+        token: "AstraCS:secret",
+        endpoint: "https://db-id-us-east1.apps.astra.datastax.com",
+      },
       "ks2"
     );
     expect(result.current.activeCollection).toBe("customers");
@@ -333,6 +344,61 @@ describe("usePlaygroundConnection", () => {
     expect(result.current.collections.map((collection) => collection.name)).toContain(
       "tickets"
     );
+  });
+
+  it("preserves Astra CLI metadata when connecting and refreshing keyspaces", async () => {
+    global.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ hasToken: false, hasEndpoint: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    ) as typeof fetch;
+    fetchCollectionsFromApiMock
+      .mockResolvedValueOnce(makeConnectionResult())
+      .mockResolvedValueOnce(makeConnectionResult({ keyspaces: ["ks2"] }));
+
+    const { result } = renderHook(() =>
+      usePlaygroundConnection({
+        bootstrapConversations: vi.fn().mockResolvedValue("conv-1"),
+        resetConversationTracking: vi.fn(),
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.initializing).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.handleConnect({
+        backend: "astra",
+        token: "",
+        endpoint: "",
+        fromAstraCli: true,
+        astraCliProfile: "default",
+        astraCliDatabase: "db-123",
+      });
+    });
+
+    await act(async () => {
+      await result.current.handleKeyspaceChange("ks2");
+    });
+
+    expect(fetchCollectionsFromApiMock).toHaveBeenNthCalledWith(1, {
+      backend: "astra",
+      token: "",
+      endpoint: "",
+      fromAstraCli: true,
+      astraCliProfile: "default",
+      astraCliDatabase: "db-123",
+    }, undefined);
+    expect(fetchCollectionsFromApiMock).toHaveBeenNthCalledWith(2, {
+      backend: "astra",
+      token: "",
+      endpoint: "",
+      fromAstraCli: true,
+      astraCliProfile: "default",
+      astraCliDatabase: "db-123",
+    }, "ks2");
   });
 
   it("keeps the previous keyspace selected when a connected keyspace switch fails", async () => {

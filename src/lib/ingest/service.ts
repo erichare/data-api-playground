@@ -16,6 +16,7 @@ import {
   replaceStoredDocumentChunks,
   upsertIngestedDocumentRecord,
 } from "@/lib/ingest/repository";
+import { getIngestedDocumentScope } from "@/lib/ingest/scope";
 import {
   chunkText,
   extractTabularRowChunks,
@@ -188,9 +189,26 @@ export function streamDocumentIngest(args: {
   return createNdjsonStream(async (send) => {
     try {
       const persistedCollection = collectionName || "demo";
+      const { config: resolvedConfig, backend: resolvedBackend } = resolveKnowledgeBackend(
+        {
+          backend: backendKind,
+          token,
+          endpoint,
+          username,
+          password,
+          keyspace,
+          knowledgeBackend,
+          openragApiKey,
+          openragBaseUrl,
+        } as KnowledgeBackendInput,
+        { includeDefaultKeyspace: true }
+      );
+      const resolvedScope = getIngestedDocumentScope(resolvedConfig);
       const duplicateByHash = getLatestDuplicateByHash({
         collection: persistedCollection,
         contentHash,
+        backendKind: resolvedScope.backendKind,
+        backendScope: resolvedScope.backendScope,
       });
 
       if (duplicateByHash) {
@@ -208,6 +226,8 @@ export function streamDocumentIngest(args: {
       const filenameConflicts = listFilenameConflicts({
         collection: persistedCollection,
         filename,
+        backendKind: resolvedScope.backendKind,
+        backendScope: resolvedScope.backendScope,
       });
 
       if (filenameConflicts.length > 0 && nameConflictAction !== "overwrite") {
@@ -296,6 +316,7 @@ export function streamDocumentIngest(args: {
           chunkTotal,
           collection: persistedCollection,
           backendKind: backendKind ?? "astra",
+          backendScope: null,
           backendSource: persistedCollection,
           backendDocumentRef: sourceDocId,
           ingestedAt,
@@ -314,20 +335,10 @@ export function streamDocumentIngest(args: {
         return;
       }
 
-      const { config, backend } = resolveKnowledgeBackend(
-        {
-          backend: backendKind,
-          token,
-          endpoint,
-          username,
-          password,
-          keyspace,
-          knowledgeBackend,
-          openragApiKey,
-          openragBaseUrl,
-        } as KnowledgeBackendInput,
-        { includeDefaultKeyspace: true }
-      );
+      const { config, backend } = {
+        config: resolvedConfig,
+        backend: resolvedBackend,
+      };
       let backendProvider: string | undefined;
       let backendModel: string | undefined;
 
@@ -389,6 +400,7 @@ export function streamDocumentIngest(args: {
         chunkTotal,
         collection: collectionName,
         backendKind: backend.kind,
+        backendScope: resolvedScope.backendScope,
         backendSource: collectionName,
         backendDocumentRef:
           backend.kind === "openrag"

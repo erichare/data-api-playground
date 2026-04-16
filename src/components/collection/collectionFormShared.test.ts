@@ -102,4 +102,65 @@ describe("collection form helpers", () => {
       })
     );
   });
+
+  it("forwards Astra CLI metadata when creating a collection through the API", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        collection: {
+          name: "customer_docs",
+          count: 0,
+          vectorDim: 1536,
+          vectorizeService: null,
+        },
+      }),
+    }) as typeof fetch;
+
+    await createCollection({
+      connection: {
+        backend: "astra",
+        token: "",
+        endpoint: "",
+        fromAstraCli: true,
+        astraCliProfile: "default",
+        astraCliDatabase: "db-123",
+      },
+      capabilities: {
+        connect: true,
+        keyspaces: true,
+        collectionCrud: true,
+        embeddingProviders: true,
+        vectorizeCollections: true,
+        rawBrowse: true,
+        deleteDocuments: true,
+        apiProxy: true,
+      },
+      keyspace: "ks1",
+      isConnected: true,
+      name: "customer_docs",
+      mode: "client",
+      dimension: 1536,
+      metric: "dot_product",
+      selectedModel: null,
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/create-collection",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fromAstraCli: true,
+          astraCliProfile: "default",
+          astraCliDatabase: "db-123",
+          keyspace: "ks1",
+          name: "customer_docs",
+          provider: "none",
+          model: "",
+          dimension: 1536,
+          metric: "dot_product",
+        }),
+      })
+    );
+  });
 });

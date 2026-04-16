@@ -37,6 +37,9 @@ export async function POST(req: NextRequest) {
             token: body.token,
             endpoint: body.endpoint,
             keyspace: body.keyspace,
+            fromAstraCli: body.fromAstraCli,
+            astraCliProfile: body.astraCliProfile,
+            astraCliDatabase: body.astraCliDatabase,
           }
     );
     return NextResponse.json({ collection });

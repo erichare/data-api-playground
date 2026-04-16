@@ -20,10 +20,10 @@ const filenameConflictAllMock = vi.fn();
 const insertDocumentRunMock = vi.fn();
 const deleteExistingRunMock = vi.fn();
 const prepareMock = vi.fn((sql: string) => {
-  if (sql.includes("WHERE collection = ? AND content_hash = ?")) {
+  if (sql.includes("content_hash = ?")) {
     return { get: duplicateByHashGetMock };
   }
-  if (sql.includes("WHERE collection = ? AND source_filename = ?")) {
+  if (sql.includes("source_filename = ?")) {
     return { all: filenameConflictAllMock };
   }
   if (sql.includes("INSERT INTO ingested_documents")) {
