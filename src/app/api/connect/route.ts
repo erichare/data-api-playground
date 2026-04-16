@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveAstraConnection } from "@/lib/astra";
 import { withRequestLog } from "@/lib/astraClientLog";
 import { requireApiAuth } from "@/lib/auth";
 import { fetchCollectionMetadata } from "@/lib/collections/service";
@@ -15,26 +14,18 @@ export async function POST(req: NextRequest) {
   if (authError) return authError;
   const result = await parseJsonBody(req, connectBodySchema);
   if (isErrorResponse(result)) return result;
-  const { token, endpoint, keyspace } = resolveAstraConnection(result);
-
-  if (!token || !endpoint) {
-    return jsonError(logContext, 400, "token and endpoint are required");
-  }
 
   return withRequestLog(async () => {
     try {
-      const { collections, fields } = await fetchCollectionMetadata({
-        token,
-        endpoint,
-        keyspace,
-      });
+      const { collections, fields, keyspaces, resolvedKeyspace, capabilities } =
+        await fetchCollectionMetadata(result);
 
       return NextResponse.json(
-        { collections, fields },
+        { collections, fields, keyspaces, resolvedKeyspace, capabilities },
         { headers: { "X-Request-Id": logContext.requestId } }
       );
     } catch (err) {
-      logError(logContext, "astra.connect.failed", err);
+      logError(logContext, "backend.connect.failed", err, { backend: result.backend });
       return jsonError(logContext, 400, sanitizeErrorForClient(err, "Failed to connect"));
     }
   });

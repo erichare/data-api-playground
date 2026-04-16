@@ -1,5 +1,6 @@
 "use client";
 
+import type { BackendConnectionState } from "@/lib/backends/types";
 import type { Collection } from "@/lib/types";
 import {
   ApiOperationsPanel,
@@ -10,13 +11,15 @@ import { useApiExplorerSession } from "./hooks/useApiExplorerSession";
 
 interface ApiExplorerProps {
   collection?: Collection;
-  astraToken: string;
-  astraEndpoint: string;
+  connection?: BackendConnectionState | null;
+  astraToken?: string;
+  astraEndpoint?: string;
   keyspace: string;
 }
 
 export function ApiExplorer({
   collection,
+  connection,
   astraToken,
   astraEndpoint,
   keyspace,
@@ -41,6 +44,7 @@ export function ApiExplorer({
     clientCallsLoading,
   } = useApiExplorerSession({
     collection,
+    connection,
     astraToken,
     astraEndpoint,
     keyspace,

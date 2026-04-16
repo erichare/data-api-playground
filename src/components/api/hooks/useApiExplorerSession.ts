@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { BackendConnectionState } from "@/lib/backends/types";
+import { buildConnectionRequestBody } from "@/lib/backends/types";
 import type { Collection } from "@/lib/types";
 import {
   createNetworkErrorResponse,
@@ -20,8 +22,9 @@ const DEFAULT_KEYSPACE = "default_keyspace";
 
 interface UseApiExplorerSessionArgs {
   collection?: Collection;
-  astraToken: string;
-  astraEndpoint: string;
+  connection?: BackendConnectionState | null;
+  astraToken?: string;
+  astraEndpoint?: string;
   keyspace: string;
   clientCallsUrl?: string;
   dataApiProxyUrl?: string;
@@ -30,6 +33,7 @@ interface UseApiExplorerSessionArgs {
 
 export function useApiExplorerSession({
   collection,
+  connection,
   astraToken,
   astraEndpoint,
   keyspace,
@@ -37,6 +41,18 @@ export function useApiExplorerSession({
   dataApiProxyUrl = DEFAULT_DATA_API_PROXY_URL,
   pollMs = 2000,
 }: UseApiExplorerSessionArgs) {
+  const resolvedConnection = useMemo(
+    () =>
+      connection ??
+      (astraToken || astraEndpoint
+        ? {
+            backend: "astra" as const,
+            token: astraToken ?? "",
+            endpoint: astraEndpoint ?? "",
+          }
+        : null),
+    [astraEndpoint, astraToken, connection]
+  );
   const [selectedOp, setSelectedOp] = useState<OpId>("find");
   const [body, setBody] = useState(() => getDefaultBody("find", collection));
   const [codeLang, setCodeLang] = useState<CodeLang>("ts");
@@ -114,9 +130,7 @@ export function useApiExplorerSession({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          token: astraToken,
-          endpoint: astraEndpoint,
-          keyspace: resolvedKeyspace,
+          ...buildConnectionRequestBody(resolvedConnection, { keyspace: resolvedKeyspace }),
           collection: collectionName,
           requestBody: parsedBody,
         }),
@@ -130,13 +144,12 @@ export function useApiExplorerSession({
       void loadClientCalls();
     }
   }, [
-    astraEndpoint,
-    astraToken,
     body,
     collectionName,
     dataApiProxyUrl,
     loadClientCalls,
     resolvedKeyspace,
+    resolvedConnection,
   ]);
 
   const code = useMemo(
@@ -165,7 +178,7 @@ export function useApiExplorerSession({
     refreshClientCalls: loadClientCalls,
     code,
     endpointPath: getEndpointPath(resolvedKeyspace, collectionName),
-    endpointCopyText: `${astraEndpoint}/api/json/v1/${resolvedKeyspace}/${collectionName}`,
+    endpointCopyText: `${resolvedConnection?.endpoint ?? ""}/api/json/v1/${resolvedKeyspace}/${collectionName}`,
     hasCollection: Boolean(collectionName),
     run,
   };

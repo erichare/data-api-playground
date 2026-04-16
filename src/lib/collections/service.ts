@@ -1,4 +1,10 @@
-import { getAstraDb, resolveAstraConnection, SYSTEM_FIELDS } from "@/lib/astra";
+import type { BackendConnectionInput } from "@/lib/backends/types";
+import { resolveDataApiBackend } from "@/lib/dataApi";
+import { getDb } from "@/lib/db";
+import { getStoredIngestedDocument } from "@/lib/ingest/repository";
+import { resolveKnowledgeBackend } from "@/lib/knowledge";
+import type { KnowledgeBackendInput } from "@/lib/knowledge/types";
+import type { Collection, IngestedDocumentSummary } from "@/lib/types";
 
 /** Thrown for client-side validation errors (missing fields, bad input). */
 export class ValidationError extends Error {
@@ -7,21 +13,8 @@ export class ValidationError extends Error {
     this.name = "ValidationError";
   }
 }
-import { mapWithConcurrency } from "@/lib/concurrency";
-import {
-  buildTsCall,
-  formatTsMethodCall,
-  recordAstraClientCall,
-} from "@/lib/astraClientLog";
-import { getDb } from "@/lib/db";
-import { logInfo } from "@/lib/server/log";
-import type { Collection, IngestedDocumentSummary } from "@/lib/types";
 
-type CollectionConnectionArgs = {
-  token?: string;
-  endpoint?: string;
-  keyspace?: string;
-};
+type CollectionConnectionArgs = BackendConnectionInput;
 
 type CreateCollectionArgs = CollectionConnectionArgs & {
   name: string;
@@ -38,6 +31,17 @@ type DeleteCollectionArgs = CollectionConnectionArgs & {
 type DeleteIngestedDocumentArgs = CollectionConnectionArgs & {
   source_doc_id: string;
   collection: string;
+  knowledgeBackend?: KnowledgeBackendInput["knowledgeBackend"];
+  openragApiKey?: string;
+  openragBaseUrl?: string;
+};
+
+type LoadIngestedDocumentContentArgs = CollectionConnectionArgs & {
+  source_doc_id: string;
+  collection: string;
+  knowledgeBackend?: KnowledgeBackendInput["knowledgeBackend"];
+  openragApiKey?: string;
+  openragBaseUrl?: string;
 };
 
 type DocRow = {
@@ -95,235 +99,195 @@ function getIngestedDocumentCountsByCollection(): Map<string, number> {
   return new Map(rows.map((row) => [row.collection, row.document_count]));
 }
 
-const CONNECT_METADATA_SAMPLE_LIMIT = 12;
-const CONNECT_METADATA_CONCURRENCY = 4;
-const CONNECT_FIELD_SAMPLE_SIZE = 1;
-
-interface CollectionMetadata {
-  count: number | null;
-  fields: string[];
-}
-
-
 /**
- * List all collections in the connected Astra DB and sample metadata for each.
+ * List all collections in the connected backend and sample metadata for each.
  *
- * For up to 12 non-internal collections, fetches estimated document counts
- * and samples field names from one document. Enriches each collection with
- * its ingested document count from SQLite.
- *
- * @returns Collections with vector config and counts, plus a field-name map.
+ * Enriches each collection with its ingested document count from SQLite.
  */
-export async function fetchCollectionMetadata(args: {
-  token: string;
-  endpoint: string;
-  keyspace?: string;
-}): Promise<{ collections: Collection[]; fields: Record<string, string[]> }> {
-  const { token, endpoint, keyspace } = args;
-  const db = getAstraDb(token, endpoint, keyspace);
+export async function fetchCollectionMetadata(args: CollectionConnectionArgs) {
   const ingestedDocumentCounts = getIngestedDocumentCountsByCollection();
-
-  recordAstraClientCall({
-    label: "Connect to Astra",
-    code: buildTsCall("db", [
-      formatTsMethodCall("listCollections", [{ nameOnly: false }]),
-    ]),
-  });
-  const colls = await db.listCollections({ nameOnly: false });
-
-  const collections: Collection[] = colls.map((c) => {
-    const vectorDef = c.definition?.vector;
-    const svc = vectorDef?.service;
-    return {
-      name: c.name,
-      vectorDim: vectorDef?.dimension ?? null,
-      vectorizeService: svc
-        ? { provider: svc.provider, modelName: svc.modelName }
-        : null,
-      count: null,
-      documentCount: ingestedDocumentCounts.get(c.name) ?? 0,
-    };
-  });
-
-  const sampledCollectionNames = collections
-    .slice(0, CONNECT_METADATA_SAMPLE_LIMIT)
-    .map((collection) => collection.name);
-
-  const fields: Record<string, string[]> = {};
-  const sampledMetadata = await mapWithConcurrency(
-    sampledCollectionNames,
-    CONNECT_METADATA_CONCURRENCY,
-    async (collectionName): Promise<[string, CollectionMetadata]> => {
-      const collectionRef = db.collection(collectionName);
-      let count: number | null = null;
-
-      try {
-        recordAstraClientCall({
-          label: "Collection Estimated Count",
-          code: buildTsCall(`db.collection(${JSON.stringify(collectionName)})`, [
-            formatTsMethodCall("estimatedDocumentCount", []),
-          ]),
-        });
-        count = await collectionRef.estimatedDocumentCount();
-      } catch (err) {
-        logInfo(
-          { requestId: "", route: "/api/connect", method: "POST" },
-          "connect.estimatedDocumentCount.failed",
-          { collection: collectionName, error: err instanceof Error ? err.message : String(err) }
-        );
-      }
-
-      const fieldSet = new Set<string>();
-      try {
-        recordAstraClientCall({
-          label: "Sample Collection Fields",
-          code: buildTsCall(`db.collection(${JSON.stringify(collectionName)})`, [
-            formatTsMethodCall("find", [{}, { limit: CONNECT_FIELD_SAMPLE_SIZE }]),
-            ".toArray()",
-          ]),
-        });
-        const sample = await collectionRef
-          .find({}, { limit: CONNECT_FIELD_SAMPLE_SIZE })
-          .toArray();
-        for (const doc of sample) {
-          for (const key of Object.keys(doc)) {
-            if (!SYSTEM_FIELDS.has(key)) fieldSet.add(key);
-          }
-        }
-      } catch (err) {
-        logInfo(
-          { requestId: "", route: "/api/connect", method: "POST" },
-          "connect.fieldSampling.failed",
-          { collection: collectionName, error: err instanceof Error ? err.message : String(err) }
-        );
-      }
-
-      return [collectionName, { count, fields: Array.from(fieldSet) }];
-    }
-  );
-
-  const metadataByCollection = new Map(
-    sampledMetadata
-      .filter((r): r is PromiseSettledResult<[string, CollectionMetadata]> & { status: "fulfilled" } => r.status === "fulfilled")
-      .map((r) => r.value)
-  );
-  const enrichedCollections = collections.map((collection) => {
-    const metadata = metadataByCollection.get(collection.name);
-    if (!metadata) return collection;
-    return { ...collection, count: metadata.count };
-  });
-
-  for (const [name, metadata] of metadataByCollection) {
-    if (metadata.fields.length > 0) {
-      fields[name] = metadata.fields;
-    }
-  }
-
-  return { collections: enrichedCollections, fields };
-}
-
-/**
- * Create a new Astra DB collection with the specified vector configuration.
- * Optionally configures server-side vectorize with a provider and model.
- *
- * @throws {ValidationError} If required fields (token, endpoint, name) are missing.
- */
-export async function createCollectionInAstra(
-  args: CreateCollectionArgs
-): Promise<Collection> {
-  const { token, endpoint, keyspace } = resolveAstraConnection(args, {
+  const { config, backend, capabilities } = resolveDataApiBackend(args, {
     includeDefaultKeyspace: true,
   });
-  const { name, dimension, metric, provider, model } = args;
-
-  if (!token || !endpoint || !name) {
-    throw new ValidationError("token, endpoint, and name are required");
-  }
-
-  const db = getAstraDb(token, endpoint, keyspace);
-  const hasVectorize = provider !== "none";
-  const vectorOptions = {
-    vector: {
-      dimension,
-      metric,
-      ...(hasVectorize ? { service: { provider, modelName: model } } : {}),
-    },
-  };
-
-  recordAstraClientCall({
-    label: "Create Collection",
-    code: buildTsCall("db", [
-      formatTsMethodCall("createCollection", [name, vectorOptions]),
-    ]),
-  });
-  await db.createCollection(name, vectorOptions);
+  const result = await backend.connect(config);
 
   return {
-    name,
-    count: 0,
-    documentCount: 0,
-    vectorDim: dimension,
-    vectorizeService: hasVectorize ? { provider, modelName: model } : null,
+    ...result,
+    collections: result.collections.map((collection) => ({
+      ...collection,
+      documentCount: ingestedDocumentCounts.get(collection.name) ?? 0,
+    })),
+    capabilities,
   };
 }
 
 /**
- * Drop an Astra DB collection by name.
- * @throws {ValidationError} If credentials or collection name are missing.
+ * Create a new collection in the active backend with the specified vector configuration.
+ *
+ * @throws {ValidationError} If the collection name is missing.
  */
-export async function deleteCollectionInAstra(args: DeleteCollectionArgs) {
-  const { token, endpoint, keyspace } = resolveAstraConnection(args, {
+export async function createCollection(
+  args: CreateCollectionArgs
+): Promise<Collection> {
+  const { name, dimension, metric, provider, model } = args;
+  if ((args.backend ?? "astra") === "astra") {
+    if (!("token" in args) || !args.token || !args.endpoint || !name) {
+      throw new ValidationError("token, endpoint, and name are required");
+    }
+  } else if (
+    !args.endpoint ||
+    !("username" in args) ||
+    !args.username ||
+    !args.password ||
+    !name
+  ) {
+    throw new ValidationError("endpoint, username, password, and name are required");
+  }
+
+  const { config, backend } = resolveDataApiBackend(args, {
     includeDefaultKeyspace: true,
   });
+  return backend.createCollection({
+    config,
+    name,
+    dimension,
+    metric,
+    provider,
+    model,
+  });
+}
 
-  if (!token || !endpoint) {
-    throw new ValidationError("Missing credentials");
-  }
+export const createCollectionInAstra = createCollection;
+
+/**
+ * Drop a collection by name in the active backend.
+ * @throws {ValidationError} If the collection name is missing.
+ */
+export async function deleteCollection(args: DeleteCollectionArgs) {
   if (!args.name) {
     throw new ValidationError("Missing collection name");
   }
+  if ((args.backend ?? "astra") === "hcd") {
+    if (
+      !args.endpoint ||
+      !("username" in args) ||
+      !args.username ||
+      !args.password
+    ) {
+      throw new ValidationError("Missing credentials");
+    }
+  } else if (!("token" in args) || !args.token || !args.endpoint) {
+    throw new ValidationError("Missing credentials");
+  }
 
-  const db = getAstraDb(token, endpoint, keyspace);
-  recordAstraClientCall({
-    label: "Delete Collection",
-    code: buildTsCall("db", [
-      formatTsMethodCall("dropCollection", [args.name]),
-    ]),
+  const { config, backend } = resolveDataApiBackend(args, {
+    includeDefaultKeyspace: true,
   });
-  await db.dropCollection(args.name);
-  return { dropped: true };
+  return backend.deleteCollection(config, args.name);
+}
+
+export const deleteCollectionInAstra = deleteCollection;
+
+function hasUsableKnowledgeConnection(
+  config: ReturnType<typeof resolveKnowledgeBackend>["config"]
+) {
+  if (!("backend" in config)) {
+    return Boolean(config.apiKey);
+  }
+
+  return config.backend === "astra"
+    ? Boolean(config.token && config.endpoint)
+    : Boolean(config.endpoint && config.username && config.password);
 }
 
 /**
- * Delete an ingested document's chunks from Astra DB and its metadata record from SQLite.
- * Chunks are matched via `metadata.source_doc_id`. If Astra credentials are
- * unavailable (demo mode), only the SQLite record is removed.
+ * Delete an ingested document's chunks from the active knowledge backend and
+ * then its metadata record from SQLite.
  */
 export async function deleteIngestedDocument(
   args: DeleteIngestedDocumentArgs
 ): Promise<{ ok: true }> {
   const { source_doc_id, collection } = args;
-  const { token, endpoint, keyspace } = resolveAstraConnection(args, {
+  const currentResolution = resolveKnowledgeBackend(args as KnowledgeBackendInput, {
     includeDefaultKeyspace: true,
   });
 
-  if (token && endpoint) {
-    const astraDb = getAstraDb(token, endpoint, keyspace);
-    recordAstraClientCall({
-      label: "Delete Ingested Document",
-      code: buildTsCall(`db.collection(${JSON.stringify(collection)})`, [
-        formatTsMethodCall("deleteMany", [
-          { "metadata.source_doc_id": { $eq: source_doc_id } },
-        ]),
-      ]),
+  if (!hasUsableKnowledgeConnection(currentResolution.config)) {
+    const db = getDb();
+    db.prepare("DELETE FROM ingested_documents WHERE source_doc_id = ?").run(source_doc_id);
+    return { ok: true };
+  }
+
+  const stored = getStoredIngestedDocument({ sourceDocId: source_doc_id });
+  const storedBackendKind =
+    stored?.backend_kind === "openrag" || stored?.backend_kind === "hcd"
+      ? stored.backend_kind
+      : (args.backend ?? "astra");
+  const { config, backend } = resolveKnowledgeBackend(
+    {
+      ...args,
+      knowledgeBackend:
+        storedBackendKind === "openrag" ? "openrag" : args.knowledgeBackend,
+      backend:
+        storedBackendKind === "openrag"
+          ? args.backend
+          : (storedBackendKind as BackendConnectionInput["backend"]),
+    } as KnowledgeBackendInput,
+    {
+      includeDefaultKeyspace: true,
+    }
+  );
+
+  if (hasUsableKnowledgeConnection(config)) {
+    await backend.deleteDocument({
+      config,
+      source: stored?.backend_source ?? collection,
+      documentRef: stored?.backend_document_ref ?? source_doc_id,
     });
-    await astraDb
-      .collection(collection)
-      .deleteMany({ "metadata.source_doc_id": { $eq: source_doc_id } });
   }
 
   const db = getDb();
   db.prepare("DELETE FROM ingested_documents WHERE source_doc_id = ?").run(source_doc_id);
 
   return { ok: true };
+}
+
+/**
+ * Load the stored chunk content for an ingested document using the active
+ * knowledge backend and the locally persisted backend reference.
+ */
+export async function loadIngestedDocumentContent(
+  args: LoadIngestedDocumentContentArgs
+) {
+  const { source_doc_id, collection } = args;
+  const currentResolution = resolveKnowledgeBackend(args as KnowledgeBackendInput, {
+    includeDefaultKeyspace: true,
+  });
+  if (!hasUsableKnowledgeConnection(currentResolution.config)) {
+    throw new ValidationError("Missing credentials");
+  }
+
+  const stored = getStoredIngestedDocument({ sourceDocId: source_doc_id });
+  const storedBackendKind =
+    stored?.backend_kind === "openrag" || stored?.backend_kind === "hcd"
+      ? stored.backend_kind
+      : (args.backend ?? "astra");
+  const { config, backend } = resolveKnowledgeBackend(
+    {
+      ...args,
+      knowledgeBackend:
+        storedBackendKind === "openrag" ? "openrag" : args.knowledgeBackend,
+      backend:
+        storedBackendKind === "openrag"
+          ? args.backend
+          : (storedBackendKind as BackendConnectionInput["backend"]),
+    } as KnowledgeBackendInput,
+    { includeDefaultKeyspace: true }
+  );
+
+  return backend.loadDocumentContent({
+    config,
+    source: stored?.backend_source ?? collection,
+    documentRef: stored?.backend_document_ref ?? source_doc_id,
+  });
 }

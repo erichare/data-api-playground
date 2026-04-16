@@ -4,6 +4,39 @@ import { login } from "./helpers";
 test("shows request-aware connect errors in the dialog", async ({ page }) => {
   await login(page);
 
+  await page.route("**/api/ai-status", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        hasHuggingFaceEnvKey: false,
+        ollamaReachable: true,
+        ollamaBaseUrl: "http://127.0.0.1:11434",
+        chatModelInstalled: true,
+        embedModelInstalled: true,
+        huggingfaceChatModel: "Qwen/Qwen2.5-Coder-32B-Instruct",
+        huggingfaceEmbedModel: "ibm-granite/granite-embedding-125m-english",
+        ollamaChatModel: "granite3.1-dense:8b",
+        ollamaEmbedModel: "granite-embedding:278m",
+      }),
+    });
+  });
+
+  await page.route("**/api/knowledge-backend-status", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        openrag: {
+          kind: "openrag",
+          ready: false,
+          hasApiKey: false,
+          hasBaseUrl: false,
+        },
+      }),
+    });
+  });
+
   await page.route("**/api/connect", async (route) => {
     await route.fulfill({
       status: 400,
@@ -20,7 +53,7 @@ test("shows request-aware connect errors in the dialog", async ({ page }) => {
   await page.getByTestId("astra-endpoint-input").fill(
     "https://db-id-us-east1.apps.astra.datastax.com"
   );
-  await page.getByTestId("astra-connect-submit").click();
+  await page.getByTestId("backend-connect-submit").click();
 
   await expect(
     page.getByText("Connection failed (request req-connect-123)")

@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable security/detect-object-injection -- Presentation code indexes typed maps with constrained enum-like keys. */
 
 import { motion } from "framer-motion";
 import { Play } from "lucide-react";

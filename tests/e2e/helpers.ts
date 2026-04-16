@@ -67,8 +67,33 @@ export async function mockConnectionRoutes(
         ollamaBaseUrl: "http://127.0.0.1:11434",
         chatModelInstalled: true,
         embedModelInstalled: true,
-        chatModel: "granite3.1-dense",
-        embedModel: "nomic-embed-text",
+        huggingfaceChatModel: "Qwen/Qwen2.5-Coder-32B-Instruct",
+        huggingfaceEmbedModel: "ibm-granite/granite-embedding-125m-english",
+        ollamaChatModel: "granite3.1-dense:8b",
+        ollamaEmbedModel: "granite-embedding:278m",
+      }),
+    });
+  });
+
+  await page.route("**/api/backend-status", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        astra: {
+          kind: "astra",
+          ready: false,
+          hasToken: false,
+          hasEndpoint: false,
+        },
+        hcd: {
+          kind: "hcd",
+          ready: false,
+          hasEndpoint: false,
+          hasUsername: false,
+          hasPassword: false,
+        },
+        defaultBackend: null,
       }),
     });
   });
@@ -85,11 +110,26 @@ export async function mockConnectionRoutes(
     });
   });
 
+  await page.route("**/api/knowledge-backend-status", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        openrag: {
+          kind: "openrag",
+          ready: false,
+          hasApiKey: false,
+          hasBaseUrl: false,
+        },
+      }),
+    });
+  });
+
   await page.route("**/api/connect", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ collections, fields }),
+      body: JSON.stringify({ collections, fields, keyspaces }),
     });
   });
 
@@ -122,13 +162,13 @@ export async function connectToAstra(
   overrides: { token?: string; endpoint?: string } = {}
 ) {
   await page.getByTestId("header-connect-button").click();
-  await expect(page.getByTestId("astra-connect-submit")).toBeVisible();
+  await expect(page.getByTestId("backend-connect-submit")).toBeVisible();
   await page
     .getByTestId("astra-token-input")
     .fill(overrides.token ?? "AstraCS:test");
   await page.getByTestId("astra-endpoint-input").fill(
     overrides.endpoint ?? "https://db-id-us-east1.apps.astra.datastax.com"
   );
-  await page.getByTestId("astra-connect-submit").click();
+  await page.getByTestId("backend-connect-submit").click();
   await expect(page.getByTestId("header-connected-button")).toBeVisible();
 }

@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable security/detect-object-injection -- Trace rendering uses typed step/field maps with constrained keys for display only. */
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";

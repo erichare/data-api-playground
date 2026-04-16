@@ -25,7 +25,20 @@ export async function POST(req: NextRequest) {
   if (isErrorResponse(body)) return body;
 
   try {
-    const collection = await createCollectionInAstra(body);
+    const collection = await createCollectionInAstra(
+      body.backend === "hcd"
+        ? body
+        : {
+            name: body.name,
+            dimension: body.dimension,
+            metric: body.metric,
+            provider: body.provider,
+            model: body.model,
+            token: body.token,
+            endpoint: body.endpoint,
+            keyspace: body.keyspace,
+          }
+    );
     return NextResponse.json({ collection });
   } catch (err) {
     const status = err instanceof ValidationError ? 400 : 500;

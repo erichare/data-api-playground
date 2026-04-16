@@ -10,6 +10,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useRawCollectionBrowser } from "@/components/ingest/hooks/useRawCollectionBrowser";
+import type { BackendConnectionState, DataApiBackendKind } from "@/lib/backends/types";
 
 const SYSTEM_KEYS = new Set(["$vector", "$vectorize", "$similarity"]);
 
@@ -103,9 +104,9 @@ import React from "react";
 interface RawCollectionBrowserProps {
   isConnected: boolean;
   selectedCollection: string;
-  astraToken: string;
-  astraEndpoint: string;
+  connection: BackendConnectionState | null;
   keyspace: string;
+  selectedBackend: DataApiBackendKind;
 }
 
 export function RawCollectionBrowser(props: RawCollectionBrowserProps) {
@@ -197,7 +198,9 @@ export function RawCollectionBrowser(props: RawCollectionBrowserProps) {
             <div className="flex-1 overflow-y-auto">
               {!props.isConnected ? (
                 <div className="flex items-center justify-center h-full" style={{ color: "var(--text-muted)" }}>
-                  <span className="text-xs">Connect to Astra DB to browse raw documents</span>
+                  <span className="text-xs">
+                    Connect to {props.selectedBackend === "hcd" ? "DataStax HCD" : "Astra DB"} to browse raw documents
+                  </span>
                 </div>
               ) : loadingRaw ? (
                 <div className="flex items-center justify-center h-full gap-2" style={{ color: "var(--text-muted)" }}>

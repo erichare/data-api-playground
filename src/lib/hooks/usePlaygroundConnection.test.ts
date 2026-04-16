@@ -44,11 +44,23 @@ describe("usePlaygroundConnection", () => {
 
   it("bootstraps conversations and reads Astra env status on mount", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input) === "/api/astra-status") {
+      if (String(input) === "/api/backend-status") {
         return {
           json: async () => ({
-            hasToken: false,
-            hasEndpoint: false,
+            astra: {
+              kind: "astra",
+              ready: false,
+              hasToken: false,
+              hasEndpoint: false,
+            },
+            hcd: {
+              kind: "hcd",
+              ready: false,
+              hasEndpoint: false,
+              hasUsername: false,
+              hasPassword: false,
+            },
+            defaultBackend: null,
           }),
         } as Response;
       }
@@ -74,6 +86,7 @@ describe("usePlaygroundConnection", () => {
 
     expect(bootstrapConversations).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("/api/backend-status");
     expect(result.current.envReady).toBe(false);
   });
 
@@ -150,7 +163,7 @@ describe("usePlaygroundConnection", () => {
 
     expect(fetchCollectionsFromApiMock).toHaveBeenLastCalledWith(
       "AstraCS:secret",
-      "https://db-id-us-east1.apps.astra.datastax.com/",
+      "https://db-id-us-east1.apps.astra.datastax.com",
       undefined
     );
     expect(result.current.isConnected).toBe(true);

@@ -25,7 +25,16 @@ export async function POST(req: NextRequest) {
   if (isErrorResponse(body)) return body;
 
   try {
-    const result = await deleteCollectionInAstra(body);
+    const result = await deleteCollectionInAstra(
+      body.backend === "hcd"
+        ? body
+        : {
+            name: body.name,
+            token: body.token,
+            endpoint: body.endpoint,
+            keyspace: body.keyspace,
+          }
+    );
     return NextResponse.json(result);
   } catch (err) {
     const status = err instanceof ValidationError ? 400 : 500;

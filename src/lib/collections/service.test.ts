@@ -30,9 +30,30 @@ vi.mock("@/lib/db", () => ({
 describe("collection service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prepareMock.mockReset();
+    resolveAstraConnectionMock.mockReset();
+    createCollectionMock.mockReset();
+    dropCollectionMock.mockReset();
+    deleteManyMock.mockReset();
+    collectionMock.mockReset();
+    getAstraDbMock.mockReset();
+
     createCollectionMock.mockResolvedValue(undefined);
     dropCollectionMock.mockResolvedValue(undefined);
     deleteManyMock.mockResolvedValue({ deletedCount: 1 });
+    collectionMock.mockImplementation(() => ({
+      deleteMany: deleteManyMock,
+    }));
+    resolveAstraConnectionMock.mockReturnValue({
+      token: "token",
+      endpoint: "endpoint",
+      keyspace: "ks1",
+    });
+    getAstraDbMock.mockImplementation(() => ({
+      createCollection: createCollectionMock,
+      dropCollection: dropCollectionMock,
+      collection: collectionMock,
+    }));
   });
 
   it("creates a vectorize collection through Astra and returns UI metadata", async () => {
@@ -123,7 +144,10 @@ describe("collection service", () => {
         { collection: "notes", document_count: 1 },
       ],
     });
-    (getAstraDbMock as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+    (getAstraDbMock as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
+      admin: vi.fn(() => ({
+        listKeyspaces: vi.fn().mockResolvedValue(["ks1"]),
+      })),
       listCollections: vi.fn().mockResolvedValue([
         {
           name: "docs",
@@ -144,7 +168,7 @@ describe("collection service", () => {
                 toArray: vi.fn().mockResolvedValue([{ _id: "2", caption: "Sunset" }]),
               })),
       })),
-    });
+    }));
 
     const { fetchCollectionMetadata } = await import("./service");
     await expect(
@@ -153,7 +177,7 @@ describe("collection service", () => {
         endpoint: "endpoint",
         keyspace: "ks1",
       })
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       collections: [
         {
           name: "docs",
@@ -174,6 +198,8 @@ describe("collection service", () => {
         docs: ["title"],
         images: ["caption"],
       },
+      keyspaces: ["ks1"],
+      resolvedKeyspace: "ks1",
     });
 
     expect(prepareMock).toHaveBeenCalledWith(
@@ -274,6 +300,24 @@ describe("collection service", () => {
     ).rejects.toThrow("token, endpoint, and name are required");
   });
 
+  it("validates required HCD collection creation inputs", async () => {
+    const { createCollection } = await import("./service");
+    await expect(
+      createCollection({
+        backend: "hcd",
+        endpoint: "https://hcd.example.com:8181",
+        username: "",
+        password: "",
+        keyspace: "ks1",
+        name: "docs",
+        dimension: 1024,
+        metric: "cosine",
+        provider: "none",
+        model: "",
+      })
+    ).rejects.toThrow("endpoint, username, password, and name are required");
+  });
+
   it("drops Astra collections after validating the connection details", async () => {
     resolveAstraConnectionMock.mockReturnValue({
       token: "token",
@@ -326,9 +370,28 @@ describe("collection service", () => {
     ).rejects.toThrow("Missing collection name");
   });
 
+  it("rejects HCD collection deletion when credentials are missing", async () => {
+    const { deleteCollection } = await import("./service");
+    await expect(
+      deleteCollection({
+        backend: "hcd",
+        endpoint: "https://hcd.example.com:8181",
+        username: "cassandra",
+        password: "",
+        keyspace: "ks1",
+        name: "docs",
+      })
+    ).rejects.toThrow("Missing credentials");
+  });
+
   it("deletes ingested document metadata locally and remotely when Astra credentials are present", async () => {
     const runMock = vi.fn();
-    prepareMock.mockReturnValueOnce({ run: runMock });
+    prepareMock.mockImplementation((sql: string) => {
+      if (sql.includes("SELECT")) {
+        return { get: vi.fn().mockReturnValue(undefined) };
+      }
+      return { run: runMock };
+    });
     resolveAstraConnectionMock.mockReturnValue({
       token: "token",
       endpoint: "endpoint",
@@ -358,7 +421,12 @@ describe("collection service", () => {
 
   it("fails the delete when Astra cleanup fails and preserves local metadata", async () => {
     const runMock = vi.fn();
-    prepareMock.mockReturnValueOnce({ run: runMock });
+    prepareMock.mockImplementation((sql: string) => {
+      if (sql.includes("SELECT")) {
+        return { get: vi.fn().mockReturnValue(undefined) };
+      }
+      return { run: runMock };
+    });
     resolveAstraConnectionMock.mockReturnValue({
       token: "token",
       endpoint: "endpoint",
@@ -403,5 +471,24 @@ describe("collection service", () => {
 
     expect(runMock).toHaveBeenCalledWith("doc-9");
     expect(getAstraDbMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects chunk loading when no usable backend credentials are available", async () => {
+    prepareMock.mockReturnValue({
+      get: vi.fn().mockReturnValue(undefined),
+    });
+
+    const { loadIngestedDocumentContent } = await import("./service");
+    await expect(
+      loadIngestedDocumentContent({
+        backend: "hcd",
+        source_doc_id: "doc-10",
+        collection: "docs",
+        endpoint: "",
+        username: "",
+        password: "",
+        keyspace: "ks1",
+      })
+    ).rejects.toThrow("Missing credentials");
   });
 });

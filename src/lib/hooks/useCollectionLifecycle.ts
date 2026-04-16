@@ -1,6 +1,9 @@
 "use client";
+/* eslint-disable security/detect-object-injection -- Collection lifecycle updates typed collection/field maps with constrained names from validated app state. */
 
 import { useCallback, useRef } from "react";
+import type { BackendConnectionState } from "@/lib/backends/types";
+import { buildConnectionRequestBody } from "@/lib/backends/types";
 import type { Collection } from "@/lib/types";
 import { readApiErrorMessage } from "@/lib/playground/client";
 
@@ -9,9 +12,7 @@ interface UseCollectionLifecycleArgs {
   setCollections: React.Dispatch<React.SetStateAction<Collection[]>>;
   setCollectionFields: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
   setActiveCollection: (name: string) => void;
-  astraToken: string;
-  astraEndpoint: string;
-  astraFromEnv: boolean;
+  connection: BackendConnectionState | null;
   selectedKeyspace: string;
 }
 
@@ -27,9 +28,7 @@ export function useCollectionLifecycle({
   setCollections,
   setCollectionFields,
   setActiveCollection,
-  astraToken,
-  astraEndpoint,
-  astraFromEnv,
+  connection,
   selectedKeyspace,
 }: UseCollectionLifecycleArgs) {
   const handleCollectionCreated = useCallback((collection: Collection) => {
@@ -86,9 +85,7 @@ export function useCollectionLifecycle({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           collection: collectionName,
-          token: astraFromEnv ? undefined : astraToken,
-          endpoint: astraFromEnv ? undefined : astraEndpoint,
-          keyspace: selectedKeyspace,
+          ...buildConnectionRequestBody(connection, { keyspace: selectedKeyspace }),
         }),
       })
         .then(async (res) => {
@@ -111,7 +108,7 @@ export function useCollectionLifecycle({
           refreshingFieldsRef.current.delete(collectionName);
         });
     },
-    [astraFromEnv, astraToken, astraEndpoint, selectedKeyspace, setCollectionFields]
+    [connection, selectedKeyspace, setCollectionFields]
   );
 
   const handleCollectionStatsDelta = useCallback(
@@ -160,9 +157,7 @@ export function useCollectionLifecycle({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
-          token: astraFromEnv ? undefined : astraToken,
-          endpoint: astraFromEnv ? undefined : astraEndpoint,
-          keyspace: selectedKeyspace,
+          ...buildConnectionRequestBody(connection, { keyspace: selectedKeyspace }),
         }),
       });
 
@@ -187,7 +182,7 @@ export function useCollectionLifecycle({
         ""
       );
     },
-    [astraEndpoint, astraFromEnv, astraToken, collections, selectedKeyspace, setCollections, setCollectionFields, setActiveCollection]
+    [collections, connection, selectedKeyspace, setCollections, setCollectionFields, setActiveCollection]
   );
 
   return {

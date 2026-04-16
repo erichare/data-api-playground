@@ -307,6 +307,82 @@ describe("useDocumentLibrary", () => {
       await waitFor(() => expect(result.current.deletingId).toBeNull());
     });
 
+    it("derives a legacy Astra connection when only the endpoint is provided", async () => {
+      const docs = [makeDoc("doc-endpoint-only")];
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ documents: docs }),
+        } as unknown as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+        } as unknown as Response);
+
+      const { result } = renderHook(() =>
+        useDocumentLibrary({
+          ...defaultArgs,
+          astraToken: undefined,
+          astraEndpoint: "https://endpoint-only.example.com",
+        })
+      );
+
+      await waitFor(() => expect(result.current.loadingDocs).toBe(false));
+
+      await act(async () => {
+        await result.current.handleDelete(docs[0]);
+      });
+
+      expect(fetch).toHaveBeenLastCalledWith("/api/documents", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: "",
+          endpoint: "https://endpoint-only.example.com",
+          keyspace: "ks",
+          source_doc_id: "doc-endpoint-only",
+          collection: "col1",
+        }),
+      });
+    });
+
+    it("derives a legacy Astra connection when only the token is provided", async () => {
+      const docs = [makeDoc("doc-token-only")];
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ documents: docs }),
+        } as unknown as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+        } as unknown as Response);
+
+      const { result } = renderHook(() =>
+        useDocumentLibrary({
+          ...defaultArgs,
+          astraToken: "AstraCS:token-only",
+          astraEndpoint: undefined,
+        })
+      );
+
+      await waitFor(() => expect(result.current.loadingDocs).toBe(false));
+
+      await act(async () => {
+        await result.current.handleDelete(docs[0]);
+      });
+
+      expect(fetch).toHaveBeenLastCalledWith("/api/documents", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: "AstraCS:token-only",
+          endpoint: "",
+          keyspace: "ks",
+          source_doc_id: "doc-token-only",
+          collection: "col1",
+        }),
+      });
+    });
+
     it("removes document from state even when not connected", async () => {
       const { result } = renderHook(() =>
         useDocumentLibrary({ ...defaultArgs, isConnected: false })

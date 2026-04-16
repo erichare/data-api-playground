@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-object-injection -- Response assembly reads typed prompt/result maps with constrained keys. */
 import {
   generateText,
   type EnsureModelResult,

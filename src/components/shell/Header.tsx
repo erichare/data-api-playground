@@ -2,10 +2,13 @@
 
 import { Settings, Plug, PlugZap, LogOut, Sun, Moon } from "lucide-react";
 import { motion } from "framer-motion";
+import type { DataApiBackendKind } from "@/lib/backends/types";
+import { getBackendDisplayName } from "@/lib/backends/types";
 
 export interface HeaderProps {
   connected?: boolean;
   envReady?: boolean;
+  selectedBackend?: DataApiBackendKind;
   onConnectionClick?: () => void;
   onSettingsClick?: () => void;
   authEnabled?: boolean;
@@ -17,6 +20,7 @@ export interface HeaderProps {
 export function Header({
   connected = false,
   envReady = false,
+  selectedBackend = "astra",
   onConnectionClick,
   onSettingsClick,
   authEnabled = false,
@@ -75,38 +79,6 @@ export function Header({
 
       {/* Right: indicators + controls */}
       <div className="flex items-center gap-2">
-        {/* AI backend badge */}
-        <a
-          href="https://ollama.com/library/granite3.1-dense"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-opacity hover:opacity-75"
-          style={{
-            backgroundColor: "var(--interactive-light)",
-            border: "1px solid var(--interactive-border)",
-            textDecoration: "none",
-          }}
-          title="Uses Hugging Face when a key is available, otherwise falls back to local Ollama"
-        >
-          <div className="flex flex-col gap-0 leading-none">
-            <span
-              className="text-[9px] uppercase tracking-wider"
-              style={{ color: "var(--interactive)", opacity: 0.7, fontFamily: "IBM Plex Mono, monospace" }}
-            >
-              AI Backend
-            </span>
-            <span className="text-[11px] font-semibold" style={{ color: "var(--interactive)", fontFamily: "IBM Plex Mono, monospace" }}>
-              Hugging Face &nbsp;|&nbsp; Ollama
-            </span>
-          </div>
-          <motion.div
-            className="w-1.5 h-1.5 rounded-full shrink-0"
-            style={{ backgroundColor: "var(--interactive)" }}
-            animate={{ opacity: [1, 0.3, 1] }}
-            transition={{ duration: 2, repeat: Infinity }}
-          />
-        </a>
-
         {/* Connection status / disconnect */}
         {connected ? (
           <motion.button
@@ -149,7 +121,11 @@ export function Header({
             }}
             whileHover={{ scale: 1.02, opacity: 0.85 }}
             whileTap={{ scale: 0.97 }}
-            title={envReady ? "Env credentials detected — click to connect" : "Connect to Astra DB"}
+            title={
+              envReady
+                ? `${getBackendDisplayName(selectedBackend)} credentials detected — click to connect`
+                : "Open connections"
+            }
           >
             <Plug size={12} className="shrink-0" />
             <motion.span
@@ -158,7 +134,7 @@ export function Header({
               animate={envReady ? { opacity: [1, 0.4, 1] } : { opacity: 1 }}
               transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
             />
-            {envReady ? "Env Ready" : "Connect to Astra DB"}
+            {envReady ? "Env Ready" : "Connections"}
           </motion.button>
         )}
 

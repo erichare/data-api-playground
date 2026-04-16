@@ -235,10 +235,96 @@ paths:
               schema:
                 type: object
                 properties:
-                  available:
+                  hasHuggingFaceEnvKey:
                     type: boolean
-                  provider:
+                  ollamaReachable:
+                    type: boolean
+                  ollamaBaseUrl:
                     type: string
+                  chatModelInstalled:
+                    type: boolean
+                  embedModelInstalled:
+                    type: boolean
+                  huggingfaceChatModel:
+                    type: string
+                  huggingfaceEmbedModel:
+                    type: string
+                  ollamaChatModel:
+                    type: string
+                  ollamaEmbedModel:
+                    type: string
+
+  /api/backend-status:
+    get:
+      tags: [Status]
+      summary: Get data backend credential availability
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Data backend environment status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  astra:
+                    type: object
+                    properties:
+                      kind:
+                        type: string
+                        enum: [astra]
+                      ready:
+                        type: boolean
+                      hasEndpoint:
+                        type: boolean
+                      hasToken:
+                        type: boolean
+                  hcd:
+                    type: object
+                    properties:
+                      kind:
+                        type: string
+                        enum: [hcd]
+                      ready:
+                        type: boolean
+                      hasEndpoint:
+                        type: boolean
+                      hasUsername:
+                        type: boolean
+                      hasPassword:
+                        type: boolean
+                  defaultBackend:
+                    type: string
+                    nullable: true
+                    enum: [astra, hcd]
+
+  /api/knowledge-backend-status:
+    get:
+      tags: [Status]
+      summary: Get knowledge backend credential availability
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Knowledge backend environment status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  openrag:
+                    type: object
+                    properties:
+                      kind:
+                        type: string
+                        enum: [openrag]
+                      ready:
+                        type: boolean
+                      hasApiKey:
+                        type: boolean
+                      hasBaseUrl:
+                        type: boolean
 
   # ── Collections ──────────────────────────────────────────────────────
   /api/connect:

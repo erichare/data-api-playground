@@ -148,6 +148,37 @@ describe("runChatWorkflow", () => {
     );
   });
 
+  it("treats env-backed Astra sessions as connected for search", async () => {
+    const send = vi.fn();
+
+    const { runChatWorkflow } = await import("./service");
+    await runChatWorkflow({
+      payload: {
+        query: "Show top spend by customer",
+        searchMode: "hybrid",
+        activeCollection: "orders",
+        collections: [{ name: "orders", isVectorize: false, vectorDimension: 768 }],
+        allCollectionFields: { orders: ["customer_id", "total_spend"] },
+        history: [],
+      },
+      connection: {
+        backend: "astra",
+        token: "",
+        endpoint: "",
+      },
+      connectionActive: true,
+      backend: huggingFaceBackend,
+      send,
+    });
+
+    expect(searchCollectionsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        backend: "astra",
+        isConnected: true,
+      })
+    );
+  });
+
   it("skips embedding and search for a format-only follow-up", async () => {
     generateTextMock.mockResolvedValueOnce({
       content: JSON.stringify({

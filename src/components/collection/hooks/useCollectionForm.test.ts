@@ -454,6 +454,34 @@ describe("useCollectionForm", () => {
       await act(async () => {});
       expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callCountAfterInit);
     });
+
+    it("falls back to client mode when the backend cannot create vectorize collections", async () => {
+      global.fetch = vi.fn() as typeof fetch;
+
+      const { result } = renderHook(() =>
+        useCollectionForm(
+          baseArgs({
+            isConnected: true,
+            open: true,
+            capabilities: {
+              connect: true,
+              keyspaces: true,
+              collectionCrud: true,
+              embeddingProviders: true,
+              vectorizeCollections: false,
+              rawBrowse: true,
+              deleteDocuments: true,
+              apiProxy: true,
+            },
+          })
+        )
+      );
+
+      await waitFor(() => {
+        expect(result.current.mode).toBe("client");
+      });
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
   });
 
   // ─── Submission – success ─────────────────────────────────────────────────

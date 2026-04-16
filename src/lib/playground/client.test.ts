@@ -133,33 +133,25 @@ describe("playground client helpers", () => {
     ).resolves.toBe("Fallback");
   });
 
-  it("fetches collections and surfaces a degraded keyspaces request without failing connect", async () => {
-    global.fetch = vi
-      .fn()
-      .mockResolvedValueOnce(
-        jsonResponse({
-          collections: [
-            {
-              name: "movies",
-              count: 8,
-              vectorDim: 768,
-            },
-          ],
-          fields: {
-            movies: ["title", "genre"],
+  it("fetches collections through the connect response", async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce(
+      jsonResponse({
+        collections: [
+          {
+            name: "movies",
+            count: 8,
+            vectorDim: 768,
           },
-        })
-      )
-      .mockResolvedValueOnce(
-        jsonResponse(
-          { error: "Failed to list keyspaces", requestId: "req-keyspaces" },
-          { status: 500 }
-        )
-      ) as typeof fetch;
+        ],
+        fields: {
+          movies: ["title", "genre"],
+        },
+      })
+    ) as typeof fetch;
 
     await expect(
       fetchCollectionsFromApi("token-123", "https://db.example.com", "analytics")
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       collections: [
         {
           name: "movies",
@@ -171,24 +163,16 @@ describe("playground client helpers", () => {
         movies: ["title", "genre"],
       },
       keyspaces: [],
-      keyspacesError: "Failed to list keyspaces (request req-keyspaces)",
     });
 
-    expect(global.fetch).toHaveBeenNthCalledWith(1, "/api/connect", {
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenCalledWith("/api/connect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         token: "token-123",
         endpoint: "https://db.example.com",
         keyspace: "analytics",
-      }),
-    });
-    expect(global.fetch).toHaveBeenNthCalledWith(2, "/api/keyspaces", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        token: "token-123",
-        endpoint: "https://db.example.com",
       }),
     });
   });

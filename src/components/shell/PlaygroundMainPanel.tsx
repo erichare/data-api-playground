@@ -42,14 +42,16 @@ export function PlaygroundMainPanel({
       {viewMode === "api" ? (
         <ApiExplorer
           collection={conn.activeCollectionObj}
-          astraToken={conn.astraToken}
-          astraEndpoint={conn.astraEndpoint}
+          connection={conn.connection}
           keyspace={conn.keyspace}
         />
       ) : viewMode === "ingest" ? (
         <IngestTab
-          astraToken={conn.astraToken}
-          astraEndpoint={conn.astraEndpoint}
+          connection={conn.connection}
+          selectedBackend={conn.selectedBackend}
+          knowledgeBackendMode={conn.knowledgeBackendMode}
+          openragConnection={conn.openragConnection}
+          knowledgeCapabilities={conn.knowledgeCapabilities}
           keyspace={conn.keyspace}
           collections={conn.collections}
           activeCollection={conn.activeCollection}
@@ -63,8 +65,11 @@ export function PlaygroundMainPanel({
           activeConversationId={activeConversationId}
           messages={messages}
           onMessagesUpdate={onMessagesUpdate}
-          astraToken={conn.astraToken}
-          astraEndpoint={conn.astraEndpoint}
+          connection={conn.connection}
+          selectedBackend={conn.selectedBackend}
+          knowledgeBackendMode={conn.knowledgeBackendMode}
+          openragConnection={conn.openragConnection}
+          knowledgeCapabilities={conn.knowledgeCapabilities}
           collections={conn.collections.map((collection) => ({
             name: collection.name,
             isVectorize: !!collection.vectorizeService,

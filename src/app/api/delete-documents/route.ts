@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
-import {
-  buildTsCall,
-  formatTsMethodCall,
-  recordAstraClientCall,
-  withRequestLog,
-} from "@/lib/astraClientLog";
+import { withRequestLog } from "@/lib/astraClientLog";
 import { requireApiAuth } from "@/lib/auth";
+import { resolveDataApiBackend } from "@/lib/dataApi";
+import { getDataApiErrorStatus, toLegacyAstraCredentialMessage } from "@/lib/dataApi/errors";
 import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
 import { createRequestLogContext, logError, sanitizeErrorForClient } from "@/lib/server/log";
 import { deleteDocumentsBodySchema } from "@/lib/validation/schemas";
@@ -29,32 +25,30 @@ export async function POST(req: NextRequest) {
 
   const result = await parseJsonBody(req, deleteDocumentsBodySchema);
   if (isErrorResponse(result)) return result;
-  const { token, endpoint, keyspace } = resolveAstraConnection(result, { includeDefaultKeyspace: true });
   const { collection: collectionName, ids } = result;
-
-  if (!token || !endpoint) {
-    return NextResponse.json({ error: "token and endpoint are required" }, { status: 400 });
-  }
 
   return withRequestLog(async () => {
     try {
-      const db = getAstraDb(token, endpoint, keyspace);
-      const coll = db.collection(collectionName);
-
-      recordAstraClientCall({
-        label: "Delete Documents",
-        code: buildTsCall(`db.collection(${JSON.stringify(collectionName)})`, [
-          formatTsMethodCall("deleteMany", [{ _id: { $in: ids } }]),
-        ]),
+      const { config, backend } = resolveDataApiBackend(result, {
+        includeDefaultKeyspace: true,
       });
-      const result = await coll.deleteMany({ _id: { $in: ids } });
+      const deleteResult = await backend.deleteDocuments({
+        config,
+        collection: collectionName,
+        ids,
+      });
 
-      return NextResponse.json({ deletedCount: result.deletedCount });
+      return NextResponse.json({ deletedCount: deleteResult.deletedCount });
     } catch (err) {
-      logError(logContext, "delete-documents.failed", err, { collection: collectionName });
+      logError(logContext, "delete-documents.failed", err, {
+        backend: result.backend,
+        collection: collectionName,
+      });
+      const rawMessage = sanitizeErrorForClient(err, "Failed to delete documents");
+      const message = toLegacyAstraCredentialMessage(rawMessage);
       return NextResponse.json(
-        { error: sanitizeErrorForClient(err, "Failed to delete documents") },
-        { status: 500 }
+        { error: message },
+        { status: getDataApiErrorStatus(rawMessage, 500) }
       );
     }
   });

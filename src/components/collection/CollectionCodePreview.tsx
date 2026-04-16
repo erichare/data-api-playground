@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable security/detect-object-injection -- Code preview selects from typed language/style maps using constrained keys. */
 
 import { useState } from "react";
 import {

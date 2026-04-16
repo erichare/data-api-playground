@@ -1,6 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type {
+  BackendConnectionState,
+  DataApiBackendKind,
+} from "@/lib/backends/types";
+import { appendConnectionFormData } from "@/lib/backends/types";
+import { appendKnowledgeFormData } from "@/lib/knowledge/client";
+import type {
+  KnowledgeBackendMode,
+  OpenragKnowledgeState,
+} from "@/lib/knowledge/types";
 import type { IngestedDocumentSummary } from "@/lib/types";
 import {
   fileKey,
@@ -14,8 +24,12 @@ import {
 import { readNdjsonStream } from "@/lib/ndjson";
 
 interface UseIngestUploadArgs {
-  astraToken: string;
-  astraEndpoint: string;
+  connection?: BackendConnectionState | null;
+  astraToken?: string;
+  astraEndpoint?: string;
+  selectedBackend?: DataApiBackendKind;
+  knowledgeBackendMode?: KnowledgeBackendMode;
+  openragConnection?: OpenragKnowledgeState | null;
   keyspace: string;
   selectedCollection: string;
   huggingfaceApiKey?: string;
@@ -31,14 +45,30 @@ type NameConflictAction = "overwrite" | "skip";
 type IngestOutcome = "done" | "skipped" | "conflict" | "error";
 
 export function useIngestUpload({
+  connection,
   astraToken,
   astraEndpoint,
+  selectedBackend = "astra",
+  knowledgeBackendMode = "connected",
+  openragConnection = null,
   keyspace,
   selectedCollection,
   huggingfaceApiKey,
   prependDocument,
   replaceDocumentsByIds,
 }: UseIngestUploadArgs) {
+  const resolvedConnection = useMemo(
+    () =>
+      connection ??
+      (astraToken || astraEndpoint
+        ? {
+            backend: "astra" as const,
+            token: astraToken ?? "",
+            endpoint: astraEndpoint ?? "",
+          }
+        : null),
+    [astraEndpoint, astraToken, connection]
+  );
   const [isDragOver, setIsDragOver] = useState(false);
   const [queuedFiles, setQueuedFiles] = useState<File[]>([]);
   const [fileStatuses, setFileStatuses] = useState<Map<string, FileStatus>>(
@@ -103,9 +133,12 @@ export function useIngestUpload({
       const formData = new FormData();
       formData.append("file", file);
       formData.append("collection", selectedCollection);
-      formData.append("keyspace", keyspace);
-      formData.append("token", astraToken);
-      formData.append("endpoint", astraEndpoint);
+      appendConnectionFormData(formData, resolvedConnection, { keyspace });
+      appendKnowledgeFormData(formData, {
+        selectedBackend,
+        knowledgeBackendMode,
+        openragConnection,
+      });
       if (huggingfaceApiKey?.trim()) {
         formData.append("huggingfaceApiKey", huggingfaceApiKey.trim());
       }
@@ -230,15 +263,17 @@ export function useIngestUpload({
       }
     },
     [
-      astraEndpoint,
-      astraToken,
       defaultNameConflictAction,
       fileNameConflictActions,
       huggingfaceApiKey,
       keyspace,
+      knowledgeBackendMode,
+      openragConnection,
       prependDocument,
       replaceDocumentsByIds,
+      resolvedConnection,
       selectedCollection,
+      selectedBackend,
     ]
   );
 

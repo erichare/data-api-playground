@@ -1,22 +1,39 @@
 "use client";
+/* eslint-disable security/detect-object-injection -- Browser state merges typed sort/page payloads using constrained collection keys. */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { BackendConnectionState } from "@/lib/backends/types";
+import { buildConnectionRequestBody } from "@/lib/backends/types";
 
 interface UseRawCollectionBrowserArgs {
   isConnected: boolean;
   selectedCollection: string;
-  astraToken: string;
-  astraEndpoint: string;
+  connection?: BackendConnectionState | null;
+  astraToken?: string;
+  astraEndpoint?: string;
   keyspace: string;
 }
 
 export function useRawCollectionBrowser({
   isConnected,
   selectedCollection,
+  connection,
   astraToken,
   astraEndpoint,
   keyspace,
 }: UseRawCollectionBrowserArgs) {
+  const resolvedConnection = useMemo(
+    () =>
+      connection ??
+      (astraToken || astraEndpoint
+        ? {
+            backend: "astra" as const,
+            token: astraToken ?? "",
+            endpoint: astraEndpoint ?? "",
+          }
+        : null),
+    [astraEndpoint, astraToken, connection]
+  );
   const [rawOpen, setRawOpen] = useState(false);
   const [rawDocs, setRawDocs] = useState<Record<string, unknown>[]>([]);
   const [loadingRaw, setLoadingRaw] = useState(false);
@@ -34,9 +51,7 @@ export function useRawCollectionBrowser({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          token: astraToken,
-          endpoint: astraEndpoint,
-          keyspace,
+          ...buildConnectionRequestBody(resolvedConnection, { keyspace }),
           collection: selectedCollection,
           pageState,
         }),
@@ -50,7 +65,7 @@ export function useRawCollectionBrowser({
     } finally {
       setLoadingRaw(false);
     }
-  }, [isConnected, selectedCollection, astraToken, astraEndpoint, keyspace]);
+  }, [isConnected, keyspace, resolvedConnection, selectedCollection]);
 
   const resetAndLoadFirstPage = useCallback(() => {
     setRawPageHistory([null]);

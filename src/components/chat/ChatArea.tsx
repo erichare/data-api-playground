@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable security/detect-object-injection -- Chat UI reads typed field maps with constrained keys from app state. */
 
 import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
@@ -6,6 +7,13 @@ import { Send, MessageSquare, RefreshCw, AlertCircle, X } from "lucide-react";
 import { MessageBubble } from "./MessageBubble";
 import { SearchModeToggle } from "./SearchModeToggle";
 import { useChatSession } from "@/components/chat/hooks/useChatSession";
+import type { BackendConnectionState, DataApiBackendKind } from "@/lib/backends/types";
+import type {
+  KnowledgeBackendCapabilities,
+  KnowledgeBackendMode,
+  OpenragKnowledgeState,
+} from "@/lib/knowledge/types";
+import { getKnowledgeBackendCapabilities } from "@/lib/knowledge/types";
 import type { Message, Conversation } from "@/lib/types";
 
 interface ChatAreaProps {
@@ -13,8 +21,11 @@ interface ChatAreaProps {
   activeConversationId: string;
   messages: Message[];
   onMessagesUpdate: (messages: Message[]) => void;
-  astraToken?: string;
-  astraEndpoint?: string;
+  connection: BackendConnectionState | null;
+  selectedBackend: DataApiBackendKind;
+  knowledgeBackendMode?: KnowledgeBackendMode;
+  openragConnection?: OpenragKnowledgeState | null;
+  knowledgeCapabilities?: KnowledgeBackendCapabilities;
   keyspace?: string;
   collections?: { name: string; isVectorize: boolean; vectorDimension?: number | null }[];
   activeCollection?: string;
@@ -29,8 +40,11 @@ export function ChatArea({
   activeConversationId,
   messages,
   onMessagesUpdate,
-  astraToken,
-  astraEndpoint,
+  connection,
+  selectedBackend,
+  knowledgeBackendMode = "connected",
+  openragConnection = null,
+  knowledgeCapabilities,
   keyspace,
   collections,
   activeCollection,
@@ -39,10 +53,17 @@ export function ChatArea({
   isConnected = false,
   initializing = false,
 }: ChatAreaProps) {
+  const resolvedKnowledgeCapabilities =
+    knowledgeCapabilities ?? getKnowledgeBackendCapabilities(selectedBackend);
   const [sendRipple, setSendRipple] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const activeConv = conversations.find((c) => c.id === activeConversationId);
+  const availableSearchModes = [
+    resolvedKnowledgeCapabilities.vectorSearch ? "vector" : null,
+    resolvedKnowledgeCapabilities.hybridSearch ? "hybrid" : null,
+    resolvedKnowledgeCapabilities.lexicalSearch ? "lexical" : null,
+  ].filter(Boolean) as Array<"vector" | "hybrid" | "lexical">;
   const {
     input,
     setInput,
@@ -60,8 +81,11 @@ export function ChatArea({
   } = useChatSession({
     messages,
     onMessagesUpdate,
-    astraToken,
-    astraEndpoint,
+    connection,
+    selectedBackend,
+    knowledgeBackendMode,
+    openragConnection,
+    knowledgeCapabilities: resolvedKnowledgeCapabilities,
     keyspace,
     collections,
     activeCollection,
@@ -141,6 +165,7 @@ export function ChatArea({
             collectionFields={collectionFields ?? {}}
             collections={collections?.map((c) => c.name) ?? []}
             activeCollection={activeCollection}
+            selectedBackend={selectedBackend}
           />
         ) : (
           <div className="flex flex-col gap-6 max-w-3xl mx-auto">
@@ -209,7 +234,11 @@ export function ChatArea({
 
             {/* Bottom bar */}
             <div className="flex items-center justify-between px-3 pb-2.5 pt-1 gap-2">
-              <SearchModeToggle value={searchMode} onChange={setSearchMode} />
+              <SearchModeToggle
+                value={searchMode}
+                onChange={setSearchMode}
+                availableModes={availableSearchModes}
+              />
 
               <motion.button
                 onClick={handleSendClick}
@@ -324,6 +353,7 @@ function EmptyState({
   collectionFields = {},
   collections = [],
   activeCollection,
+  selectedBackend,
 }: {
   onHintClick: (hint: string) => void;
   isConnected: boolean;
@@ -331,6 +361,7 @@ function EmptyState({
   collectionFields?: Record<string, string[]>;
   collections?: string[];
   activeCollection?: string;
+  selectedBackend: DataApiBackendKind;
 }) {
   const suggestions = buildSuggestions(collections, collectionFields, activeCollection);
 
@@ -363,7 +394,9 @@ function EmptyState({
           }}
         >
           <span className="text-base">⚠</span>
-          <span>Demo mode — connect to Astra DB to query real data</span>
+          <span>
+            Demo mode — connect to {selectedBackend === "hcd" ? "DataStax HCD" : "Astra DB"} to query real data
+          </span>
         </motion.div>
       ) : null}
 

@@ -12,9 +12,14 @@ const modes: { value: SearchMode; label: string; description: string }[] = [
 interface SearchModeToggleProps {
   value: SearchMode;
   onChange: (mode: SearchMode) => void;
+  availableModes?: SearchMode[];
 }
 
-export function SearchModeToggle({ value, onChange }: SearchModeToggleProps) {
+export function SearchModeToggle({
+  value,
+  onChange,
+  availableModes = ["vector", "hybrid", "lexical"],
+}: SearchModeToggleProps) {
   return (
     <div
       className="flex items-center rounded-full p-0.5 relative"
@@ -25,13 +30,21 @@ export function SearchModeToggle({ value, onChange }: SearchModeToggleProps) {
     >
       {modes.map((mode) => {
         const isActive = value === mode.value;
+        const isAvailable = availableModes.includes(mode.value);
         return (
           <motion.button
             key={mode.value}
-            onClick={() => onChange(mode.value)}
+            onClick={() => {
+              if (isAvailable) {
+                onChange(mode.value);
+              }
+            }}
+            disabled={!isAvailable}
             className="relative px-3 py-1 rounded-full text-xs font-medium z-10 transition-colors"
             style={{
-              color: isActive ? "#fff" : "var(--text-muted)",
+              color: isActive ? "#fff" : isAvailable ? "var(--text-muted)" : "var(--text-muted)",
+              opacity: isAvailable ? 1 : 0.45,
+              cursor: isAvailable ? "pointer" : "not-allowed",
             }}
             whileHover={{ color: isActive ? "#fff" : "var(--text-secondary)" }}
             title={mode.description}

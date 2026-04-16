@@ -34,7 +34,35 @@ export async function DELETE(req: NextRequest) {
   if (isErrorResponse(body)) return body;
 
   try {
-    const result = await deleteIngestedDocument(body);
+    const request =
+      body.backend === "hcd"
+        ? {
+            source_doc_id: body.source_doc_id,
+            collection: body.collection,
+            backend: "hcd" as const,
+            endpoint: body.endpoint,
+            username: body.username,
+            password: body.password,
+            ...(body.keyspace ? { keyspace: body.keyspace } : {}),
+            ...(body.knowledgeBackend
+              ? { knowledgeBackend: body.knowledgeBackend }
+              : {}),
+            ...(body.openragApiKey ? { openragApiKey: body.openragApiKey } : {}),
+            ...(body.openragBaseUrl ? { openragBaseUrl: body.openragBaseUrl } : {}),
+          }
+        : {
+            source_doc_id: body.source_doc_id,
+            collection: body.collection,
+            token: body.token,
+            endpoint: body.endpoint,
+            ...(body.keyspace ? { keyspace: body.keyspace } : {}),
+            ...(body.knowledgeBackend
+              ? { knowledgeBackend: body.knowledgeBackend }
+              : {}),
+            ...(body.openragApiKey ? { openragApiKey: body.openragApiKey } : {}),
+            ...(body.openragBaseUrl ? { openragBaseUrl: body.openragBaseUrl } : {}),
+          };
+    const result = await deleteIngestedDocument(request);
     return NextResponse.json(result, {
       headers: { "X-Request-Id": logContext.requestId },
     });

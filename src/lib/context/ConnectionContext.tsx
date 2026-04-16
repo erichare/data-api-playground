@@ -1,11 +1,29 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
+import type {
+  BackendCapabilities,
+  BackendConnectionState,
+  DataApiBackendKind,
+} from "@/lib/backends/types";
+import type {
+  KnowledgeBackendCapabilities,
+  KnowledgeBackendMode,
+  OpenragKnowledgeState,
+} from "@/lib/knowledge/types";
 import type { Collection } from "@/lib/types";
 
 export interface ConnectionContextValue {
-  astraToken: string;
-  astraEndpoint: string;
+  connection: BackendConnectionState | null;
+  astraToken?: string;
+  astraEndpoint?: string;
+  astraFromEnv?: boolean;
+  selectedBackend: DataApiBackendKind;
+  knowledgeBackendMode: KnowledgeBackendMode;
+  knowledgeBackendKind: DataApiBackendKind | "openrag";
+  knowledgeCapabilities: KnowledgeBackendCapabilities;
+  openragConnection: OpenragKnowledgeState | null;
+  capabilities: BackendCapabilities;
   keyspace: string;
   isConnected: boolean;
   initializing: boolean;

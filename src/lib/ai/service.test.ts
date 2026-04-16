@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-object-injection -- Test helpers intentionally exercise typed backend maps with fixture-controlled keys. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   embedMany,
@@ -137,6 +138,10 @@ describe("ai service", () => {
         ollamaReachable: true,
         chatModelInstalled: true,
         embedModelInstalled: true,
+        huggingfaceChatModel: "Qwen/Qwen2.5-Coder-32B-Instruct",
+        huggingfaceEmbedModel: "ibm-granite/granite-embedding-125m-english",
+        ollamaChatModel: "granite3.1-dense:8b",
+        ollamaEmbedModel: "granite-embedding:278m",
       });
     });
 
@@ -150,6 +155,10 @@ describe("ai service", () => {
         ollamaReachable: false,
         chatModelInstalled: false,
         embedModelInstalled: false,
+        huggingfaceChatModel: "Qwen/Qwen2.5-Coder-32B-Instruct",
+        huggingfaceEmbedModel: "ibm-granite/granite-embedding-125m-english",
+        ollamaChatModel: "granite3.1-dense:8b",
+        ollamaEmbedModel: "granite-embedding:278m",
       });
     });
   });
