@@ -86,7 +86,7 @@ describe("/api/data-api-proxy route", () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({
-      error: "Endpoint must be a valid Astra DB API endpoint",
+      error: "Endpoint must be a valid Data API endpoint",
       requestId: expect.any(String),
     });
     expect(getAstraDbMock).not.toHaveBeenCalled();
@@ -133,7 +133,7 @@ describe("/api/data-api-proxy route", () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({
-      error: "Missing Astra DB token or endpoint",
+      error: "Missing Data API token or endpoint",
     });
   });
 

@@ -50,6 +50,21 @@ describe("backend connection helpers", () => {
 
     expect(
       buildConnectionRequestBody({
+        backend: "astra",
+        token: "",
+        endpoint: "",
+        fromAstraCli: true,
+        astraCliProfile: "default",
+        astraCliDatabase: "db-123",
+      })
+    ).toEqual({
+      fromAstraCli: true,
+      astraCliProfile: "default",
+      astraCliDatabase: "db-123",
+    });
+
+    expect(
+      buildConnectionRequestBody({
         backend: "hcd",
         endpoint: "https://hcd.example.com:8181",
         username: "cassandra",
@@ -85,6 +100,16 @@ describe("backend connection helpers", () => {
         token: "",
         endpoint: "",
         fromEnv: true,
+      })
+    ).toBe(true);
+    expect(
+      hasConnectionCredentials({
+        backend: "astra",
+        token: "",
+        endpoint: "",
+        fromAstraCli: true,
+        astraCliProfile: "default",
+        astraCliDatabase: "db-123",
       })
     ).toBe(true);
     expect(
@@ -134,9 +159,9 @@ describe("backend connection helpers", () => {
   });
 
   it("returns display names and short labels", () => {
-    expect(getBackendDisplayName("astra")).toBe("Astra DB");
+    expect(getBackendDisplayName("astra")).toBe("Data API");
     expect(getBackendDisplayName("hcd")).toBe("DataStax HCD");
-    expect(getBackendConnectionLabel("astra")).toBe("Astra");
+    expect(getBackendConnectionLabel("astra")).toBe("Data API");
     expect(getBackendConnectionLabel("hcd")).toBe("HCD");
   });
 });

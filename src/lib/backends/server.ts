@@ -6,6 +6,7 @@ import type {
   HcdConnectionState,
 } from "@/lib/backends/types";
 import * as astra from "@/lib/astra";
+import { resolveAstraCliConnection } from "@/lib/astraCli";
 import { normalizeBackendKind, normalizeEndpoint } from "@/lib/backends/types";
 
 export const ASTRA_DEFAULT_KEYSPACE = "default_keyspace";
@@ -14,6 +15,16 @@ function resolveAstraConnection(
   input: BackendConnectionInput,
   options?: { includeDefaultKeyspace?: boolean }
 ): AstraConnectionState {
+  const astraCliRequested =
+    input.backend !== "hcd" && Boolean("fromAstraCli" in input && input.fromAstraCli);
+  const astraCliProfile =
+    input.backend !== "hcd" && "astraCliProfile" in input
+      ? input.astraCliProfile
+      : undefined;
+  const astraCliDatabase =
+    input.backend !== "hcd" && "astraCliDatabase" in input
+      ? input.astraCliDatabase
+      : undefined;
   const legacyResolver = Object.prototype.hasOwnProperty.call(astra, "resolveAstraConnection")
     ? (astra as {
         resolveAstraConnection?: (
@@ -23,7 +34,9 @@ function resolveAstraConnection(
       }).resolveAstraConnection
     : undefined;
   const legacyResolved = legacyResolver
-    ? input.backend === "hcd"
+    ? astraCliRequested
+      ? undefined
+      : input.backend === "hcd"
       ? legacyResolver({}, options)
       : legacyResolver(
           {
@@ -34,16 +47,27 @@ function resolveAstraConnection(
           options
         )
     : undefined;
+  const cliResolved =
+    input.backend === "hcd" || !astraCliRequested
+      ? undefined
+      : resolveAstraCliConnection({
+          astraCliProfile,
+          astraCliDatabase,
+          keyspace: input.keyspace,
+        });
   const resolved = legacyResolved ?? {
         token:
-          input.backend === "hcd"
+          cliResolved?.token ??
+          (input.backend === "hcd"
             ? process.env.ASTRA_DB_APPLICATION_TOKEN || ""
-            : input.token || process.env.ASTRA_DB_APPLICATION_TOKEN || "",
+            : input.token || process.env.ASTRA_DB_APPLICATION_TOKEN || ""),
         endpoint:
-          input.backend === "hcd"
+          cliResolved?.endpoint ??
+          (input.backend === "hcd"
             ? normalizeEndpoint(process.env.ASTRA_DB_API_ENDPOINT)
-            : normalizeEndpoint(input.endpoint || process.env.ASTRA_DB_API_ENDPOINT),
+            : normalizeEndpoint(input.endpoint || process.env.ASTRA_DB_API_ENDPOINT)),
         keyspace:
+          cliResolved?.keyspace ||
           input.keyspace ||
           process.env.ASTRA_DB_KEYSPACE ||
           (options?.includeDefaultKeyspace ? ASTRA_DEFAULT_KEYSPACE : undefined),
@@ -58,7 +82,16 @@ function resolveAstraConnection(
     token: resolved.token,
     endpoint: normalizeEndpoint(resolved.endpoint),
     keyspace,
-    fromEnv: input.backend === "hcd" || (!input.token && !input.endpoint),
+    fromEnv:
+      !astraCliRequested &&
+      (input.backend === "hcd" || (!input.token && !input.endpoint)),
+    ...(astraCliRequested ? { fromAstraCli: true } : {}),
+    ...(cliResolved?.astraCliProfile ?? astraCliProfile
+      ? { astraCliProfile: cliResolved?.astraCliProfile ?? astraCliProfile }
+      : {}),
+    ...(cliResolved?.astraCliDatabase ?? astraCliDatabase
+      ? { astraCliDatabase: cliResolved?.astraCliDatabase ?? astraCliDatabase }
+      : {}),
   };
 }
 

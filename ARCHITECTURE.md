@@ -2,14 +2,18 @@
 
 ## Overview
 
-The Data API Playground is a Next.js application for exploring Astra DB collections, ingesting data, and running a lightweight RAG workflow against Astra data.
+The Data API Playground is a Next.js App Router application that separates three backend concerns:
 
-All API routes run as Next.js route handlers in the Node.js runtime. The frontend is a single-page React app.
+- data backend: Data API or DataStax HCD
+- knowledge backend: the connected backend or OpenRAG
+- AI backend: Hugging Face or local Ollama
+
+All API routes run as Next.js route handlers in the Node.js runtime. The frontend is a single client-rendered React shell that delegates data, knowledge, and AI work to server-side adapters.
 
 ## Request Boundaries
 
 - Browser clients talk only to this app's route handlers.
-- Route handlers resolve Astra and AI credentials server-side before calling Astra, Hugging Face, or Ollama.
+- Route handlers resolve data-backend, knowledge-backend, and AI credentials server-side before calling Astra, HCD, OpenRAG, Hugging Face, or Ollama.
 - Optional app-level auth is enforced in the proxy and route handlers through `requireApiAuth`. `PLAYGROUND_AUTH_PASSWORD` accepts either a plaintext value or a bcrypt hash.
 
 Body-size limits are intentionally split:
@@ -20,24 +24,62 @@ Body-size limits are intentionally split:
 
 `src/proxy.ts` performs an early header-based check, while shared route parsing enforces the same limits against the actual streamed body so chunked or missing-header requests cannot bypass them.
 
-## AI Provider Resolution
+## Backend Axes
 
-All AI work now flows through `src/lib/ai/service.ts`.
+### Data backends
+
+Data-backend resolution lives in `src/lib/backends/server.ts` and `src/lib/dataApi/*`.
+
+Options:
+
+- `astra`
+- `hcd`
+
+Shared responsibilities:
+
+- connect and collection discovery
+- browse/count/sample-fields
+- collection CRUD
+- delete-documents
+- raw Data API proxying for the API Explorer
+
+Backend-specific behavior:
+
+- Astra supports embedding-provider discovery and vectorize-enabled collection creation.
+- HCD shares the same high-level app flows, but does not expose Astra-style embedding-provider discovery or vectorize collections.
+- `GET /api/backend-status` reports env readiness for both Astra and HCD and selects the default env-backed backend (`astra` first, then `hcd`).
+- `GET /api/astra-status` remains as a narrow legacy status surface for Astra-only readiness.
+
+### Knowledge backends
+
+Knowledge-backend resolution lives in `src/lib/knowledge/*`.
+
+Options:
+
+- connected backend (`astra` or `hcd`)
+- `openrag`
+
+Shared responsibilities:
+
+- retrieval for chat
+- document ingest/delete/load
+- source discovery
+
+Current capability differences:
+
+- Connected Data API/HCD backends support vector, hybrid, and lexical search plus CSV and document ingest.
+- OpenRAG supports vector search plus document ingest/delete/load, but not CSV ingest, lexical search, or hybrid search in this app.
+- `GET /api/knowledge-backend-status` reports OpenRAG env readiness separately from the data backend.
+
+### AI backend resolution
+
+All AI work flows through `src/lib/ai/service.ts`.
 
 Resolution order:
 
 1. Manual Hugging Face key from the Connect dialog
 2. `HUGGINGFACE_API_KEY` from the server environment
 3. Local Ollama fallback
-
-Normalized operations:
-
-- `resolveBackend({ huggingfaceApiKey })`
-- `getAiStatus()`
-- `ensureModel(kind)`
-- `generateText(...)`
-- `streamText(...)`
-- `embedMany(...)`
 
 Default models:
 
@@ -63,7 +105,7 @@ Main composition:
 - `src/components/shell/Sidebar.tsx`
 - `src/components/shell/PlaygroundMainPanel.tsx`
 - `src/components/shell/PlaygroundDialogs.tsx`
-- `src/components/connection/AstraConnectDialog.tsx`
+- `src/components/connection/ConnectionDialog.tsx`
 - `src/components/api/ApiExplorer.tsx`
 - `src/components/chat/ChatArea.tsx`
 - `src/components/ingest/IngestTab.tsx`
@@ -78,17 +120,41 @@ Current view ownership:
 
 Important state split:
 
-- Astra connection and collection metadata live in `usePlaygroundConnection`
+- Data-backend connection and collection metadata live in `usePlaygroundConnection`
+- Knowledge-backend mode (`connected` vs `openrag`) plus runtime OpenRAG credentials live in `usePlaygroundState`
 - Conversations live in `useConversationState`
 - Theme lives in `useThemeState`
 - The manual Hugging Face key lives only in React state for the current page session
-- Connection state can come from env-backed Astra credentials even when no token is entered in the dialog
+- Connection state can come from env-backed Data API or HCD credentials even when nothing is entered in the dialog
+
+## Core Services
+
+Backend adapters:
+
+- `lib/backends/server.ts` resolves Data API/HCD env and runtime credentials
+- `lib/dataApi/index.ts` resolves Data API/HCD adapters
+- `lib/knowledge/index.ts` resolves connected/OpenRAG knowledge adapters
+
+AI and chat:
+
+- `lib/ai/service.ts` handles provider resolution, status checks, Ollama model prep, text generation, and embeddings
+- `lib/chat/service.ts` orchestrates analyze -> embed -> search -> respond
+- `lib/chat/search.ts` delegates retrieval to the resolved knowledge backend
+- `lib/chat/response.ts` builds the final assistant answer
+
+Collections and ingest:
+
+- `lib/collections/service.ts` handles collection CRUD plus ingested-document operations
+- `lib/ingest/service.ts` handles extraction, chunking, embedding, CSV ingest, and document ingest
+- `lib/ingest/backend.ts` resolves ingest behavior against the active knowledge backend
 
 ## API Routes
 
 Infrastructure:
 
+- `/api/backend-status`
 - `/api/astra-status`
+- `/api/knowledge-backend-status`
 - `/api/ai-status`
 - `/api/auth/status`
 - `/api/auth/login`
@@ -120,11 +186,15 @@ Core flows:
 
 - all collections are listed immediately
 - best-effort counts and sampled field names are fetched for up to 12 non-internal collections
-- additional collections return base metadata only so large keyspaces do not turn connect into an unbounded fan-out
+- additional collections return base metadata only so large backends do not turn connect into an unbounded fan-out
 
 ## Rate Limiting
 
-`POST /api/chat` enforces a per-IP rate limit of 20 requests per 60-second sliding window. The limiter is in-process memory (not shared across workers or restarts). Client IP is resolved from `X-Forwarded-For` when present, falling back to a header fingerprint. See `src/lib/rate-limit.ts`.
+- `POST /api/chat`: 20 requests per 60-second sliding window
+- `POST /api/ingest`: 10 requests per 60-second sliding window
+- `POST /api/ingest-document`: 10 requests per 60-second sliding window
+
+The limiters are in-process memory and are not shared across workers or restarts. Client IP is resolved from `X-Forwarded-For` when present, falling back to a header fingerprint.
 
 ## Chat Pipeline
 
@@ -137,9 +207,9 @@ Pipeline order:
 2. `analyze`
    Uses the resolved chat model to interpret the user request and choose collection, mode, filters, and limits.
 3. `embed`
-   Generates a query embedding unless the target collection uses Astra server-side vectorize.
+   Generates a query embedding unless the target collection uses server-side vectorize.
 4. `search`
-   Queries Astra with `$vector`, `$vectorize`, `$hybrid`, or lexical search.
+   Delegates retrieval to the resolved knowledge backend.
 5. `respond`
    Generates the final natural-language answer.
 
@@ -147,11 +217,12 @@ Additional behavior:
 
 - `skipSearch` requests skip both embedding and search steps.
 - Provider and model metadata are attached to `prepare`, `analyze`, `embed`, and `respond` completion events.
-- Collections with server-side vectorize continue to bypass client-side embedding.
+- Connected Astra vectorize collections continue to bypass client-side embedding.
+- OpenRAG narrows the available search modes to vector search.
 
 ## Conversation Titles
 
-`POST /api/conversations/title` uses the same backend resolution as chat, but remains best-effort:
+`POST /api/conversations/title` uses the same AI resolution as chat, but remains best-effort:
 
 - it does not auto-pull Ollama models
 - it returns `{ title: null }` if generation fails
@@ -163,23 +234,20 @@ Additional behavior:
 
 Behavior:
 
-- CSV ingest batches rows into Astra writes and caps requests at 5,000 rows.
-- Document ingest extracts text, chunks it, writes document metadata locally, and inserts chunk records into Astra.
-- Vectorize-enabled collections use `$vectorize`
-- Non-vectorize collections call the resolved AI backend for embeddings
-- Ollama model pulls emit `prepare` progress events
-- Non-vectorize ingest now fails fast on provider errors
-- Non-vectorize ingest validates embedding dimensions against collection metadata when available
+- CSV ingest batches rows into connected-backend writes and caps requests at 5,000 rows.
+- Document ingest extracts text, chunks it, writes document metadata locally, and inserts chunk records into the active knowledge backend.
+- Astra vectorize-enabled collections use `$vectorize`.
+- Non-vectorize connected collections call the resolved AI backend for embeddings.
+- Ollama model pulls emit `prepare` progress events.
+- Non-vectorize ingest fails fast on provider errors.
+- Non-vectorize ingest validates embedding dimensions against collection metadata when available.
+
+Backend-specific behavior:
+
+- CSV ingest is a connected knowledge-backend feature.
+- OpenRAG ingest is document-only in this app.
 
 There is no longer any random-vector fallback or silent insert-without-vectors path for connected ingest.
-
-Upload constraints:
-
-- supported document types: PDF, TXT, MD, DOCX, CSV, XLSX, JSON
-- maximum document upload size: 50 MB
-- metadata payload cap: 16 KB
-- extracted text cap: 1,000,000 characters
-- maximum document chunks: 500
 
 ## Persistence
 
@@ -191,18 +259,15 @@ Stored locally in SQLite:
 
 Stored in browser React state only:
 
+- manual Data API or HCD credentials
+- runtime OpenRAG credentials
 - manual Hugging Face key
-- manual Astra token and endpoint
 - open dialog state
 - active view mode
 
 Stored in browser `localStorage`:
 
 - theme preference
-
-Derived into in-memory connection state:
-
-- env-backed Astra availability flags from `/api/astra-status`
 
 ## Environment Variables
 
@@ -212,6 +277,13 @@ Key variables:
 
 - `ASTRA_DB_APPLICATION_TOKEN`
 - `ASTRA_DB_API_ENDPOINT`
+- `ASTRA_DB_KEYSPACE`
+- `HCD_DATA_API_ENDPOINT`
+- `HCD_USERNAME`
+- `HCD_PASSWORD`
+- `HCD_KEYSPACE`
+- `OPENRAG_API_KEY`
+- `OPENRAG_URL`
 - `HUGGINGFACE_API_KEY`
 - `HUGGINGFACE_CHAT_MODEL`
 - `HUGGINGFACE_EMBED_MODEL`
@@ -226,6 +298,8 @@ Key variables:
 Important behavior:
 
 - a manual Hugging Face key overrides `HUGGINGFACE_API_KEY` for the current page session only
+- if both Astra and HCD env credentials exist, Astra becomes the default env-backed data backend
+- OpenRAG readiness is tracked separately from the selected data backend
 - if Hugging Face is selected but the key is invalid, the app returns the provider error and does not auto-fallback to Ollama
 - if no Hugging Face key is available, the app resolves to Ollama automatically
 - production fails closed unless password auth is configured or `PLAYGROUND_ALLOW_UNAUTHENTICATED=true` is set intentionally

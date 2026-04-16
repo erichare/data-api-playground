@@ -109,7 +109,7 @@ describe("astra helpers", () => {
   it("rejects endpoints outside the Astra allow-list", () => {
     expect(() =>
       getAstraDb("AstraCS:secret-token", "https://example.com")
-    ).toThrowError("Invalid Astra DB endpoint");
+    ).toThrowError("Invalid Data API endpoint");
     expect(dataApiClientCtorMock).not.toHaveBeenCalled();
   });
 

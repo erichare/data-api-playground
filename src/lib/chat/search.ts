@@ -70,7 +70,7 @@ export async function embedQuery(args: {
 }
 
 /**
- * Execute collection searches against Astra DB.
+ * Execute collection searches against the resolved knowledge backend.
  *
  * Supports vector, hybrid, and lexical search modes, optional field-based
  * sorting and filtering, and multi-collection fan-out. When searching a

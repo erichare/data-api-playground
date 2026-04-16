@@ -27,7 +27,7 @@ const STEP_META: Record<PipelineStepId, { label: string; colorVar: string; icon:
   prepare: { label: "Prepare Model",      colorVar: "#f59e0b",             icon: HardDriveDownload },
   analyze: { label: "Analyze Query",       colorVar: "var(--step-analyze)", icon: Search       },
   embed:   { label: "Embed Query",         colorVar: "var(--step-embed)",   icon: Zap          },
-  search:  { label: "Search Astra DB",     colorVar: "var(--step-search)",  icon: Database     },
+  search:  { label: "Search Backend",      colorVar: "var(--step-search)",  icon: Database     },
   respond: { label: "Generate Response",   colorVar: "var(--step-respond)", icon: MessageSquare },
 };
 

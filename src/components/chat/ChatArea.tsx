@@ -7,7 +7,11 @@ import { Send, MessageSquare, RefreshCw, AlertCircle, X } from "lucide-react";
 import { MessageBubble } from "./MessageBubble";
 import { SearchModeToggle } from "./SearchModeToggle";
 import { useChatSession } from "@/components/chat/hooks/useChatSession";
-import type { BackendConnectionState, DataApiBackendKind } from "@/lib/backends/types";
+import {
+  getBackendDisplayName,
+  type BackendConnectionState,
+  type DataApiBackendKind,
+} from "@/lib/backends/types";
 import type {
   KnowledgeBackendCapabilities,
   KnowledgeBackendMode,
@@ -395,7 +399,7 @@ function EmptyState({
         >
           <span className="text-base">⚠</span>
           <span>
-            Demo mode — connect to {selectedBackend === "hcd" ? "DataStax HCD" : "Astra DB"} to query real data
+            Demo mode — connect to {getBackendDisplayName(selectedBackend)} to query real data
           </span>
         </motion.div>
       ) : null}

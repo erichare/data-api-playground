@@ -477,7 +477,7 @@ export function NewCollectionDialog({
                     <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                       {connection?.backend === "hcd"
                         ? "Demo mode — not saved to DataStax HCD"
-                        : "Demo mode — not saved to Astra DB"}
+                        : "Demo mode — not saved to Data API"}
                     </span>
                   )}
                   <div className="flex items-center gap-2 ml-auto">

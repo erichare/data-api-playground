@@ -64,7 +64,7 @@ export function Header({
               className="text-sm font-semibold tracking-tight leading-none"
               style={{ color: "var(--text-primary)" }}
             >
-              Astra DB
+              Data API
             </span>
           </div>
         </div>
