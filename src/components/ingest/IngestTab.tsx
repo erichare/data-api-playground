@@ -25,6 +25,7 @@ interface IngestTabProps {
   knowledgeBackendMode?: KnowledgeBackendMode;
   openragConnection?: OpenragKnowledgeState | null;
   knowledgeCapabilities?: KnowledgeBackendCapabilities;
+  showRawBrowser?: boolean;
   keyspace: string;
   collections: Collection[];
   activeCollection?: string;
@@ -51,6 +52,7 @@ export function IngestTab({
     documentDelete: true,
     documentContentLoad: true,
   },
+  showRawBrowser = true,
   keyspace,
   collections,
   activeCollection,
@@ -148,13 +150,15 @@ export function IngestTab({
           selectedBackend={selectedBackend}
         />
 
-        <RawCollectionBrowser
-          isConnected={isConnected}
-          selectedCollection={selectedCollection}
-          connection={connection}
-          keyspace={keyspace}
-          selectedBackend={selectedBackend}
-        />
+        {showRawBrowser && (
+          <RawCollectionBrowser
+            isConnected={isConnected}
+            selectedCollection={selectedCollection}
+            connection={connection}
+            keyspace={keyspace}
+            selectedBackend={selectedBackend}
+          />
+        )}
       </div>
 
       <AnimatePresence>

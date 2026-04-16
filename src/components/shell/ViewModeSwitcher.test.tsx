@@ -74,4 +74,21 @@ describe("ViewModeSwitcher", () => {
     );
     expect(screen.queryByText("orders")).toBeNull();
   });
+
+  it("hides the API button when API explorer mode is not available", () => {
+    const onChange = vi.fn();
+
+    render(
+      <ViewModeSwitcher
+        viewMode="chat"
+        activeCollection="orders"
+        showApiMode={false}
+        onChange={onChange}
+      />
+    );
+
+    expect(screen.getByText("Chat")).toBeTruthy();
+    expect(screen.getByText("Ingest")).toBeTruthy();
+    expect(screen.queryByText("API")).toBeNull();
+  });
 });

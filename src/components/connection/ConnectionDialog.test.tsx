@@ -197,12 +197,8 @@ function renderDialog(
   return props;
 }
 
-function openDataTab() {
-  fireEvent.click(screen.getByTestId("connection-tab-data"));
-}
-
-function openKnowledgeTab() {
-  fireEvent.click(screen.getByTestId("connection-tab-knowledge"));
+function openConnectionTab() {
+  fireEvent.click(screen.getByTestId("connection-tab-connection"));
 }
 
 function openAiTab() {
@@ -721,7 +717,7 @@ describe("ConnectionDialog", () => {
 
     openAiTab();
     expect(screen.getByText("Checking local Ollama status...")).toBeTruthy();
-    openDataTab();
+    openConnectionTab();
 
     fireEvent.click(screen.getByTestId("backend-connect-submit"));
 
@@ -754,7 +750,7 @@ describe("ConnectionDialog", () => {
       expect(screen.getByText(/Ollama is not reachable at/)).toBeTruthy();
     });
 
-    openDataTab();
+    openConnectionTab();
     expect(screen.getByText("DataStax HCD Connected")).toBeTruthy();
     expect(screen.getByText("cassandra @ https://hcd.example.com:8181")).toBeTruthy();
 
@@ -817,7 +813,7 @@ describe("ConnectionDialog", () => {
     await waitFor(() => {
       expect(screen.getByText(/Ready locally at/)).toBeTruthy();
     });
-    openDataTab();
+    openConnectionTab();
 
     fireEvent.click(screen.getByRole("button", { name: /HCD DataStax HCD/i }));
     expect(props.onSelectedBackendChange).toHaveBeenCalledWith("hcd");
@@ -874,7 +870,6 @@ describe("ConnectionDialog", () => {
       target: { value: "secret" },
     });
 
-    openKnowledgeTab();
     fireEvent.click(screen.getByRole("button", { name: /OpenRAG Knowledge service/i }));
 
     const openragApiKeyInput = screen.getByTestId(
@@ -919,7 +914,7 @@ describe("ConnectionDialog", () => {
     });
   });
 
-  it("keeps OpenRAG settings on the knowledge tab and model settings on the Models tab", async () => {
+  it("keeps OpenRAG settings on the connection tab and model settings on the Models tab", async () => {
     mockAiStatus(READY_AI_STATUS, {
       hasApiKey: true,
       hasBaseUrl: true,
@@ -937,7 +932,7 @@ describe("ConnectionDialog", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByTestId("connection-tab-knowledge").getAttribute("aria-pressed")
+        screen.getByTestId("connection-tab-connection").getAttribute("aria-pressed")
       ).toBe("true");
     });
 
@@ -960,7 +955,7 @@ describe("ConnectionDialog", () => {
     expect(screen.getByText("granite-embedding:278m")).toBeTruthy();
   });
 
-  it("opens on the knowledge tab when OpenRAG is already active", async () => {
+  it("opens on the connection tab when OpenRAG is already active", async () => {
     mockAiStatus(READY_AI_STATUS, { hasApiKey: true });
 
     renderDialog({
@@ -975,11 +970,25 @@ describe("ConnectionDialog", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByTestId("connection-tab-knowledge").getAttribute("aria-pressed")
+        screen.getByTestId("connection-tab-connection").getAttribute("aria-pressed")
       ).toBe("true");
     });
 
     expect(screen.getByTestId("openrag-api-key-input")).toBeTruthy();
-    expect(screen.queryByTestId("astra-token-input")).toBeNull();
+    expect(screen.getByTestId("astra-token-input")).toBeTruthy();
+  });
+
+  it("merges backend and OpenRAG controls into a single connection tab", async () => {
+    mockAiStatus(READY_AI_STATUS, { hasApiKey: true });
+
+    renderDialog();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("connection-tab-connection")).toBeTruthy();
+    });
+
+    expect(screen.queryByTestId("connection-tab-knowledge")).toBeNull();
+    expect(screen.getByText("Data API Backend")).toBeTruthy();
+    expect(screen.getByText("Knowledge Mode")).toBeTruthy();
   });
 });

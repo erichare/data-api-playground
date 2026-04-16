@@ -33,6 +33,7 @@ export interface SidebarProps {
   onDeleteConversation: (id: string) => void;
   onDeleteCollection: (name: string) => Promise<void> | void;
   viewMode?: string;
+  showCollections?: boolean;
 }
 
 export function Sidebar({
@@ -50,6 +51,7 @@ export function Sidebar({
   onDeleteConversation,
   onDeleteCollection,
   viewMode = "chat",
+  showCollections = true,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [conversationToDelete, setConversationToDelete] =
@@ -135,60 +137,64 @@ export function Sidebar({
                 </div>
               </div>
 
-              {/* Divider */}
-              <div className="mx-3 my-1 h-px shrink-0" style={{ backgroundColor: "var(--border-subtle)" }} />
+              {showCollections && (
+                <>
+                  {/* Divider */}
+                  <div className="mx-3 my-1 h-px shrink-0" style={{ backgroundColor: "var(--border-subtle)" }} />
 
-              {/* ── Collections ── */}
-              <div className="px-3 pt-1 pb-2">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
-                    Collections
-                  </p>
-                  <span
-                    className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
-                    style={{ backgroundColor: "var(--interactive-light)", color: "var(--interactive)" }}
-                  >
-                    {visibleCollections.length}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  {visibleCollections.map((col) => (
-                    <CollectionItem
-                      key={col.pendingKey ?? col.name}
-                      collection={col}
-                      isActive={collActive && activeCollection === col.name}
-                      onClick={() => {
-                        if (col.creating) return;
-                        onSelectCollection(col.name);
-                      }}
-                      onDelete={() => {
-                        if (col.creating) return;
-                        setCollectionToDelete(col);
-                        setDeleteCollectionValue("");
-                        setDeleteCollectionError("");
-                      }}
-                    />
-                  ))}
-                  {collectionCreateError ? (
-                    <p
-                      className="px-1 pt-1 text-[11px] leading-4"
-                      style={{ color: "#fca5a5" }}
-                    >
-                      {collectionCreateError}
-                    </p>
-                  ) : null}
-                  <motion.button
-                    onClick={onNewCollection}
-                    className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium mt-0.5"
-                    style={{ color: "var(--text-muted)", border: "1px dashed var(--border-subtle)", backgroundColor: "rgba(0,0,0,0)" }}
-                    whileHover={{ backgroundColor: "var(--interactive-light)", borderColor: "var(--interactive-border)", color: "var(--interactive)" }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <Plus size={12} />
-                    <span>New Collection</span>
-                  </motion.button>
-                </div>
-              </div>
+                  {/* ── Collections ── */}
+                  <div className="px-3 pt-1 pb-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                        Collections
+                      </p>
+                      <span
+                        className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                        style={{ backgroundColor: "var(--interactive-light)", color: "var(--interactive)" }}
+                      >
+                        {visibleCollections.length}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      {visibleCollections.map((col) => (
+                        <CollectionItem
+                          key={col.pendingKey ?? col.name}
+                          collection={col}
+                          isActive={collActive && activeCollection === col.name}
+                          onClick={() => {
+                            if (col.creating) return;
+                            onSelectCollection(col.name);
+                          }}
+                          onDelete={() => {
+                            if (col.creating) return;
+                            setCollectionToDelete(col);
+                            setDeleteCollectionValue("");
+                            setDeleteCollectionError("");
+                          }}
+                        />
+                      ))}
+                      {collectionCreateError ? (
+                        <p
+                          className="px-1 pt-1 text-[11px] leading-4"
+                          style={{ color: "#fca5a5" }}
+                        >
+                          {collectionCreateError}
+                        </p>
+                      ) : null}
+                      <motion.button
+                        onClick={onNewCollection}
+                        className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium mt-0.5"
+                        style={{ color: "var(--text-muted)", border: "1px dashed var(--border-subtle)", backgroundColor: "rgba(0,0,0,0)" }}
+                        whileHover={{ backgroundColor: "var(--interactive-light)", borderColor: "var(--interactive-border)", color: "var(--interactive)" }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <Plus size={12} />
+                        <span>New Collection</span>
+                      </motion.button>
+                    </div>
+                  </div>
+                </>
+              )}
 
             </div>
           </div>
@@ -213,26 +219,30 @@ export function Sidebar({
                 <MessageSquare size={13} />
               </motion.button>
             ))}
-            <div className="w-4 h-px my-1" style={{ backgroundColor: "var(--border-subtle)" }} />
-            {visibleCollections.map((col) => (
-              <motion.button
-                key={col.pendingKey ?? col.name}
-                onClick={() => {
-                  if (col.creating) return;
-                  onSelectCollection(col.name);
-                }}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold uppercase"
-                style={{
-                  backgroundColor: collActive && activeCollection === col.name ? "var(--interactive-light)" : "rgba(0,0,0,0)",
-                  color: collActive && activeCollection === col.name ? "var(--interactive)" : "var(--text-muted)",
-                  borderLeft: collActive && activeCollection === col.name ? "2px solid var(--interactive)" : "2px solid transparent",
-                }}
-                whileHover={col.creating ? {} : { backgroundColor: "var(--bg-hover)" }}
-                title={col.name}
-              >
-                {col.creating ? <Loader2 size={12} className="animate-spin" /> : col.name[0].toUpperCase()}
-              </motion.button>
-            ))}
+            {showCollections && (
+              <>
+                <div className="w-4 h-px my-1" style={{ backgroundColor: "var(--border-subtle)" }} />
+                {visibleCollections.map((col) => (
+                  <motion.button
+                    key={col.pendingKey ?? col.name}
+                    onClick={() => {
+                      if (col.creating) return;
+                      onSelectCollection(col.name);
+                    }}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold uppercase"
+                    style={{
+                      backgroundColor: collActive && activeCollection === col.name ? "var(--interactive-light)" : "rgba(0,0,0,0)",
+                      color: collActive && activeCollection === col.name ? "var(--interactive)" : "var(--text-muted)",
+                      borderLeft: collActive && activeCollection === col.name ? "2px solid var(--interactive)" : "2px solid transparent",
+                    }}
+                    whileHover={col.creating ? {} : { backgroundColor: "var(--bg-hover)" }}
+                    title={col.name}
+                  >
+                    {col.creating ? <Loader2 size={12} className="animate-spin" /> : col.name[0].toUpperCase()}
+                  </motion.button>
+                ))}
+              </>
+            )}
           </div>
         )}
       </motion.aside>

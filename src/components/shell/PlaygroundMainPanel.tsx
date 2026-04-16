@@ -9,6 +9,7 @@ import type { Conversation, Message, ViewMode } from "@/lib/types";
 
 export interface PlaygroundMainPanelProps {
   viewMode: ViewMode;
+  showApiExplorer?: boolean;
   onViewModeChange: (mode: ViewMode) => void;
   conversations: Conversation[];
   activeConversationId: string;
@@ -22,6 +23,7 @@ export interface PlaygroundMainPanelProps {
 
 export function PlaygroundMainPanel({
   viewMode,
+  showApiExplorer = true,
   onViewModeChange,
   conversations,
   activeConversationId,
@@ -30,22 +32,25 @@ export function PlaygroundMainPanel({
   onCollectionStatsDelta,
 }: PlaygroundMainPanelProps) {
   const conn = useConnection();
+  const resolvedViewMode =
+    !showApiExplorer && viewMode === "api" ? "chat" : viewMode;
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       <ViewModeSwitcher
-        viewMode={viewMode}
+        viewMode={resolvedViewMode}
         activeCollection={conn.activeCollection}
+        showApiMode={showApiExplorer}
         onChange={onViewModeChange}
       />
 
-      {viewMode === "api" ? (
+      {resolvedViewMode === "api" ? (
         <ApiExplorer
           collection={conn.activeCollectionObj}
           connection={conn.connection}
           keyspace={conn.keyspace}
         />
-      ) : viewMode === "ingest" ? (
+      ) : resolvedViewMode === "ingest" ? (
         <IngestTab
           connection={conn.connection}
           selectedBackend={conn.selectedBackend}
@@ -57,6 +62,7 @@ export function PlaygroundMainPanel({
           activeCollection={conn.activeCollection}
           huggingfaceApiKey={conn.huggingfaceApiKey}
           isConnected={conn.isConnected}
+          showRawBrowser={conn.knowledgeBackendMode !== "openrag"}
           onCollectionStatsDelta={onCollectionStatsDelta}
         />
       ) : (

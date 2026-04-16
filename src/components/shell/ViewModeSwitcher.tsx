@@ -7,12 +7,14 @@ import type { ViewMode } from "@/lib/types";
 interface ViewModeSwitcherProps {
   viewMode: ViewMode;
   activeCollection?: string;
+  showApiMode?: boolean;
   onChange: (mode: ViewMode) => void;
 }
 
 export function ViewModeSwitcher({
   viewMode,
   activeCollection,
+  showApiMode = true,
   onChange,
 }: ViewModeSwitcherProps) {
   return (
@@ -45,16 +47,18 @@ export function ViewModeSwitcher({
           icon={<Upload size={12} />}
           onClick={onChange}
         />
-        <ModeButton
-          mode="api"
-          activeMode={viewMode}
-          label="API"
-          icon={<Terminal size={12} />}
-          onClick={onChange}
-        />
+        {showApiMode && (
+          <ModeButton
+            mode="api"
+            activeMode={viewMode}
+            label="API"
+            icon={<Terminal size={12} />}
+            onClick={onChange}
+          />
+        )}
       </div>
 
-      {viewMode === "api" && activeCollection && (
+      {showApiMode && viewMode === "api" && activeCollection && (
         <motion.span
           initial={{ opacity: 0, x: -6 }}
           animate={{ opacity: 1, x: 0 }}

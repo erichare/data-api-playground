@@ -8,13 +8,16 @@ import { ConnectionProvider, type ConnectionContextValue } from "@/lib/context/C
 vi.mock("@/components/shell/ViewModeSwitcher", () => ({
   ViewModeSwitcher: ({
     viewMode,
+    showApiMode,
     onChange,
   }: {
     viewMode: string;
+    showApiMode?: boolean;
     onChange: (mode: "api" | "ingest" | "chat") => void;
   }) => (
     <div>
       <div data-testid="view-mode">{viewMode}</div>
+      <div data-testid="show-api-mode">{String(showApiMode !== false)}</div>
       <button onClick={() => onChange("api")}>Switch To Api</button>
     </div>
   ),
@@ -154,5 +157,17 @@ describe("PlaygroundMainPanel", () => {
 
     expect(screen.getByTestId("api-explorer").textContent).toBe("orders");
     expect(screen.queryByTestId("chat-area")).toBeNull();
+  });
+
+  it("falls back to chat and hides the API toggle when OpenRAG mode disables the explorer", () => {
+    renderPanel(
+      { viewMode: "api", showApiExplorer: false },
+      { knowledgeBackendMode: "openrag" }
+    );
+
+    expect(screen.getByTestId("show-api-mode").textContent).toBe("false");
+    expect(screen.getByTestId("view-mode").textContent).toBe("chat");
+    expect(screen.getByTestId("chat-area")).toBeTruthy();
+    expect(screen.queryByTestId("api-explorer")).toBeNull();
   });
 });
