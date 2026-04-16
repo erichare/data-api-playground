@@ -173,7 +173,7 @@ function extractMethodArgs(tsCmd: string, method: string) {
   let rawArgs = "";
 
   while (cursor < tsCmd.length) {
-    const char = tsCmd[cursor];
+    const char = tsCmd.charAt(cursor);
 
     if (escaped) {
       rawArgs += char;
@@ -279,8 +279,13 @@ function extractLeadingCommentBlock(command: string) {
   const commentLines: string[] = [];
   let index = 0;
 
-  while (index < lines.length && lines[index].trimStart().startsWith("//")) {
-    commentLines.push(lines[index].trimEnd());
+  while (index < lines.length) {
+    const line = lines.at(index);
+    if (!line?.trimStart().startsWith("//")) {
+      break;
+    }
+
+    commentLines.push(line.trimEnd());
     index += 1;
   }
 

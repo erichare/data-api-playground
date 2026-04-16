@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import type { ViewMode } from "@/lib/types";
 import type { ConnectionContextValue } from "@/lib/context/ConnectionContext";
 import { usePlaygroundAuth } from "@/lib/hooks/usePlaygroundAuth";
@@ -82,6 +82,22 @@ export function usePlaygroundState() {
     },
     [conversationState]
   );
+  const openragActive = knowledgeBackendMode === "openrag";
+  const handleViewModeChange = useCallback(
+    (mode: ViewMode) => {
+      setViewMode(openragActive && mode === "api" ? "chat" : mode);
+    },
+    [openragActive]
+  );
+  const handleKnowledgeBackendModeChange = useCallback(
+    (mode: KnowledgeBackendMode) => {
+      setKnowledgeBackendMode(mode);
+      if (mode === "openrag" && viewMode === "api") {
+        setViewMode("chat");
+      }
+    },
+    [viewMode]
+  );
 
   const resolvedCollections = connectionState.collections.filter(
     (collection) => !collection.creating
@@ -90,19 +106,12 @@ export function usePlaygroundState() {
     resolvedCollections.find(
       (collection) => collection.name === connectionState.activeCollection
     ) ?? resolvedCollections[0];
-  const openragActive = knowledgeBackendMode === "openrag";
   const knowledgeBackendKind = getResolvedKnowledgeBackendKind({
     selectedBackend: connectionState.selectedBackend,
     knowledgeBackendMode,
   });
   const knowledgeCapabilities =
     getKnowledgeBackendCapabilities(knowledgeBackendKind);
-
-  useEffect(() => {
-    if (openragActive && viewMode === "api") {
-      setViewMode("chat");
-    }
-  }, [openragActive, viewMode]);
 
   const connectionValue: ConnectionContextValue = {
     connection: connectionState.connection,
@@ -169,7 +178,7 @@ export function usePlaygroundState() {
     mainPanelProps: {
       viewMode,
       showApiExplorer: !openragActive,
-      onViewModeChange: setViewMode,
+      onViewModeChange: handleViewModeChange,
       conversations: conversationState.conversations,
       activeConversationId: conversationState.activeConversationId,
       messages: conversationState.messages,
@@ -187,7 +196,7 @@ export function usePlaygroundState() {
       knowledgeBackendMode,
       openragConnection,
       onSelectedBackendChange: connectionState.setSelectedBackend,
-      onKnowledgeBackendModeChange: setKnowledgeBackendMode,
+      onKnowledgeBackendModeChange: handleKnowledgeBackendModeChange,
       onOpenragConnectionChange: setOpenragConnection,
       backendStatuses: connectionState.backendStatuses,
       capabilities: connectionState.capabilities,
