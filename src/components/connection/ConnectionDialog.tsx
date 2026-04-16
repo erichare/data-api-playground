@@ -43,6 +43,7 @@ import {
   canConnectToBackend,
   getActiveModelConfig,
   getAstraConfigMode,
+  getBackendSummary,
   getModelFamilyLabel,
   readFileText,
   shouldDefaultToAstraCli,
@@ -964,21 +965,7 @@ export function ConnectionDialog({
 }
 
 function ActiveConnectionPill({ connection }: { connection: BackendConnectionState }) {
-  const summary = (() => {
-    if (connection.backend === "astra") {
-      if (connection.fromAstraCli) {
-        const database = connection.astraCliDatabase || "selected database";
-        const profile = connection.astraCliProfile ? ` · ${connection.astraCliProfile}` : "";
-        return `Astra CLI · ${database}${profile}`;
-      }
-      return connection.token
-        ? `${connection.token.slice(0, 8)}••••••••••••••••${connection.token.slice(-4)}`
-        : "Managed by server environment";
-    }
-    return connection.username
-      ? `${connection.username} @ ${connection.endpoint || "env endpoint"}`
-      : "Managed by server environment";
-  })();
+  const summary = getBackendSummary(connection);
 
   return (
     <div

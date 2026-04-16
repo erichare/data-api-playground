@@ -101,6 +101,16 @@ describe("connection utils", () => {
     it("keeps non-size trailing tokens", () => {
       expect(getModelFamilyLabel("foo-bar")).toBe("foo-bar");
     });
+
+    it("treats decimal sizes (e.g. 1.5b) as a size suffix", () => {
+      expect(getModelFamilyLabel("phi-1.5b")).toBe("phi");
+    });
+
+    it("rejects malformed size suffixes (double dot, leading dot, alpha middle)", () => {
+      expect(getModelFamilyLabel("foo-1..5b")).toBe("foo-1..5b");
+      expect(getModelFamilyLabel("foo-.5b")).toBe("foo-.5b");
+      expect(getModelFamilyLabel("foo-1a5b")).toBe("foo-1a5b");
+    });
   });
 
   describe("getActiveAiSummary", () => {
