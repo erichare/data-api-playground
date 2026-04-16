@@ -133,7 +133,7 @@ describe("DocumentLibraryPanel", () => {
     renderPanel({ isConnected: false });
 
     expect(
-      screen.getByText("Demo mode — connect to Astra DB to persist documents")
+      screen.getByText("Demo mode — connect to Data API to persist documents")
     ).toBeTruthy();
   });
 

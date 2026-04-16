@@ -1,11 +1,11 @@
-const ASTRA_MISSING_CREDENTIALS = "Missing Astra DB token or endpoint";
+const ASTRA_MISSING_CREDENTIALS = "Missing Data API token or endpoint";
 const HCD_MISSING_CREDENTIALS = "Missing HCD endpoint, username, or password";
 
 export function isDataApiBadRequestMessage(message: string) {
   return (
     message === ASTRA_MISSING_CREDENTIALS ||
     message === HCD_MISSING_CREDENTIALS ||
-    message === "Endpoint must be a valid Astra DB API endpoint" ||
+    message === "Endpoint must be a valid Data API endpoint" ||
     message === "Request body must contain an operation" ||
     message.startsWith("Unsupported operation:")
   );

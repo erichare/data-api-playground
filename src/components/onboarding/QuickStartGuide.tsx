@@ -28,7 +28,7 @@ interface Step {
 const STEPS: Step[] = [
   {
     title: "Install",
-    description: "Add the Astra DB client to your project.",
+    description: "Add the Data API client to your project.",
     code: {
       python:     `pip install astrapy`,
       typescript: `npm install @datastax/astra-db-ts`,
@@ -297,7 +297,7 @@ export function QuickStartGuide({ open, onClose }: QuickStartGuideProps) {
             >
               <div>
                 <h2 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Quick Start Guide</h2>
-                <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>Top Astra DB Data API commands</p>
+                <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>Top Data API commands</p>
               </div>
               <motion.button
                 onClick={onClose}

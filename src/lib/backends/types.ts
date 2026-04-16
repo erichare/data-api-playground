@@ -6,6 +6,9 @@ export interface AstraConnectionInput {
   token?: string;
   endpoint?: string;
   keyspace?: string;
+  fromAstraCli?: boolean;
+  astraCliProfile?: string;
+  astraCliDatabase?: string;
 }
 
 export interface HcdConnectionInput {
@@ -24,6 +27,9 @@ export interface AstraConnectionState {
   endpoint: string;
   keyspace?: string;
   fromEnv?: boolean;
+  fromAstraCli?: boolean;
+  astraCliProfile?: string;
+  astraCliDatabase?: string;
 }
 
 export interface HcdConnectionState {
@@ -84,6 +90,19 @@ export function buildConnectionRequestBody(
   }
 
   if (connection.backend === "astra") {
+    if (connection.fromAstraCli) {
+      return {
+        fromAstraCli: true,
+        ...(connection.astraCliProfile ? { astraCliProfile: connection.astraCliProfile } : {}),
+        ...(connection.astraCliDatabase
+          ? { astraCliDatabase: connection.astraCliDatabase }
+          : {}),
+        ...(overrides?.keyspace ?? connection.keyspace
+          ? { keyspace: overrides?.keyspace ?? connection.keyspace }
+          : {}),
+      };
+    }
+
     return {
       ...(connection.fromEnv ? {} : { token: connection.token, endpoint: connection.endpoint }),
       ...(overrides?.keyspace ?? connection.keyspace
@@ -118,6 +137,10 @@ export function hasConnectionCredentials(
     return true;
   }
 
+  if (connection.backend === "astra" && connection.fromAstraCli) {
+    return Boolean(connection.astraCliDatabase);
+  }
+
   return connection.backend === "astra"
     ? Boolean(connection.token && connection.endpoint)
     : Boolean(connection.endpoint && connection.username && connection.password);
@@ -138,9 +161,9 @@ export function appendConnectionFormData(
 }
 
 export function getBackendDisplayName(kind: DataApiBackendKind) {
-  return kind === "hcd" ? "DataStax HCD" : "Astra DB";
+  return kind === "hcd" ? "DataStax HCD" : "Data API";
 }
 
 export function getBackendConnectionLabel(kind: DataApiBackendKind) {
-  return kind === "hcd" ? "HCD" : "Astra";
+  return kind === "hcd" ? "HCD" : "Data API";
 }

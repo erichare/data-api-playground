@@ -10,7 +10,7 @@ describe("app/layout", () => {
     const { default: RootLayout, metadata } = await import("./layout");
 
     expect(metadata).toMatchObject({
-      title: "Astra DB — Data API Playground",
+      title: "Data API Playground",
       description: expect.stringContaining("Interactive playground"),
     });
 

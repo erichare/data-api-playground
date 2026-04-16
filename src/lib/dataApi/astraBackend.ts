@@ -8,10 +8,10 @@ import {
 
 function createDb(config: BackendConnectionState, keyspace = config.keyspace) {
   if (config.backend !== "astra") {
-    throw new Error("Invalid backend for Astra data API adapter");
+    throw new Error("Invalid backend for the Data API adapter");
   }
   if (!config.token || !config.endpoint) {
-    throw new Error("Missing Astra DB token or endpoint");
+    throw new Error("Missing Data API token or endpoint");
   }
   const endpointValidator = Object.prototype.hasOwnProperty.call(
     astra,
@@ -21,7 +21,7 @@ function createDb(config: BackendConnectionState, keyspace = config.keyspace) {
       .isAllowedAstraEndpoint
     : undefined;
   if (typeof endpointValidator === "function" && !endpointValidator(config.endpoint)) {
-    throw new Error("Endpoint must be a valid Astra DB API endpoint");
+    throw new Error("Endpoint must be a valid Data API endpoint");
   }
   return keyspace == null
     ? astra.getAstraDb(config.token, config.endpoint)

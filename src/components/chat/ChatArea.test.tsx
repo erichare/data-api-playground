@@ -173,7 +173,7 @@ describe("ChatArea", () => {
     );
 
     expect(
-      screen.queryByText("Demo mode — connect to Astra DB to query real data")
+      screen.queryByText("Demo mode — connect to Data API to query real data")
     ).toBeNull();
   });
 

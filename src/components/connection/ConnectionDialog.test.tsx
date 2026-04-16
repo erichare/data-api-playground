@@ -96,7 +96,27 @@ function makeBackendStatuses(
 function mockAiStatus(
   status: Partial<AiStatus> | null,
   knowledgeStatus?: Partial<KnowledgeBackendStatuses["openrag"]>,
-  options?: { rejectAi?: boolean; rejectKnowledge?: boolean }
+  options?: {
+    rejectAi?: boolean;
+    rejectKnowledge?: boolean;
+    dataApiConfig?: {
+      astraCli: {
+        available: boolean;
+        configured: boolean;
+        profiles: { name: string; isDefault: boolean }[];
+        selectedProfile: string | null;
+        databases: {
+          id: string;
+          name: string;
+          endpoint: string;
+          keyspace: string;
+          region: string;
+          status: string;
+        }[];
+        error?: string;
+      };
+    };
+  }
 ) {
   global.fetch = vi.fn(async (input) => {
     const url = String(input);
@@ -122,6 +142,23 @@ function mockAiStatus(
         },
       };
       return new Response(JSON.stringify(payload));
+    }
+
+    if (url.startsWith("/api/data-api-config")) {
+      return new Response(
+        JSON.stringify(
+          options?.dataApiConfig ?? {
+            astraCli: {
+              available: false,
+              configured: false,
+              profiles: [],
+              selectedProfile: null,
+              databases: [],
+              error: "Astra CLI is not installed.",
+            },
+          }
+        )
+      );
     }
 
     throw new Error(`Unexpected fetch: ${url}`);
@@ -190,6 +227,16 @@ describe("ConnectionDialog helpers", () => {
         fromEnv: true,
       })
     ).toBe("Managed by server environment");
+    expect(
+      getBackendSummary({
+        backend: "astra",
+        token: "",
+        endpoint: "",
+        fromAstraCli: true,
+        astraCliProfile: "default",
+        astraCliDatabase: "orders-db",
+      })
+    ).toBe("Astra CLI · orders-db · default");
     expect(
       getBackendSummary({
         backend: "hcd",
@@ -262,6 +309,10 @@ describe("ConnectionDialog helpers", () => {
         selectedBackend: "astra",
         loading: true,
         currentBackendStatus: makeBackendStatuses().astra,
+        astraConfigMode: "credentials",
+        astraCliStatus: null,
+        astraCliProfile: "",
+        astraCliDatabase: "",
         knowledgeBackendMode: "connected",
         openragStatus: READY_KNOWLEDGE_STATUS.openrag,
         astraToken: "token",
@@ -278,6 +329,10 @@ describe("ConnectionDialog helpers", () => {
         selectedBackend: "astra",
         loading: false,
         currentBackendStatus: makeBackendStatuses().astra,
+        astraConfigMode: "credentials",
+        astraCliStatus: null,
+        astraCliProfile: "",
+        astraCliDatabase: "",
         knowledgeBackendMode: "connected",
         openragStatus: READY_KNOWLEDGE_STATUS.openrag,
         astraToken: "token",
@@ -298,6 +353,10 @@ describe("ConnectionDialog helpers", () => {
           hasEndpoint: true,
           hasToken: true,
         },
+        astraConfigMode: "credentials",
+        astraCliStatus: null,
+        astraCliProfile: "",
+        astraCliDatabase: "",
         knowledgeBackendMode: "connected",
         openragStatus: READY_KNOWLEDGE_STATUS.openrag,
         astraToken: "",
@@ -314,6 +373,10 @@ describe("ConnectionDialog helpers", () => {
         selectedBackend: "hcd",
         loading: false,
         currentBackendStatus: makeBackendStatuses().hcd,
+        astraConfigMode: "credentials",
+        astraCliStatus: null,
+        astraCliProfile: "",
+        astraCliDatabase: "",
         knowledgeBackendMode: "connected",
         openragStatus: READY_KNOWLEDGE_STATUS.openrag,
         astraToken: "",
@@ -335,6 +398,10 @@ describe("ConnectionDialog helpers", () => {
           hasUsername: true,
           hasPassword: true,
         },
+        astraConfigMode: "credentials",
+        astraCliStatus: null,
+        astraCliProfile: "",
+        astraCliDatabase: "",
         knowledgeBackendMode: "connected",
         openragStatus: READY_KNOWLEDGE_STATUS.openrag,
         astraToken: "",
@@ -351,6 +418,10 @@ describe("ConnectionDialog helpers", () => {
         selectedBackend: "hcd",
         loading: false,
         currentBackendStatus: makeBackendStatuses().hcd,
+        astraConfigMode: "credentials",
+        astraCliStatus: null,
+        astraCliProfile: "",
+        astraCliDatabase: "",
         knowledgeBackendMode: "connected",
         openragStatus: READY_KNOWLEDGE_STATUS.openrag,
         astraToken: "",
@@ -367,6 +438,10 @@ describe("ConnectionDialog helpers", () => {
         selectedBackend: "astra",
         loading: false,
         currentBackendStatus: makeBackendStatuses().astra,
+        astraConfigMode: "credentials",
+        astraCliStatus: null,
+        astraCliProfile: "",
+        astraCliDatabase: "",
         knowledgeBackendMode: "openrag",
         openragStatus: READY_KNOWLEDGE_STATUS.openrag,
         astraToken: "token",
@@ -383,6 +458,10 @@ describe("ConnectionDialog helpers", () => {
         selectedBackend: "astra",
         loading: false,
         currentBackendStatus: makeBackendStatuses().astra,
+        astraConfigMode: "credentials",
+        astraCliStatus: null,
+        astraCliProfile: "",
+        astraCliDatabase: "",
         knowledgeBackendMode: "openrag",
         openragStatus: {
           ...READY_KNOWLEDGE_STATUS.openrag,
@@ -390,6 +469,32 @@ describe("ConnectionDialog helpers", () => {
         },
         astraToken: "token",
         astraEndpoint: "endpoint",
+        hcdEndpoint: "",
+        hcdUsername: "",
+        hcdPassword: "",
+        openragApiKey: "",
+      })
+    ).toBe(true);
+
+    expect(
+      canConnectToBackend({
+        selectedBackend: "astra",
+        loading: false,
+        currentBackendStatus: makeBackendStatuses().astra,
+        astraConfigMode: "astra-cli",
+        astraCliStatus: {
+          available: true,
+          configured: true,
+          profiles: [{ name: "default", isDefault: true }],
+          selectedProfile: "default",
+          databases: [],
+        },
+        astraCliProfile: "",
+        astraCliDatabase: "db-123",
+        knowledgeBackendMode: "connected",
+        openragStatus: READY_KNOWLEDGE_STATUS.openrag,
+        astraToken: "",
+        astraEndpoint: "",
         hcdEndpoint: "",
         hcdUsername: "",
         hcdPassword: "",
@@ -456,6 +561,59 @@ describe("ConnectionDialog", () => {
       } satisfies BackendConnectionState);
     });
     expect(props.onClose).toHaveBeenCalled();
+  });
+
+  it("connects with an Astra CLI-backed config when the local CLI is available", async () => {
+    mockAiStatus(READY_AI_STATUS, undefined, {
+      dataApiConfig: {
+        astraCli: {
+          available: true,
+          configured: true,
+          profiles: [{ name: "default", isDefault: true }],
+          selectedProfile: "default",
+          databases: [
+            {
+              id: "db-123",
+              name: "orders",
+              endpoint: "https://db-id.apps.astra.datastax.com",
+              keyspace: "default_keyspace",
+              region: "us-east-2",
+              status: "ACTIVE",
+            },
+          ],
+        },
+      },
+    });
+    const props = renderDialog();
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/data-api-config");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Astra CLI Reuse a local CLI profile/i }));
+
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId("astra-cli-profile-select") as HTMLSelectElement).value
+      ).toBe("default");
+    });
+
+    fireEvent.change(screen.getByTestId("astra-cli-database-select"), {
+      target: { value: "db-123" },
+    });
+
+    fireEvent.click(screen.getByTestId("backend-connect-submit"));
+
+    await waitFor(() => {
+      expect(props.onConnect).toHaveBeenCalledWith({
+        backend: "astra",
+        token: "",
+        endpoint: "",
+        fromAstraCli: true,
+        astraCliProfile: "default",
+        astraCliDatabase: "db-123",
+      } satisfies BackendConnectionState);
+    });
   });
 
   it("trims manual Astra and Hugging Face credentials before connecting", async () => {

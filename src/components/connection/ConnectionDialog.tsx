@@ -1,17 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ChangeEvent,
+} from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
   CheckCircle2,
   Cpu,
+  Download,
   Eye,
   EyeOff,
   KeyRound,
   Loader2,
   Plug,
   PlugZap,
+  Upload,
   UserRound,
   X,
 } from "lucide-react";
@@ -24,7 +33,14 @@ import {
   getBackendConnectionLabel,
   getBackendDisplayName,
 } from "@/lib/backends/types";
+import type { AstraCliStatus } from "@/lib/astraCli";
 import type { AiStatus } from "@/lib/ai/types";
+import {
+  DEFAULT_PORTABLE_CONFIG_FILENAME,
+  parsePortablePlaygroundConfig,
+  stringifyPortablePlaygroundConfig,
+  type AstraConfigMode,
+} from "@/lib/config/portableConfig";
 import type {
   KnowledgeBackendMode,
   KnowledgeBackendStatuses,
@@ -54,12 +70,37 @@ interface ConnectionDialogProps {
   error?: string;
 }
 
+interface DataApiConfigResponse {
+  astraCli: AstraCliStatus;
+}
+
+function getAstraConfigMode(connection: BackendConnectionState | null) {
+  return connection?.backend === "astra" && connection.fromAstraCli
+    ? ("astra-cli" as const)
+    : ("credentials" as const);
+}
+
+function readFileText(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(new Error("Failed to read config file."));
+    reader.readAsText(file);
+  });
+}
+
 export function getBackendSummary(connection: BackendConnectionState | null) {
   if (!connection) {
     return "Managed by server environment";
   }
 
   if (connection.backend === "astra") {
+    if (connection.fromAstraCli) {
+      const database = connection.astraCliDatabase || "selected database";
+      const profile = connection.astraCliProfile ? ` · ${connection.astraCliProfile}` : "";
+      return `Astra CLI · ${database}${profile}`;
+    }
+
     return connection.token
       ? `${connection.token.slice(0, 8)}••••••••••••••••${connection.token.slice(-4)}`
       : "Managed by server environment";
@@ -74,6 +115,10 @@ export function canConnectToBackend({
   selectedBackend,
   loading,
   currentBackendStatus,
+  astraConfigMode,
+  astraCliStatus,
+  astraCliProfile,
+  astraCliDatabase,
   knowledgeBackendMode = "connected",
   openragStatus,
   astraToken,
@@ -90,6 +135,10 @@ export function canConnectToBackend({
     | BackendStatuses["hcd"]
     | null
     | undefined;
+  astraConfigMode: AstraConfigMode;
+  astraCliStatus: AstraCliStatus | null;
+  astraCliProfile: string;
+  astraCliDatabase: string;
   knowledgeBackendMode: KnowledgeBackendMode;
   openragStatus: KnowledgeBackendStatuses["openrag"] | null | undefined;
   astraToken: string;
@@ -112,6 +161,17 @@ export function canConnectToBackend({
   }
 
   if (selectedBackend === "astra") {
+    if (astraConfigMode === "astra-cli") {
+      const effectiveProfile =
+        astraCliProfile.trim() || astraCliStatus?.selectedProfile || "";
+      return Boolean(
+        astraCliStatus?.available &&
+        astraCliStatus?.configured &&
+        effectiveProfile &&
+        astraCliDatabase.trim()
+      );
+    }
+
     return (
       (Boolean(astraToken.trim()) || Boolean(currentBackendStatus?.hasToken)) &&
       (Boolean(astraEndpoint.trim()) || Boolean(currentBackendStatus?.hasEndpoint))
@@ -317,8 +377,13 @@ export function ConnectionDialog({
     useState<ConnectionDialogSection>(
       knowledgeBackendMode === "openrag" ? "knowledge" : "data"
     );
+  const [astraConfigMode, setAstraConfigMode] = useState<AstraConfigMode>(
+    getAstraConfigMode(currentConnection)
+  );
   const [astraToken, setAstraToken] = useState("");
   const [astraEndpoint, setAstraEndpoint] = useState("");
+  const [astraCliProfile, setAstraCliProfile] = useState("");
+  const [astraCliDatabase, setAstraCliDatabase] = useState("");
   const [hcdEndpoint, setHcdEndpoint] = useState("");
   const [hcdUsername, setHcdUsername] = useState("");
   const [hcdPassword, setHcdPassword] = useState("");
@@ -334,6 +399,13 @@ export function ConnectionDialog({
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   const [knowledgeStatuses, setKnowledgeStatuses] =
     useState<KnowledgeBackendStatuses | null>(null);
+  const [dataApiConfigStatus, setDataApiConfigStatus] =
+    useState<DataApiConfigResponse | null>(null);
+  const [configNotice, setConfigNotice] = useState("");
+  const [configNoticeTone, setConfigNoticeTone] = useState<"error" | "success">(
+    "success"
+  );
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -343,13 +415,18 @@ export function ConnectionDialog({
     setDraftSelectedBackend(selectedBackend);
     setDraftKnowledgeBackendMode(knowledgeBackendMode);
     setActiveSection(knowledgeBackendMode === "openrag" ? "knowledge" : "data");
+    setAstraConfigMode(getAstraConfigMode(currentConnection));
 
     if (currentConnection?.backend === "astra") {
       setAstraToken(currentConnection.token);
       setAstraEndpoint(currentConnection.endpoint);
+      setAstraCliProfile(currentConnection.astraCliProfile ?? "");
+      setAstraCliDatabase(currentConnection.astraCliDatabase ?? "");
     } else {
       setAstraToken("");
       setAstraEndpoint("");
+      setAstraCliProfile("");
+      setAstraCliDatabase("");
     }
 
     if (currentConnection?.backend === "hcd") {
@@ -374,12 +451,25 @@ export function ConnectionDialog({
     setShowSecret(false);
     setShowOpenragApiKey(false);
     setShowHuggingfaceApiKey(false);
+    setConfigNotice("");
 
     void fetch("/api/ai-status")
       .then((response) => response.json() as Promise<AiStatus>)
       .then((status) => setAiStatus(status))
       .catch(() => {
         setAiStatus(null);
+      });
+    void fetch(
+      currentConnection?.backend === "astra" && currentConnection.astraCliProfile
+        ? `/api/data-api-config?profile=${encodeURIComponent(
+            currentConnection.astraCliProfile
+          )}`
+        : "/api/data-api-config"
+    )
+      .then((response) => response.json() as Promise<DataApiConfigResponse>)
+      .then((status) => setDataApiConfigStatus(status))
+      .catch(() => {
+        setDataApiConfigStatus(null);
       });
     void fetch("/api/knowledge-backend-status")
       .then((response) => response.json() as Promise<KnowledgeBackendStatuses>)
@@ -396,8 +486,59 @@ export function ConnectionDialog({
     selectedBackend,
   ]);
 
+  useEffect(() => {
+    if (
+      !open ||
+      draftSelectedBackend !== "astra" ||
+      astraConfigMode !== "astra-cli" ||
+      !astraCliProfile.trim()
+    ) {
+      return;
+    }
+
+    void fetch(`/api/data-api-config?profile=${encodeURIComponent(astraCliProfile.trim())}`)
+      .then((response) => response.json() as Promise<DataApiConfigResponse>)
+      .then((status) => setDataApiConfigStatus(status))
+      .catch(() => {
+        setDataApiConfigStatus(null);
+      });
+  }, [astraCliProfile, astraConfigMode, draftSelectedBackend, open]);
+
+  useEffect(() => {
+    if (!open || draftSelectedBackend !== "astra") {
+      return;
+    }
+
+    const selectedProfile = dataApiConfigStatus?.astraCli.selectedProfile ?? "";
+    if (!astraCliProfile && selectedProfile) {
+      setAstraCliProfile(selectedProfile);
+    }
+
+    const databases = dataApiConfigStatus?.astraCli.databases ?? [];
+    if (
+      astraCliDatabase &&
+      !databases.some((database) => database.id === astraCliDatabase)
+    ) {
+      setAstraCliDatabase("");
+    }
+
+    if (!astraCliDatabase && databases.length === 1) {
+      setAstraCliDatabase(databases[0].id);
+    }
+  }, [
+    astraCliDatabase,
+    astraCliProfile,
+    dataApiConfigStatus,
+    draftSelectedBackend,
+    open,
+  ]);
+
   const currentBackendStatus =
     draftSelectedBackend === "hcd" ? backendStatuses?.hcd : backendStatuses?.astra;
+  const astraCliStatus = dataApiConfigStatus?.astraCli ?? null;
+  const astraCliDatabases = astraCliStatus?.databases ?? [];
+  const selectedAstraCliDatabase =
+    astraCliDatabases.find((database) => database.id === astraCliDatabase) ?? null;
   const trimmedHuggingFaceKey = huggingfaceApiKey.trim();
   const trimmedOpenragApiKey = openragApiKey.trim();
   const trimmedOpenragBaseUrl = openragBaseUrl.trim();
@@ -407,6 +548,10 @@ export function ConnectionDialog({
       selectedBackend: draftSelectedBackend,
       loading,
       currentBackendStatus,
+      astraConfigMode,
+      astraCliStatus: dataApiConfigStatus?.astraCli ?? null,
+      astraCliProfile,
+      astraCliDatabase,
       knowledgeBackendMode: draftKnowledgeBackendMode,
       openragStatus: knowledgeStatuses?.openrag,
       astraToken,
@@ -417,9 +562,13 @@ export function ConnectionDialog({
       openragApiKey,
     });
   }, [
+    astraCliDatabase,
+    astraCliProfile,
+    astraConfigMode,
     astraEndpoint,
     astraToken,
     currentBackendStatus,
+    dataApiConfigStatus?.astraCli,
     hcdEndpoint,
     hcdPassword,
     hcdUsername,
@@ -466,13 +615,100 @@ export function ConnectionDialog({
     fontFamily: "IBM Plex Mono, monospace",
   };
 
+  const setConfigFeedback = (message: string, tone: "error" | "success") => {
+    setConfigNotice(message);
+    setConfigNoticeTone(tone);
+  };
+
+  const handleConfigExport = () => {
+    try {
+      const yaml = stringifyPortablePlaygroundConfig({
+        selectedBackend: draftSelectedBackend,
+        astraConfigMode,
+        astraToken,
+        astraEndpoint,
+        astraCliProfile,
+        astraCliDatabase,
+        hcdEndpoint,
+        hcdUsername,
+        hcdPassword,
+        knowledgeBackendMode: draftKnowledgeBackendMode,
+        openragApiKey,
+        openragBaseUrl,
+        huggingfaceApiKey,
+        hasOpenragEnvApiKey: Boolean(knowledgeStatuses?.openrag?.hasApiKey),
+        hasOpenragEnvBaseUrl: Boolean(knowledgeStatuses?.openrag?.hasBaseUrl),
+        hasHuggingFaceEnvKey: Boolean(aiStatus?.hasHuggingFaceEnvKey),
+      });
+      const blob = new Blob([yaml], { type: "application/yaml;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = DEFAULT_PORTABLE_CONFIG_FILENAME;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+      setConfigFeedback("Config exported.", "success");
+    } catch (error) {
+      setConfigFeedback(
+        error instanceof Error ? error.message : "Config export failed.",
+        "error"
+      );
+    }
+  };
+
+  const handleConfigImportClick = () => {
+    importInputRef.current?.click();
+  };
+
+  const handleConfigImport = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const parsed = parsePortablePlaygroundConfig(await readFileText(file));
+      setDraftSelectedBackend(parsed.selectedBackend);
+      setAstraConfigMode(parsed.astraConfigMode);
+      setAstraToken(parsed.astraToken);
+      setAstraEndpoint(parsed.astraEndpoint);
+      setAstraCliProfile(parsed.astraCliProfile);
+      setAstraCliDatabase(parsed.astraCliDatabase);
+      setHcdEndpoint(parsed.hcdEndpoint);
+      setHcdUsername(parsed.hcdUsername);
+      setHcdPassword(parsed.hcdPassword);
+      setDraftKnowledgeBackendMode(parsed.knowledgeBackendMode);
+      setOpenragApiKey(parsed.openragApiKey);
+      setOpenragBaseUrl(parsed.openragBaseUrl);
+      setHuggingfaceApiKey(parsed.huggingfaceApiKey);
+      setActiveSection("data");
+      setConfigFeedback("Config imported. Review it, then connect.", "success");
+    } catch (error) {
+      setConfigFeedback(
+        error instanceof Error ? error.message : "Config import failed.",
+        "error"
+      );
+    } finally {
+      event.target.value = "";
+    }
+  };
+
   const resetDraftState = () => {
     setDraftSelectedBackend(selectedBackend);
     setDraftKnowledgeBackendMode(knowledgeBackendMode);
     setActiveSection(knowledgeBackendMode === "openrag" ? "knowledge" : "data");
+    setAstraConfigMode(getAstraConfigMode(currentConnection));
     setAstraToken(currentConnection?.backend === "astra" ? currentConnection.token : "");
     setAstraEndpoint(
       currentConnection?.backend === "astra" ? currentConnection.endpoint : ""
+    );
+    setAstraCliProfile(
+      currentConnection?.backend === "astra" ? (currentConnection.astraCliProfile ?? "") : ""
+    );
+    setAstraCliDatabase(
+      currentConnection?.backend === "astra" ? (currentConnection.astraCliDatabase ?? "") : ""
     );
     setHcdEndpoint(currentConnection?.backend === "hcd" ? currentConnection.endpoint : "");
     setHcdUsername(currentConnection?.backend === "hcd" ? currentConnection.username : "");
@@ -485,6 +721,7 @@ export function ConnectionDialog({
     setShowSecret(false);
     setShowOpenragApiKey(false);
     setShowHuggingfaceApiKey(false);
+    setConfigNotice("");
   };
 
   const handleDialogClose = () => {
@@ -499,15 +736,28 @@ export function ConnectionDialog({
 
     setLoading(true);
     try {
+      setConfigNotice("");
       onHuggingfaceApiKeyChange(trimmedHuggingFaceKey);
       const connection =
         draftSelectedBackend === "astra"
-          ? {
-              backend: "astra" as const,
-              token: astraToken.trim(),
-              endpoint: astraEndpoint.trim(),
-              fromEnv: !astraToken.trim() && !astraEndpoint.trim(),
-            }
+          ? astraConfigMode === "astra-cli"
+            ? {
+                backend: "astra" as const,
+                token: "",
+                endpoint: "",
+                fromAstraCli: true,
+                astraCliProfile:
+                  astraCliProfile.trim() ||
+                  dataApiConfigStatus?.astraCli.selectedProfile ||
+                  undefined,
+                astraCliDatabase: astraCliDatabase.trim(),
+              }
+            : {
+                backend: "astra" as const,
+                token: astraToken.trim(),
+                endpoint: astraEndpoint.trim(),
+                fromEnv: !astraToken.trim() && !astraEndpoint.trim(),
+              }
           : {
               backend: "hcd" as const,
               endpoint: hcdEndpoint.trim(),
@@ -540,7 +790,7 @@ export function ConnectionDialog({
   };
 
   const secretLabel =
-    draftSelectedBackend === "hcd" ? "HCD Password" : "Astra DB Application Token";
+    draftSelectedBackend === "hcd" ? "HCD Password" : "Data API Application Token";
   const secretValue = draftSelectedBackend === "hcd" ? hcdPassword : astraToken;
   const setSecretValue =
     draftSelectedBackend === "hcd" ? setHcdPassword : setAstraToken;
@@ -553,7 +803,7 @@ export function ConnectionDialog({
   const endpointTestId =
     draftSelectedBackend === "hcd" ? "hcd-endpoint-input" : "astra-endpoint-input";
   const endpointLabel =
-    draftSelectedBackend === "hcd" ? "HCD Endpoint" : "Astra DB API Endpoint";
+    draftSelectedBackend === "hcd" ? "HCD Endpoint" : "Data API Endpoint";
   const knowledgeBackendLabel =
     draftKnowledgeBackendMode === "openrag"
       ? "OpenRAG"
@@ -711,6 +961,14 @@ export function ConnectionDialog({
               <div className="flex-1 overflow-y-auto px-5 py-5">
                 {activeSection === "data" ? (
                   <div className="flex flex-col gap-4">
+                    <input
+                      ref={importInputRef}
+                      type="file"
+                      accept=".yaml,.yml,.json,text/yaml,application/yaml,application/json"
+                      onChange={(event) => void handleConfigImport(event)}
+                      className="hidden"
+                    />
+
                     <div>
                       <label style={labelStyle}>Data Backend</label>
                       <p
@@ -720,6 +978,58 @@ export function ConnectionDialog({
                         Collections, raw browsing, and the API explorer stay on the connected Data API backend.
                       </p>
                     </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleConfigImportClick}
+                        className="rounded-lg px-3 py-2 text-[12px] font-medium flex items-center gap-2"
+                        style={{
+                          color: "var(--text-primary)",
+                          backgroundColor: "var(--bg-card)",
+                          border: "1px solid var(--border-subtle)",
+                        }}
+                      >
+                        <Upload size={13} />
+                        Import config
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfigExport}
+                        className="rounded-lg px-3 py-2 text-[12px] font-medium flex items-center gap-2"
+                        style={{
+                          color: "var(--text-primary)",
+                          backgroundColor: "var(--bg-card)",
+                          border: "1px solid var(--border-subtle)",
+                        }}
+                      >
+                        <Download size={13} />
+                        Export config
+                      </button>
+                    </div>
+
+                    {configNotice ? (
+                      <div
+                        className="rounded-lg px-3 py-2 text-[12px]"
+                        style={{
+                          color:
+                            configNoticeTone === "error"
+                              ? "#fecaca"
+                              : "var(--text-primary)",
+                          backgroundColor:
+                            configNoticeTone === "error"
+                              ? "rgba(239,68,68,0.08)"
+                              : "rgba(59,130,246,0.08)",
+                          border: `1px solid ${
+                            configNoticeTone === "error"
+                              ? "rgba(239,68,68,0.2)"
+                              : "rgba(59,130,246,0.2)"
+                          }`,
+                        }}
+                      >
+                        {configNotice}
+                      </div>
+                    ) : null}
 
                     <div className="grid grid-cols-2 gap-2">
                       {(["astra", "hcd"] as const).map((backend) => {
@@ -799,131 +1109,303 @@ export function ConnectionDialog({
                       </div>
                     )}
 
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label style={{ ...labelStyle, marginBottom: 0 }}>
-                          {endpointLabel}
-                        </label>
-                        {currentBackendStatus?.hasEndpoint && !endpointValue && (
-                          <span
-                            className="flex items-center gap-1 text-[10px]"
-                            style={{ color: "#22c55e" }}
-                          >
-                            <CheckCircle2 size={10} /> Set via environment
-                          </span>
-                        )}
-                      </div>
-                      <input
-                        type="text"
-                        value={endpointValue}
-                        onChange={(event) => setEndpointValue(event.target.value)}
-                        data-testid={endpointTestId}
-                        placeholder={
-                          draftSelectedBackend === "hcd"
-                            ? "https://my-hcd-host:8181"
-                            : "https://xxxx-xxxx.apps.astra.datastax.com"
-                        }
-                        style={inputStyle}
-                        autoComplete="off"
-                        spellCheck={false}
-                      />
-                    </div>
-
-                    {draftSelectedBackend === "hcd" && (
+                    {draftSelectedBackend === "astra" &&
+                    astraCliStatus?.available &&
+                    astraCliStatus.configured ? (
                       <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <label style={{ ...labelStyle, marginBottom: 0 }}>
-                            HCD Username
-                          </label>
-                          {currentBackendStatus?.hasUsername && !hcdUsername && (
-                            <span
-                              className="flex items-center gap-1 text-[10px]"
-                              style={{ color: "#22c55e" }}
-                            >
-                              <CheckCircle2 size={10} /> Set via environment
-                            </span>
-                          )}
+                        <label style={labelStyle}>Data API Config Source</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {([
+                            {
+                              key: "credentials" as const,
+                              label: "Credentials",
+                              description: "Manual or environment-backed",
+                            },
+                            {
+                              key: "astra-cli" as const,
+                              label: "Astra CLI",
+                              description: "Reuse a local CLI profile",
+                            },
+                          ]).map((option) => {
+                            const active = astraConfigMode === option.key;
+                            return (
+                              <button
+                                key={option.key}
+                                type="button"
+                                onClick={() => setAstraConfigMode(option.key)}
+                                className="rounded-xl px-3 py-2.5 text-left"
+                                style={{
+                                  backgroundColor: active
+                                    ? "var(--interactive-light)"
+                                    : "var(--bg-card)",
+                                  border: `1px solid ${
+                                    active
+                                      ? "var(--interactive-border)"
+                                      : "var(--border-subtle)"
+                                  }`,
+                                }}
+                              >
+                                <div
+                                  className="text-[10px] uppercase tracking-widest font-semibold"
+                                  style={{
+                                    color: active
+                                      ? "var(--interactive)"
+                                      : "var(--text-muted)",
+                                  }}
+                                >
+                                  {option.label}
+                                </div>
+                                <div
+                                  className="text-sm font-semibold mt-1"
+                                  style={{ color: "var(--text-primary)" }}
+                                >
+                                  {option.description}
+                                </div>
+                              </button>
+                            );
+                          })}
                         </div>
-                        <div className="relative">
+                      </div>
+                    ) : null}
+
+                    {draftSelectedBackend === "astra" && astraConfigMode === "astra-cli" ? (
+                      <div className="flex flex-col gap-4">
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label style={{ ...labelStyle, marginBottom: 0 }}>
+                              Astra CLI Profile
+                            </label>
+                            {astraCliStatus?.selectedProfile ? (
+                              <span
+                                className="text-[10px]"
+                                style={{ color: "var(--text-muted)" }}
+                              >
+                                Default: {astraCliStatus.selectedProfile}
+                              </span>
+                            ) : null}
+                          </div>
+                          <select
+                            value={astraCliProfile}
+                            onChange={(event) => setAstraCliProfile(event.target.value)}
+                            data-testid="astra-cli-profile-select"
+                            style={inputStyle}
+                          >
+                            <option value="">Choose a profile…</option>
+                            {astraCliStatus?.profiles.map((profile) => (
+                              <option key={profile.name} value={profile.name}>
+                                {profile.name}
+                                {profile.isDefault ? " (default)" : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label style={{ ...labelStyle, marginBottom: 0 }}>
+                              Astra CLI Database
+                            </label>
+                            {selectedAstraCliDatabase?.region ? (
+                              <span
+                                className="text-[10px]"
+                                style={{ color: "var(--text-muted)" }}
+                              >
+                                {selectedAstraCliDatabase.region}
+                              </span>
+                            ) : null}
+                          </div>
+                          <select
+                            value={astraCliDatabase}
+                            onChange={(event) => setAstraCliDatabase(event.target.value)}
+                            data-testid="astra-cli-database-select"
+                            style={inputStyle}
+                          >
+                            <option value="">Choose a database…</option>
+                            {astraCliDatabases.map((database) => (
+                              <option key={database.id} value={database.id}>
+                                {database.name}
+                              </option>
+                            ))}
+                          </select>
+                          <p
+                            className="text-[11px] mt-1.5"
+                            style={{ color: "var(--text-muted)" }}
+                          >
+                            The app resolves the token and endpoint from your local
+                            `astra` setup only when this mode is selected.
+                          </p>
+                        </div>
+
+                        {selectedAstraCliDatabase ? (
+                          <div
+                            className="rounded-xl px-3 py-2.5"
+                            style={{
+                              backgroundColor: "var(--bg-card)",
+                              border: "1px solid var(--border-subtle)",
+                            }}
+                          >
+                            <div
+                              className="text-[10px] uppercase tracking-widest font-semibold"
+                              style={{ color: "var(--text-muted)" }}
+                            >
+                              Resolved Endpoint
+                            </div>
+                            <div
+                              className="text-[12px] mt-1"
+                              style={{
+                                color: "var(--text-primary)",
+                                fontFamily: "IBM Plex Mono, monospace",
+                                overflowWrap: "anywhere",
+                              }}
+                            >
+                              {selectedAstraCliDatabase.endpoint}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {astraCliStatus?.error ? (
+                          <div
+                            className="rounded-lg px-3 py-2 text-[12px]"
+                            style={{
+                              color: "#fecaca",
+                              backgroundColor: "rgba(239,68,68,0.08)",
+                              border: "1px solid rgba(239,68,68,0.2)",
+                            }}
+                          >
+                            {astraCliStatus.error}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <>
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label style={{ ...labelStyle, marginBottom: 0 }}>
+                              {endpointLabel}
+                            </label>
+                            {currentBackendStatus?.hasEndpoint && !endpointValue && (
+                              <span
+                                className="flex items-center gap-1 text-[10px]"
+                                style={{ color: "#22c55e" }}
+                              >
+                                <CheckCircle2 size={10} /> Set via environment
+                              </span>
+                            )}
+                          </div>
                           <input
                             type="text"
-                            value={hcdUsername}
-                            onChange={(event) => setHcdUsername(event.target.value)}
-                            data-testid="hcd-username-input"
-                            placeholder="cassandra"
-                            style={{ ...inputStyle, paddingLeft: "36px" }}
+                            value={endpointValue}
+                            onChange={(event) => setEndpointValue(event.target.value)}
+                            data-testid={endpointTestId}
+                            placeholder={
+                              draftSelectedBackend === "hcd"
+                                ? "https://my-hcd-host:8181"
+                                : "https://xxxx-xxxx.apps.astra.datastax.com"
+                            }
+                            style={inputStyle}
                             autoComplete="off"
                             spellCheck={false}
                           />
-                          <UserRound
-                            size={14}
-                            className="absolute left-3 top-1/2 -translate-y-1/2"
-                            style={{ color: "var(--text-muted)" }}
-                          />
                         </div>
-                      </div>
-                    )}
 
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label style={{ ...labelStyle, marginBottom: 0 }}>
-                          {secretLabel}
-                        </label>
-                        {draftSelectedBackend === "astra" &&
-                        currentBackendStatus?.hasToken &&
-                        !astraToken ? (
-                          <span
-                            className="flex items-center gap-1 text-[10px]"
-                            style={{ color: "#22c55e" }}
+                        {draftSelectedBackend === "hcd" && (
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <label style={{ ...labelStyle, marginBottom: 0 }}>
+                                HCD Username
+                              </label>
+                              {currentBackendStatus?.hasUsername && !hcdUsername && (
+                                <span
+                                  className="flex items-center gap-1 text-[10px]"
+                                  style={{ color: "#22c55e" }}
+                                >
+                                  <CheckCircle2 size={10} /> Set via environment
+                                </span>
+                              )}
+                            </div>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                value={hcdUsername}
+                                onChange={(event) => setHcdUsername(event.target.value)}
+                                data-testid="hcd-username-input"
+                                placeholder="cassandra"
+                                style={{ ...inputStyle, paddingLeft: "36px" }}
+                                autoComplete="off"
+                                spellCheck={false}
+                              />
+                              <UserRound
+                                size={14}
+                                className="absolute left-3 top-1/2 -translate-y-1/2"
+                                style={{ color: "var(--text-muted)" }}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label style={{ ...labelStyle, marginBottom: 0 }}>
+                              {secretLabel}
+                            </label>
+                            {draftSelectedBackend === "astra" &&
+                            currentBackendStatus?.hasToken &&
+                            !astraToken ? (
+                              <span
+                                className="flex items-center gap-1 text-[10px]"
+                                style={{ color: "#22c55e" }}
+                              >
+                                <CheckCircle2 size={10} /> Set via environment
+                              </span>
+                            ) : null}
+                            {draftSelectedBackend === "hcd" &&
+                            currentBackendStatus?.hasPassword &&
+                            !hcdPassword ? (
+                              <span
+                                className="flex items-center gap-1 text-[10px]"
+                                style={{ color: "#22c55e" }}
+                              >
+                                <CheckCircle2 size={10} /> Set via environment
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="relative">
+                            <input
+                              type={showSecret ? "text" : "password"}
+                              value={secretValue}
+                              onChange={(event) => setSecretValue(event.target.value)}
+                              data-testid={secretTestId}
+                              placeholder={
+                                draftSelectedBackend === "hcd"
+                                  ? "••••••••"
+                                  : "AstraCS:••••••••••••"
+                              }
+                              style={{ ...inputStyle, paddingRight: "40px" }}
+                              autoComplete="off"
+                              data-1p-ignore
+                              data-lpignore="true"
+                              data-bwignore="true"
+                              spellCheck={false}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowSecret((value) => !value)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2"
+                              style={{ color: "var(--text-muted)" }}
+                            >
+                              {showSecret ? <EyeOff size={14} /> : <Eye size={14} />}
+                            </button>
+                          </div>
+                          <p
+                            className="text-[11px] mt-1.5"
+                            style={{ color: "var(--text-muted)" }}
                           >
-                            <CheckCircle2 size={10} /> Set via environment
-                          </span>
-                        ) : null}
-                        {draftSelectedBackend === "hcd" &&
-                        currentBackendStatus?.hasPassword &&
-                        !hcdPassword ? (
-                          <span
-                            className="flex items-center gap-1 text-[10px]"
-                            style={{ color: "#22c55e" }}
-                          >
-                            <CheckCircle2 size={10} /> Set via environment
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="relative">
-                        <input
-                          type={showSecret ? "text" : "password"}
-                          value={secretValue}
-                          onChange={(event) => setSecretValue(event.target.value)}
-                          data-testid={secretTestId}
-                          placeholder={
-                            draftSelectedBackend === "hcd"
-                              ? "••••••••"
-                              : "AstraCS:••••••••••••"
-                          }
-                          style={{ ...inputStyle, paddingRight: "40px" }}
-                          autoComplete="off"
-                          data-1p-ignore
-                          data-lpignore="true"
-                          data-bwignore="true"
-                          spellCheck={false}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowSecret((value) => !value)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2"
-                          style={{ color: "var(--text-muted)" }}
-                        >
-                          {showSecret ? <EyeOff size={14} /> : <Eye size={14} />}
-                        </button>
-                      </div>
-                      <p
-                        className="text-[11px] mt-1.5"
-                        style={{ color: "var(--text-muted)" }}
-                      >
-                        Stored in session memory only. Leave blank to use environment-backed credentials when available.
-                      </p>
-                    </div>
+                            Stored in session memory only. Leave blank to use
+                            environment-backed credentials when available.
+                          </p>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ) : activeSection === "knowledge" ? (
                   <div className="flex flex-col gap-4">
