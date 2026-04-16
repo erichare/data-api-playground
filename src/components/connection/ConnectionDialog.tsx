@@ -33,7 +33,7 @@ import type {
 
 export type { AiStatus } from "@/lib/ai/types";
 
-type ConnectionDialogSection = "data" | "knowledge" | "ai";
+type ConnectionDialogSection = "connection" | "ai";
 
 interface ConnectionDialogProps {
   open: boolean;
@@ -314,9 +314,7 @@ export function ConnectionDialog({
   const [draftKnowledgeBackendMode, setDraftKnowledgeBackendMode] =
     useState<KnowledgeBackendMode>(knowledgeBackendMode);
   const [activeSection, setActiveSection] =
-    useState<ConnectionDialogSection>(
-      knowledgeBackendMode === "openrag" ? "knowledge" : "data"
-    );
+    useState<ConnectionDialogSection>("connection");
   const [astraToken, setAstraToken] = useState("");
   const [astraEndpoint, setAstraEndpoint] = useState("");
   const [hcdEndpoint, setHcdEndpoint] = useState("");
@@ -342,7 +340,7 @@ export function ConnectionDialog({
 
     setDraftSelectedBackend(selectedBackend);
     setDraftKnowledgeBackendMode(knowledgeBackendMode);
-    setActiveSection(knowledgeBackendMode === "openrag" ? "knowledge" : "data");
+    setActiveSection("connection");
 
     if (currentConnection?.backend === "astra") {
       setAstraToken(currentConnection.token);
@@ -469,7 +467,7 @@ export function ConnectionDialog({
   const resetDraftState = () => {
     setDraftSelectedBackend(selectedBackend);
     setDraftKnowledgeBackendMode(knowledgeBackendMode);
-    setActiveSection(knowledgeBackendMode === "openrag" ? "knowledge" : "data");
+    setActiveSection("connection");
     setAstraToken(currentConnection?.backend === "astra" ? currentConnection.token : "");
     setAstraEndpoint(
       currentConnection?.backend === "astra" ? currentConnection.endpoint : ""
@@ -554,7 +552,7 @@ export function ConnectionDialog({
     draftSelectedBackend === "hcd" ? "hcd-endpoint-input" : "astra-endpoint-input";
   const endpointLabel =
     draftSelectedBackend === "hcd" ? "HCD Endpoint" : "Astra DB API Endpoint";
-  const knowledgeBackendLabel =
+  const connectionTabLabel =
     draftKnowledgeBackendMode === "openrag"
       ? "OpenRAG"
       : getBackendDisplayName(draftSelectedBackend);
@@ -648,17 +646,12 @@ export function ConnectionDialog({
                 className="px-5 pt-4 pb-3 border-b shrink-0"
                 style={{ borderColor: "var(--border-subtle)" }}
               >
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {([
                     {
-                      key: "data" as const,
-                      label: "Data",
-                      description: getBackendDisplayName(draftSelectedBackend),
-                    },
-                    {
-                      key: "knowledge" as const,
-                      label: "Knowledge",
-                      description: knowledgeBackendLabel,
+                      key: "connection" as const,
+                      label: "Connection",
+                      description: connectionTabLabel,
                     },
                     {
                       key: "ai" as const,
@@ -709,15 +702,15 @@ export function ConnectionDialog({
               </div>
 
               <div className="flex-1 overflow-y-auto px-5 py-5">
-                {activeSection === "data" ? (
+                {activeSection === "connection" ? (
                   <div className="flex flex-col gap-4">
                     <div>
-                      <label style={labelStyle}>Data Backend</label>
+                      <label style={labelStyle}>Data API Backend</label>
                       <p
                         className="text-[11px] mb-2 leading-relaxed"
                         style={{ color: "var(--text-muted)" }}
                       >
-                        Collections, raw browsing, and the API explorer stay on the connected Data API backend.
+                        Choose the connected Data API backend. Chat and document ingest can stay here or switch to OpenRAG below.
                       </p>
                     </div>
 
@@ -924,16 +917,19 @@ export function ConnectionDialog({
                         Stored in session memory only. Leave blank to use environment-backed credentials when available.
                       </p>
                     </div>
-                  </div>
-                ) : activeSection === "knowledge" ? (
-                  <div className="flex flex-col gap-4">
+
+                    <div
+                      className="my-1 h-px"
+                      style={{ backgroundColor: "var(--border-subtle)" }}
+                    />
+
                     <div>
-                      <label style={labelStyle}>Knowledge Backend</label>
+                      <label style={labelStyle}>Knowledge Mode</label>
                       <p
                         className="text-[11px] mb-2 leading-relaxed"
                         style={{ color: "var(--text-muted)" }}
                       >
-                        Chat and document ingest can either stay on the connected backend or switch to OpenRAG.
+                        Chat and document ingest can either stay on the connected backend or switch to OpenRAG. When OpenRAG is active, the collections sidebar and API explorer are hidden.
                       </p>
                     </div>
 

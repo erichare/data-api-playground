@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ViewMode } from "@/lib/types";
 import type { ConnectionContextValue } from "@/lib/context/ConnectionContext";
 import { usePlaygroundAuth } from "@/lib/hooks/usePlaygroundAuth";
@@ -81,12 +81,19 @@ export function usePlaygroundState() {
     resolvedCollections.find(
       (collection) => collection.name === connectionState.activeCollection
     ) ?? resolvedCollections[0];
+  const openragActive = knowledgeBackendMode === "openrag";
   const knowledgeBackendKind = getResolvedKnowledgeBackendKind({
     selectedBackend: connectionState.selectedBackend,
     knowledgeBackendMode,
   });
   const knowledgeCapabilities =
     getKnowledgeBackendCapabilities(knowledgeBackendKind);
+
+  useEffect(() => {
+    if (openragActive && viewMode === "api") {
+      setViewMode("chat");
+    }
+  }, [openragActive, viewMode]);
 
   const connectionValue: ConnectionContextValue = {
     connection: connectionState.connection,
@@ -126,6 +133,7 @@ export function usePlaygroundState() {
       collections: connectionState.collections,
       activeCollection: connectionState.activeCollection,
       collectionCreateError: connectionState.collectionCreateError,
+      showCollections: !openragActive,
       viewMode,
       onSelectCollection: handleSidebarCollectionSelect,
       onNewCollection: () => {
@@ -151,6 +159,7 @@ export function usePlaygroundState() {
     },
     mainPanelProps: {
       viewMode,
+      showApiExplorer: !openragActive,
       onViewModeChange: setViewMode,
       conversations: conversationState.conversations,
       activeConversationId: conversationState.activeConversationId,

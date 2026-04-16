@@ -210,6 +210,12 @@ describe("IngestTab", () => {
     );
   });
 
+  it("hides the raw collection browser when the current backend flow does not use it", () => {
+    renderTab({ knowledgeBackendMode: "openrag", showRawBrowser: false });
+
+    expect(screen.queryByTestId("raw-collection-browser")).toBeNull();
+  });
+
   it("wires ingest, reload, and close callbacks through to the hook helpers", () => {
     const handleIngest = vi.fn();
     const resolveConflict = vi.fn();

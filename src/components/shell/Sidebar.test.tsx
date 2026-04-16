@@ -89,6 +89,18 @@ describe("Sidebar", () => {
     expect(props.onSelectCollection).toHaveBeenCalledWith("orders");
   });
 
+  it("hides collections completely when the active backend flow does not use them", () => {
+    const props = makeSidebarProps({ showCollections: false });
+    render(<Sidebar {...props} />);
+
+    expect(screen.queryByText("Collections")).toBeNull();
+    expect(screen.queryByText("orders")).toBeNull();
+    expect(screen.queryByText("New Collection")).toBeNull();
+
+    fireEvent.click(screen.getByTitle("Collapse sidebar"));
+    expect(screen.queryByTitle("orders")).toBeNull();
+  });
+
   it("shows a creating collection as pending and surfaces collection-create errors", () => {
     const props = makeSidebarProps({
       collections: [
