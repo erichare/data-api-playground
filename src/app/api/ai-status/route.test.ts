@@ -16,8 +16,10 @@ describe("/api/ai-status route", () => {
       ollamaBaseUrl: "http://127.0.0.1:11434",
       chatModelInstalled: true,
       embedModelInstalled: false,
-      chatModel: "granite3.1-dense:8b",
-      embedModel: "granite-embedding:278m",
+      huggingfaceChatModel: "Qwen/Qwen2.5-Coder-32B-Instruct",
+      huggingfaceEmbedModel: "ibm-granite/granite-embedding-125m-english",
+      ollamaChatModel: "granite3.1-dense:8b",
+      ollamaEmbedModel: "granite-embedding:278m",
     });
   });
 
@@ -31,8 +33,10 @@ describe("/api/ai-status route", () => {
       ollamaBaseUrl: "http://127.0.0.1:11434",
       chatModelInstalled: true,
       embedModelInstalled: false,
-      chatModel: "granite3.1-dense:8b",
-      embedModel: "granite-embedding:278m",
+      huggingfaceChatModel: "Qwen/Qwen2.5-Coder-32B-Instruct",
+      huggingfaceEmbedModel: "ibm-granite/granite-embedding-125m-english",
+      ollamaChatModel: "granite3.1-dense:8b",
+      ollamaEmbedModel: "granite-embedding:278m",
     });
     expect(getAiStatusMock).toHaveBeenCalled();
   });

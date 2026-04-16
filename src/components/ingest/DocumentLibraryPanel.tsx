@@ -9,6 +9,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
+import type { DataApiBackendKind } from "@/lib/backends/types";
+import { getBackendDisplayName } from "@/lib/backends/types";
 import type { IngestFileType, IngestedDocumentSummary } from "@/lib/types";
 import {
   FileIcon,
@@ -31,6 +33,7 @@ interface DocumentLibraryPanelProps {
   onDelete: (doc: IngestedDocumentSummary) => void;
   onView: (doc: IngestedDocumentSummary) => void;
   isConnected: boolean;
+  selectedBackend?: DataApiBackendKind;
 }
 
 export function DocumentLibraryPanel({
@@ -46,6 +49,7 @@ export function DocumentLibraryPanel({
   onDelete,
   onView,
   isConnected,
+  selectedBackend = "astra",
 }: DocumentLibraryPanelProps) {
   const [documentToDelete, setDocumentToDelete] =
     useState<IngestedDocumentSummary | null>(null);
@@ -199,7 +203,7 @@ export function DocumentLibraryPanel({
           >
             <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#f97316" }} />
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-              Demo mode — connect to Astra DB to persist documents
+              Demo mode — connect to {getBackendDisplayName(selectedBackend)} to persist documents
             </span>
           </div>
         )}

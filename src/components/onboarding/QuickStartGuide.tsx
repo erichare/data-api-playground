@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable security/detect-object-injection -- Quickstart examples index fixed language/example maps with constrained keys. */
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";

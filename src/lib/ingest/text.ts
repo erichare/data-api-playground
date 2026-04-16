@@ -1,4 +1,5 @@
-import { resolveAstraConnection } from "@/lib/astra";
+/* eslint-disable security/detect-object-injection -- Text extraction utilities serialize validated row metadata into display strings. */
+import { resolveBackendConnection } from "@/lib/backends/server";
 import {
   DEFAULT_CHUNK_OVERLAP,
   DEFAULT_CHUNK_SIZE,
@@ -248,7 +249,7 @@ function parseNameConflictAction(value: string | null | undefined) {
  *
  * Extracts the file, connection credentials, chunk size, metadata, and
  * conflict resolution action from the form data. Sanitizes the filename,
- * validates file size (max 50 MB), and resolves the Astra connection.
+ * validates file size (max 50 MB), and resolves the backend connection.
  *
  * @throws If no file is provided or the file exceeds the size limit.
  */
@@ -261,12 +262,18 @@ export async function parseDocumentUpload(
   }
 
   const collectionName = (formData.get("collection") as string | null) ?? "";
-  const { token, endpoint, keyspace } = resolveAstraConnection(
+  const backend = ((formData.get("backend") as string | null) ?? "astra") as
+    | "astra"
+    | "hcd";
+  const resolvedConnection = resolveBackendConnection(
     {
+      backend,
       token: (formData.get("token") as string | null) ?? undefined,
       endpoint: (formData.get("endpoint") as string | null) ?? undefined,
+      username: (formData.get("username") as string | null) ?? undefined,
+      password: (formData.get("password") as string | null) ?? undefined,
       keyspace: (formData.get("keyspace") as string | null) ?? undefined,
-    },
+    } as never,
     { includeDefaultKeyspace: true }
   );
   const requestedChunkSize = parseInt(
@@ -278,6 +285,12 @@ export async function parseDocumentUpload(
     : DEFAULT_CHUNK_SIZE;
   const huggingfaceApiKey =
     (formData.get("huggingfaceApiKey") as string | null) ?? undefined;
+  const knowledgeBackend =
+    (formData.get("knowledgeBackend") as string | null) ?? undefined;
+  const openragApiKey =
+    (formData.get("openragApiKey") as string | null) ?? undefined;
+  const openragBaseUrl =
+    (formData.get("openragBaseUrl") as string | null) ?? undefined;
   const nameConflictAction = parseNameConflictAction(
     formData.get("nameConflictAction") as string | null
   );
@@ -321,13 +334,17 @@ export async function parseDocumentUpload(
     filename,
     fileType,
     collectionName,
-    token,
-    endpoint,
-    keyspace,
+    ...resolvedConnection,
     chunkSize,
     metadata,
     buffer,
     huggingfaceApiKey,
     nameConflictAction,
+    knowledgeBackend:
+      knowledgeBackend === "openrag" || knowledgeBackend === "hcd" || knowledgeBackend === "astra"
+        ? knowledgeBackend
+        : undefined,
+    openragApiKey,
+    openragBaseUrl,
   };
 }

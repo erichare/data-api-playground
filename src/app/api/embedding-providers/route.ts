@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
-import {
-  buildTsCall,
-  formatTsMethodCall,
-  recordAstraClientCall,
-  withRequestLog,
-} from "@/lib/astraClientLog";
+import { withRequestLog } from "@/lib/astraClientLog";
 import { requireApiAuth } from "@/lib/auth";
+import { resolveDataApiBackend } from "@/lib/dataApi";
+import { getDataApiErrorStatus, toLegacyAstraCredentialMessage } from "@/lib/dataApi/errors";
 import { createRequestLogContext, logError, sanitizeErrorForClient } from "@/lib/server/log";
 import { embeddingProvidersBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
@@ -26,41 +22,24 @@ export async function POST(req: NextRequest) {
   if (authError) return authError;
   const result = await parseJsonBody(req, embeddingProvidersBodySchema);
   if (isErrorResponse(result)) return result;
-  const { token, endpoint, keyspace } = resolveAstraConnection(result);
-
-  if (!token || !endpoint) {
-    return NextResponse.json({ error: "token and endpoint are required" }, { status: 400 });
-  }
 
   return withRequestLog(async () => {
     try {
-      const db = getAstraDb(token, endpoint, keyspace);
-      recordAstraClientCall({
-        label: "List Embedding Providers",
-        code: buildTsCall("db.admin()", [
-          formatTsMethodCall("findEmbeddingProviders", []),
-        ]),
+      const { config, backend } = resolveDataApiBackend(result, {
+        includeDefaultKeyspace: true,
       });
-      const { embeddingProviders } = await db.admin().findEmbeddingProviders();
-
-      const models: ProviderModel[] = [];
-      for (const [providerId, info] of Object.entries(embeddingProviders)) {
-        for (const model of info.models) {
-          models.push({
-            provider: providerId,
-            providerDisplayName: info.displayName,
-            modelName: model.name,
-            vectorDimension: model.vectorDimension,
-          });
-        }
-      }
+      const models = await backend.listEmbeddingProviders(config);
 
       return NextResponse.json({ models });
     } catch (err) {
-      logError(logContext, "embedding-providers.failed", err);
+      logError(logContext, "embedding-providers.failed", err, {
+        backend: result.backend,
+      });
+      const rawMessage = sanitizeErrorForClient(err, "Failed to list providers");
+      const message = toLegacyAstraCredentialMessage(rawMessage);
       return NextResponse.json(
-        { error: sanitizeErrorForClient(err, "Failed to list providers") },
-        { status: 500 }
+        { error: message },
+        { status: getDataApiErrorStatus(rawMessage, 500) }
       );
     }
   });

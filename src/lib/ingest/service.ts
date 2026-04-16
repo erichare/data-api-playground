@@ -1,29 +1,19 @@
 import { createHash, randomUUID } from "crypto";
-import { embedMany, ensureModel } from "@/lib/ai/service";
+import type { BackendConnectionInput } from "@/lib/backends/types";
+import { resolveKnowledgeBackend } from "@/lib/knowledge";
+import { createOpenragDocumentRef } from "@/lib/knowledge/openragBackend";
+import type { KnowledgeBackendInput } from "@/lib/knowledge/types";
 import {
-  buildTsCall,
-  formatTsMethodCall,
-  rawTs,
-  recordAstraClientCall,
-} from "@/lib/astraClientLog";
-import { resolveAstraConnection } from "@/lib/astra";
-import {
-  CSV_BATCH_SIZE,
-  DOCUMENT_BATCH_SIZE,
   MAX_CSV_ROWS,
   MAX_DOCUMENT_CHUNKS,
   MAX_EXTRACTED_TEXT_CHARS,
 } from "@/lib/ingest/constants";
 import {
-  resolveIngestCollectionContext,
-  validateVectorDimension,
-} from "@/lib/ingest/backend";
-import { createPrepareTracker } from "@/lib/ingest/prepare";
-import {
   deleteDocumentsForOverwrite,
   getLatestDuplicateByHash,
   insertIngestedDocumentRecord,
   listFilenameConflicts,
+  replaceStoredDocumentChunks,
   upsertIngestedDocumentRecord,
 } from "@/lib/ingest/repository";
 import {
@@ -31,7 +21,6 @@ import {
   extractTabularRowChunks,
   extractText,
   parseDocumentUpload,
-  serializeTabularRow,
 } from "@/lib/ingest/text";
 import type { NameConflictAction } from "@/lib/ingest/types";
 
@@ -57,6 +46,18 @@ function createNdjsonStream(
   });
 }
 
+function hasConnectedKnowledgeConfig(
+  config: ReturnType<typeof resolveKnowledgeBackend>["config"]
+) {
+  if (!("backend" in config)) {
+    return Boolean(config.apiKey);
+  }
+
+  return config.backend === "astra"
+    ? Boolean(config.token && config.endpoint)
+    : Boolean(config.endpoint && config.username && config.password);
+}
+
 /**
  * Stream CSV row ingestion into an Astra DB collection via NDJSON progress events.
  *
@@ -67,27 +68,37 @@ function createNdjsonStream(
  * @returns A `ReadableStream<Uint8Array>` of NDJSON-encoded progress events.
  */
 export function streamCsvIngest(args: {
+  backend?: BackendConnectionInput["backend"];
   token?: string;
   endpoint?: string;
+  username?: string;
+  password?: string;
   keyspace?: string;
+  knowledgeBackend?: KnowledgeBackendInput["knowledgeBackend"];
+  openragApiKey?: string;
+  openragBaseUrl?: string;
   collection: string;
   rows: Record<string, string>[];
   filename: string;
   huggingfaceApiKey?: string;
 }): ReadableStream<Uint8Array> {
-  const { token, endpoint, keyspace } = resolveAstraConnection(args, {
+  const { collection, rows, filename, huggingfaceApiKey } = args;
+  const { config, backend } = resolveKnowledgeBackend(args, {
     includeDefaultKeyspace: true,
   });
-  const { collection, rows, filename, huggingfaceApiKey } = args;
 
   return createNdjsonStream(async (send) => {
-    const withPrepareTracking = createPrepareTracker(send);
-
     try {
-      if (!token || !endpoint || !collection || !rows.length) {
+      if (!hasConnectedKnowledgeConfig(config) || !collection || !rows.length) {
+        const message =
+          !("backend" in config)
+            ? "OpenRAG API key, collection, and rows are required"
+            : config.backend === "astra"
+              ? "token, endpoint, collection, and rows are required"
+              : "backend credentials, collection, and rows are required";
         send({
           type: "error",
-          message: "token, endpoint, collection, and rows are required",
+          message,
         });
         return;
       }
@@ -99,100 +110,16 @@ export function streamCsvIngest(args: {
         return;
       }
 
-      const { collection: collectionRef, collectionConfig, backend, backendHint } =
-        await resolveIngestCollectionContext({
-          token,
-          endpoint,
-          keyspace,
-          collectionName: collection,
+      await backend.ingestCsv(
+        {
+          config,
+          collection,
+          rows,
+          filename,
           huggingfaceApiKey,
-        });
-
-      if (backend) {
-        await withPrepareTracking({
-          backend,
-          kind: "embed",
-          task: (onPrepareProgress) =>
-            ensureModel({
-              backend,
-              kind: "embed",
-              allowPull: true,
-              onProgress: onPrepareProgress,
-            }),
-        });
-      }
-
-      const total = rows.length;
-      let processed = 0;
-
-      send({
-        type: "start",
-        total,
-        filename,
-        collection,
-        useVectorize: collectionConfig.useVectorize,
-        provider: backendHint.provider,
-        model: backendHint.model,
-      });
-
-      for (let index = 0; index < rows.length; index += CSV_BATCH_SIZE) {
-        const batch = rows.slice(index, index + CSV_BATCH_SIZE);
-        const texts = batch.map((row) => serializeTabularRow(row));
-
-        const docs = collectionConfig.useVectorize
-          ? batch.map((row, batchIndex) => ({
-              ...row,
-              $vectorize: texts[batchIndex],
-              _filename: filename,
-              _ingested_at: new Date().toISOString(),
-            }))
-          : await (async () => {
-              if (!backend) {
-                throw new Error("AI backend is required for non-vectorize collections");
-              }
-              const embeddings = (
-                await embedMany({
-                  backend,
-                  input: texts,
-                  allowPull: false,
-                  skipEnsure: true,
-                })
-              ).embeddings;
-
-              validateVectorDimension({
-                collection,
-                expected: collectionConfig.vectorDimension,
-                embeddings,
-              });
-
-              return batch.map((row, batchIndex) => ({
-                ...row,
-                $vector: embeddings[batchIndex],
-                _filename: filename,
-                _ingested_at: new Date().toISOString(),
-              }));
-            })();
-
-        recordAstraClientCall({
-          label: "Ingest CSV Batch",
-          code: buildTsCall(`db.collection(${JSON.stringify(collection)})`, [
-            formatTsMethodCall("insertMany", [
-              rawTs(`rowsBatch /* ${docs.length} rows */`),
-            ]),
-          ]),
-        });
-        await collectionRef.insertMany(docs);
-        processed += batch.length;
-        send({ type: "progress", processed, total });
-      }
-
-      send({
-        type: "complete",
-        processed,
-        total,
-        provider: backendHint.provider,
-        model: backendHint.model,
-      });
+        },
+        send
+      );
     } catch (err) {
       send({
         type: "error",
@@ -218,9 +145,15 @@ export function streamDocumentIngest(args: {
   filename: string;
   fileType: string;
   collectionName: string;
+  backend?: BackendConnectionInput["backend"];
   token?: string;
   endpoint?: string;
+  username?: string;
+  password?: string;
   keyspace?: string;
+  knowledgeBackend?: KnowledgeBackendInput["knowledgeBackend"];
+  openragApiKey?: string;
+  openragBaseUrl?: string;
   chunkSize: number;
   metadata: Record<string, unknown>;
   buffer: Buffer;
@@ -231,9 +164,15 @@ export function streamDocumentIngest(args: {
     filename,
     fileType,
     collectionName,
+    backend: backendKind,
     token,
     endpoint,
+    username,
+    password,
     keyspace,
+    knowledgeBackend,
+    openragApiKey,
+    openragBaseUrl,
     chunkSize,
     metadata,
     buffer,
@@ -247,8 +186,6 @@ export function streamDocumentIngest(args: {
   const ingestedAt = new Date().toISOString();
 
   return createNdjsonStream(async (send) => {
-    const withPrepareTracking = createPrepareTracker(send);
-
     try {
       const persistedCollection = collectionName || "demo";
       const duplicateByHash = getLatestDuplicateByHash({
@@ -305,9 +242,15 @@ export function streamDocumentIngest(args: {
         );
         await deleteDocumentsForOverwrite({
           collectionName: persistedCollection,
+          backend: backendKind,
           token,
           endpoint,
+          username,
+          password,
           keyspace,
+          knowledgeBackend,
+          openragApiKey,
+          openragBaseUrl,
           existingDocuments: filenameConflicts,
         });
       }
@@ -331,7 +274,12 @@ export function streamDocumentIngest(args: {
         );
       }
 
-      if (!token || !endpoint || !collectionName) {
+      if (
+        (!backendKind || backendKind === "astra"
+          ? !token || !endpoint
+          : !endpoint || !username || !password) ||
+        !collectionName
+      ) {
         send({ type: "chunked", filename, chunks: chunkTotal, chars: text.length });
 
         for (let index = 0; index < chunkTotal; index += 1) {
@@ -347,6 +295,9 @@ export function streamDocumentIngest(args: {
           contentHash,
           chunkTotal,
           collection: persistedCollection,
+          backendKind: backendKind ?? "astra",
+          backendSource: persistedCollection,
+          backendDocumentRef: sourceDocId,
           ingestedAt,
           metadata,
         });
@@ -363,99 +314,69 @@ export function streamDocumentIngest(args: {
         return;
       }
 
-      const { collection, collectionConfig, backend, backendHint } =
-        await resolveIngestCollectionContext({
+      const { config, backend } = resolveKnowledgeBackend(
+        {
+          backend: backendKind,
           token,
           endpoint,
+          username,
+          password,
           keyspace,
+          knowledgeBackend,
+          openragApiKey,
+          openragBaseUrl,
+        } as KnowledgeBackendInput,
+        { includeDefaultKeyspace: true }
+      );
+      let backendProvider: string | undefined;
+      let backendModel: string | undefined;
+
+      await backend.ingestDocument(
+        {
+          config,
+          sourceDocId,
           collectionName,
+          filename,
+          fileType,
+          text,
+          fileBytes: buffer,
+          chunks,
+          metadata,
           huggingfaceApiKey,
-        });
-
-      if (backend) {
-        await withPrepareTracking({
-          backend,
-          kind: "embed",
-          task: (onPrepareProgress) =>
-            ensureModel({
-              backend,
-              kind: "embed",
-              allowPull: true,
-              onProgress: onPrepareProgress,
-            }),
-        });
-      }
-
-      send({
-        type: "chunked",
-        filename,
-        chunks: chunkTotal,
-        chars: text.length,
-        useVectorize: collectionConfig.useVectorize,
-        provider: backendHint.provider,
-        model: backendHint.model,
-      });
-
-      for (let index = 0; index < chunks.length; index += DOCUMENT_BATCH_SIZE) {
-        const batch = chunks.slice(index, index + DOCUMENT_BATCH_SIZE);
-
-        let embeddings: number[][] | null = null;
-        if (!collectionConfig.useVectorize) {
-          if (!backend) {
-            throw new Error("AI backend is required for non-vectorize collections");
-          }
-          embeddings = (
-            await embedMany({
-              backend,
-              input: batch,
-              allowPull: false,
-              skipEnsure: true,
-            })
-          ).embeddings;
-        }
-
-        if (embeddings) {
-          validateVectorDimension({
-            collection: collectionName,
-            expected: collectionConfig.vectorDimension,
-            embeddings,
-          });
-        }
-
-        const docs = batch.map((content, batchIndex) => {
-          const chunkIndex = index + batchIndex;
-          const doc: Record<string, unknown> = {
-            _id: randomUUID(),
-            content,
-            metadata: {
-              source_doc_id: sourceDocId,
-              chunk_index: chunkIndex,
-              ...metadata,
-            },
-          };
-
-          if (collectionConfig.useVectorize) {
-            doc.$vectorize = content;
-          } else {
-            doc.$vector = embeddings?.[batchIndex];
+        },
+        (event) => {
+          if (event.type === "backend_info") {
+            backendProvider =
+              typeof event.provider === "string" ? event.provider : undefined;
+            backendModel = typeof event.model === "string" ? event.model : undefined;
+            send({
+              type: "chunked",
+              filename,
+              chunks: chunkTotal,
+              chars: text.length,
+              useVectorize: event.useVectorize === true,
+              provider: backendProvider,
+              model: backendModel,
+            });
+            return;
           }
 
-          return doc;
-        });
+          if (event.type === "backend_complete") {
+            backendProvider =
+              typeof event.provider === "string" ? event.provider : backendProvider;
+            backendModel =
+              typeof event.model === "string" ? event.model : backendModel;
+            return;
+          }
 
-        recordAstraClientCall({
-          label: "Ingest Knowledge",
-          code: buildTsCall(`db.collection(${JSON.stringify(collectionName)})`, [
-            formatTsMethodCall("insertMany", [
-              rawTs(`docsBatch /* ${docs.length} chunks */`),
-            ]),
-          ]),
-        });
-        await collection.insertMany(docs);
-        send({
-          type: "chunk_progress",
-          processed: Math.min(index + DOCUMENT_BATCH_SIZE, chunkTotal),
-          total: chunkTotal,
+          send(event);
+        }
+      );
+
+      if (backend.kind === "openrag") {
+        replaceStoredDocumentChunks({
+          sourceDocId,
+          chunks,
         });
       }
 
@@ -467,6 +388,12 @@ export function streamDocumentIngest(args: {
         contentHash,
         chunkTotal,
         collection: collectionName,
+        backendKind: backend.kind,
+        backendSource: collectionName,
+        backendDocumentRef:
+          backend.kind === "openrag"
+            ? createOpenragDocumentRef({ filename, sourceDocId })
+            : sourceDocId,
         ingestedAt,
         metadata,
       });
@@ -476,8 +403,8 @@ export function streamDocumentIngest(args: {
         source_doc_id: sourceDocId,
         chunks: chunkTotal,
         collection: collectionName,
-        provider: backendHint.provider,
-        model: backendHint.model,
+        provider: backendProvider,
+        model: backendModel,
         content_hash: contentHash,
         replaced_source_doc_ids: replacedSourceDocIds,
       });

@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable security/detect-unsafe-regex -- This static JSON-highlighting regex is bounded and not constructed from user input. */
 
 import { type ReactNode, useState } from "react";
 import { Check, Copy } from "lucide-react";

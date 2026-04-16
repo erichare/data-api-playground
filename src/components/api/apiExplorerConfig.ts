@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-object-injection -- API explorer config uses typed operation/language lookup tables, not user-controlled object mutation. */
 import type { Collection } from "@/lib/types";
 
 export type OpId =

@@ -1,6 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  BackendConnectionState,
+  DataApiBackendKind,
+} from "@/lib/backends/types";
+import { buildConnectionRequestBody } from "@/lib/backends/types";
+import { buildKnowledgeRequestBody } from "@/lib/knowledge/client";
+import type {
+  KnowledgeBackendCapabilities,
+  KnowledgeBackendMode,
+  OpenragKnowledgeState,
+} from "@/lib/knowledge/types";
+import { DATA_API_KNOWLEDGE_BACKEND_CAPABILITIES } from "@/lib/knowledge/types";
 import type {
   Message,
   PipelineStep,
@@ -18,8 +30,13 @@ interface ChatCollectionInput {
 interface UseChatSessionArgs {
   messages: Message[];
   onMessagesUpdate: (messages: Message[]) => void;
+  connection: BackendConnectionState | null;
   astraToken?: string;
   astraEndpoint?: string;
+  selectedBackend?: DataApiBackendKind;
+  knowledgeBackendMode?: KnowledgeBackendMode;
+  openragConnection?: OpenragKnowledgeState | null;
+  knowledgeCapabilities?: KnowledgeBackendCapabilities;
   keyspace?: string;
   collections?: ChatCollectionInput[];
   activeCollection?: string;
@@ -41,6 +58,29 @@ interface SearchResultLike {
   similarity: number;
   preview: Record<string, string | number>;
   collection?: string;
+}
+
+function resolveSearchMode(args: {
+  preferred: SearchMode;
+  knowledgeCapabilities: KnowledgeBackendCapabilities;
+}): SearchMode {
+  const { preferred, knowledgeCapabilities } = args;
+  if (preferred === "hybrid" && knowledgeCapabilities.hybridSearch) {
+    return preferred;
+  }
+  if (preferred === "vector" && knowledgeCapabilities.vectorSearch) {
+    return preferred;
+  }
+  if (preferred === "lexical" && knowledgeCapabilities.lexicalSearch) {
+    return preferred;
+  }
+  if (knowledgeCapabilities.hybridSearch) {
+    return "hybrid";
+  }
+  if (knowledgeCapabilities.vectorSearch) {
+    return "vector";
+  }
+  return "lexical";
 }
 
 function buildChatHistory(messages: Message[]) {
@@ -114,16 +154,33 @@ function buildAssistantMessage(args: {
 export function useChatSession({
   messages,
   onMessagesUpdate,
+  connection,
   astraToken,
   astraEndpoint,
+  selectedBackend = "astra",
+  knowledgeBackendMode = "connected",
+  openragConnection = null,
+  knowledgeCapabilities = DATA_API_KNOWLEDGE_BACKEND_CAPABILITIES,
   keyspace,
   collections,
   activeCollection,
   huggingfaceApiKey,
   collectionFields,
 }: UseChatSessionArgs) {
+  const resolvedConnection = useMemo(
+    () =>
+      connection ??
+      (astraToken || astraEndpoint
+        ? {
+            backend: "astra" as const,
+            token: astraToken ?? "",
+            endpoint: astraEndpoint ?? "",
+          }
+        : null),
+    [astraEndpoint, astraToken, connection]
+  );
   const [input, setInput] = useState("");
-  const [searchMode, setSearchMode] = useState<SearchMode>("hybrid");
+  const [searchModePreference, setSearchMode] = useState<SearchMode>("hybrid");
   const [streamingSteps, setStreamingSteps] = useState<PipelineStep[]>([]);
   const [streamingResponseText, setStreamingResponseText] = useState("");
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
@@ -136,6 +193,10 @@ export function useChatSession({
       abortRef.current?.abort();
     };
   }, []);
+  const searchMode = resolveSearchMode({
+    preferred: searchModePreference,
+    knowledgeCapabilities,
+  });
 
   const canSend = input.trim().length > 0 && !isStreaming;
 
@@ -199,11 +260,18 @@ export function useChatSession({
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({
+          ...buildConnectionRequestBody(resolvedConnection, {
+            keyspace: keyspace || undefined,
+          }),
+          ...buildKnowledgeRequestBody({
+            selectedBackend,
+            knowledgeBackendMode,
+            openragConnection,
+          }),
+          isConnected:
+            Boolean(resolvedConnection) || knowledgeBackendMode === "openrag",
           query: text,
           searchMode,
-          token: astraToken,
-          endpoint: astraEndpoint,
-          keyspace: keyspace || undefined,
           collections: collections ?? [],
           activeCollection: activeCollection ?? "",
           huggingfaceApiKey: huggingfaceApiKey || undefined,
@@ -294,17 +362,19 @@ export function useChatSession({
     }
   }, [
     activeCollection,
-    astraEndpoint,
-    astraToken,
     collectionFields,
     collections,
     huggingfaceApiKey,
     input,
     isStreaming,
     keyspace,
+    knowledgeBackendMode,
     messages,
     onMessagesUpdate,
+    openragConnection,
+    resolvedConnection,
     searchMode,
+    selectedBackend,
   ]);
 
   return {

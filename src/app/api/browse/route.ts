@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
-import {
-  buildTsCall,
-  formatTsMethodCall,
-  recordAstraClientCall,
-  withRequestLog,
-} from "@/lib/astraClientLog";
+import { withRequestLog } from "@/lib/astraClientLog";
 import { requireApiAuth } from "@/lib/auth";
+import { resolveDataApiBackend } from "@/lib/dataApi";
 import { createRequestLogContext, logError, sanitizeErrorForClient } from "@/lib/server/log";
 import { browseBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
@@ -19,52 +14,33 @@ export async function POST(req: NextRequest) {
   if (authError) return authError;
   const result = await parseJsonBody(req, browseBodySchema);
   if (isErrorResponse(result)) return result;
-  const { token, endpoint, keyspace } = resolveAstraConnection(result, { includeDefaultKeyspace: true });
   const { collection, pageState, sort } = result;
 
-  if (!token || !endpoint || !collection) {
-    return NextResponse.json({ error: "token, endpoint, and collection are required" }, { status: 400 });
+  if (!collection) {
+    return NextResponse.json({ error: "collection is required" }, { status: 400 });
   }
 
   return withRequestLog(async () => {
     try {
-      const db = getAstraDb(token, endpoint, keyspace);
-      const coll = db.collection(collection);
-
-      const sortObj = sort ? { [sort.col]: sort.dir } : undefined;
-      const findOptions = {
-        limit: 20,
-        ...(sortObj ? { sort: sortObj } : {}),
-      };
-      const browseChain = [
-        formatTsMethodCall("find", [{}, findOptions]),
-        ...(pageState ? [formatTsMethodCall("initialPageState", [pageState])] : []),
-        formatTsMethodCall("fetchNextPage", []),
-      ];
-      recordAstraClientCall({
-        label: "Browse Collection",
-        code: buildTsCall(`db.collection(${JSON.stringify(collection)})`, browseChain),
+      const { config, backend } = resolveDataApiBackend(result, {
+        includeDefaultKeyspace: true,
       });
-
-      let cursor = coll.find({}, { limit: 20, sort: sortObj as Record<string, 1 | -1> });
-      if (pageState) {
-        cursor = cursor.initialPageState(pageState);
-      }
-
-      const fetched = await cursor.fetchNextPage();
-      const documents = fetched.result.map((doc: Record<string, unknown>) => {
-        if (doc.$vector && Array.isArray(doc.$vector)) {
-          return { ...doc, $vector: `__vector_${(doc.$vector as number[]).length}__` };
-        }
-        return doc;
+      const { documents, nextPageState } = await backend.browse({
+        config,
+        collection,
+        pageState,
+        sort,
       });
 
       return NextResponse.json({
         documents,
-        nextPageState: fetched.nextPageState ?? null,
+        nextPageState,
       });
     } catch (err) {
-      logError(logContext, "browse.failed", err, { collection });
+      logError(logContext, "browse.failed", err, {
+        backend: result.backend,
+        collection,
+      });
       return NextResponse.json(
         { error: sanitizeErrorForClient(err, "Failed to fetch documents") },
         { status: 400 }

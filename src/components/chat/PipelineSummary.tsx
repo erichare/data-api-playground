@@ -5,6 +5,7 @@
  * can be toggled to reveal step-level detail panels.
  */
 "use client";
+/* eslint-disable security/detect-object-injection -- Summary chips read typed step metadata keyed by known pipeline ids. */
 
 import { Activity, ChevronDown } from "lucide-react";
 import type { PipelineStep, PipelineStepId, PipelineStepStatus } from "@/lib/types";

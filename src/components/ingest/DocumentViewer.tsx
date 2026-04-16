@@ -3,31 +3,52 @@
 import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { AlertCircle, Check, Copy, Loader2, X } from "lucide-react";
+import type { BackendConnectionState, DataApiBackendKind } from "@/lib/backends/types";
+import type {
+  KnowledgeBackendCapabilities,
+  KnowledgeBackendMode,
+  OpenragKnowledgeState,
+} from "@/lib/knowledge/types";
+import { DATA_API_KNOWLEDGE_BACKEND_CAPABILITIES } from "@/lib/knowledge/types";
 import type { IngestedDocumentSummary } from "@/lib/types";
 import { useDocumentChunks } from "@/components/ingest/hooks/useDocumentChunks";
 import { FileIcon, formatBytes, formatDate } from "@/components/ingest/ingestShared";
 
 interface DocumentViewerProps {
   doc: IngestedDocumentSummary;
-  astraToken: string;
-  astraEndpoint: string;
+  connection: BackendConnectionState | null;
+  astraToken?: string;
+  astraEndpoint?: string;
   keyspace: string;
   isConnected: boolean;
+  selectedBackend: DataApiBackendKind;
+  knowledgeBackendMode?: KnowledgeBackendMode;
+  openragConnection?: OpenragKnowledgeState | null;
+  knowledgeCapabilities?: KnowledgeBackendCapabilities;
   onClose: () => void;
 }
 
 export function DocumentViewer({
   doc,
+  connection,
   astraToken,
   astraEndpoint,
   keyspace,
   isConnected,
+  selectedBackend = "astra",
+  knowledgeBackendMode = "connected",
+  openragConnection = null,
+  knowledgeCapabilities = DATA_API_KNOWLEDGE_BACKEND_CAPABILITIES,
   onClose,
 }: DocumentViewerProps) {
   const { chunks, loading, error, copied, copyAll } = useDocumentChunks({
     doc,
+    connection,
     astraToken,
     astraEndpoint,
+    selectedBackend,
+    knowledgeBackendMode,
+    openragConnection,
     keyspace,
     isConnected,
   });
@@ -103,7 +124,16 @@ export function DocumentViewer({
           ) : !isConnected ? (
             <div className="flex flex-col items-center justify-center h-40 gap-3" style={{ color: "var(--text-muted)" }}>
               <AlertCircle size={20} strokeWidth={1.5} />
-              <p className="text-sm">Connect to Astra DB to view document content</p>
+              <p className="text-sm">
+                Connect to {selectedBackend === "hcd" ? "DataStax HCD" : "Astra DB"} to view document content
+              </p>
+            </div>
+          ) : !knowledgeCapabilities.documentContentLoad ? (
+            <div className="flex flex-col items-center justify-center h-40 gap-3" style={{ color: "var(--text-muted)" }}>
+              <AlertCircle size={20} strokeWidth={1.5} />
+              <p className="text-sm">
+                The active knowledge backend does not expose stored chunk content
+              </p>
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center h-40 gap-3">

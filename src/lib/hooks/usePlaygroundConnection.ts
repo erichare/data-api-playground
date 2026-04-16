@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type {
+  BackendCapabilities,
+  BackendConnectionState,
+  BackendStatuses,
+  DataApiBackendKind,
+} from "@/lib/backends/types";
+import { normalizeEndpoint } from "@/lib/backends/types";
 import type { Collection } from "@/lib/types";
 import { fetchCollectionsFromApi } from "@/lib/playground/client";
 import { useCollectionLifecycle } from "@/lib/hooks/useCollectionLifecycle";
@@ -12,16 +19,81 @@ interface UsePlaygroundConnectionArgs {
   initialAstraEndpoint?: string;
 }
 
+const DEFAULT_CAPABILITIES: BackendCapabilities = {
+  connect: true,
+  keyspaces: true,
+  collectionCrud: true,
+  embeddingProviders: true,
+  vectorizeCollections: true,
+  rawBrowse: true,
+  deleteDocuments: true,
+  apiProxy: true,
+};
+
+function normalizeBackendStatuses(
+  input: BackendStatuses | { hasToken?: boolean; hasEndpoint?: boolean }
+): BackendStatuses {
+  if ("astra" in input && "hcd" in input) {
+    return input;
+  }
+
+  const legacy = input as { hasToken?: boolean; hasEndpoint?: boolean };
+  const ready = Boolean(legacy.hasToken && legacy.hasEndpoint);
+  return {
+    astra: {
+      kind: "astra",
+      ready,
+      hasToken: Boolean(legacy.hasToken),
+      hasEndpoint: Boolean(legacy.hasEndpoint),
+    },
+    hcd: {
+      kind: "hcd",
+      ready: false,
+      hasEndpoint: false,
+      hasUsername: false,
+      hasPassword: false,
+    },
+    defaultBackend: ready ? "astra" : null,
+  };
+}
+
+function createEnvConnection(kind: DataApiBackendKind): BackendConnectionState {
+  return kind === "hcd"
+    ? {
+        backend: "hcd",
+        endpoint: "",
+        username: "",
+        password: "",
+        fromEnv: true,
+      }
+    : {
+        backend: "astra",
+        endpoint: "",
+        token: "",
+        fromEnv: true,
+      };
+}
+
 export function usePlaygroundConnection({
   bootstrapConversations,
   resetConversationTracking,
   onDisconnectViewReset,
   initialAstraEndpoint = "",
 }: UsePlaygroundConnectionArgs) {
-  const [astraToken, setAstraToken] = useState("");
-  const [astraEndpoint, setAstraEndpoint] = useState(initialAstraEndpoint);
-  const [astraFromEnv, setAstraFromEnv] = useState(false);
-  const [envReady, setEnvReady] = useState(false);
+  const bootstrapConversationsRef = useRef(bootstrapConversations);
+  const resetConversationTrackingRef = useRef(resetConversationTracking);
+  const onDisconnectViewResetRef = useRef(onDisconnectViewReset);
+  useEffect(() => {
+    bootstrapConversationsRef.current = bootstrapConversations;
+    resetConversationTrackingRef.current = resetConversationTracking;
+    onDisconnectViewResetRef.current = onDisconnectViewReset;
+  }, [bootstrapConversations, onDisconnectViewReset, resetConversationTracking]);
+  const [connection, setConnection] = useState<BackendConnectionState | null>(null);
+  const [selectedBackend, setSelectedBackend] =
+    useState<DataApiBackendKind>("astra");
+  const [backendStatuses, setBackendStatuses] = useState<BackendStatuses | null>(null);
+  const [capabilities, setCapabilities] =
+    useState<BackendCapabilities>(DEFAULT_CAPABILITIES);
   const [initializing, setInitializing] = useState(true);
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [connectError, setConnectError] = useState("");
@@ -32,15 +104,12 @@ export function usePlaygroundConnection({
   const [keyspaces, setKeyspaces] = useState<string[]>([]);
   const [selectedKeyspace, setSelectedKeyspace] = useState("default_keyspace");
 
-  // ── Collection lifecycle (create / delete / stats) ─────────────────
   const collectionLifecycle = useCollectionLifecycle({
     collections,
     setCollections,
     setCollectionFields,
     setActiveCollection,
-    astraToken,
-    astraEndpoint,
-    astraFromEnv,
+    connection,
     selectedKeyspace,
   });
 
@@ -56,150 +125,180 @@ export function usePlaygroundConnection({
     setCollectionCreateError("");
   }, []);
 
-  // ── Connection helpers ─────────────────────────────────────────────
-  const formatKeyspacesWarning = useCallback(
-    (message: string, source: "manual" | "env" = "manual") =>
-      source === "env"
-        ? `Connected using environment credentials, but keyspaces could not be listed. ${message}`
-        : `Connected, but keyspaces could not be listed. ${message}`,
-    []
-  );
-
   const applyConnectionResult = useCallback((
     result: Awaited<ReturnType<typeof fetchCollectionsFromApi>>,
-    fromEnv: boolean,
-    token: string,
-    endpoint: string
+    nextConnection: BackendConnectionState
   ) => {
-    setAstraToken(fromEnv ? "" : token);
-    setAstraEndpoint(fromEnv ? "" : endpoint.replace(/\/$/, ""));
-    setAstraFromEnv(fromEnv);
+    setConnection({
+      ...nextConnection,
+      ...(result.resolvedKeyspace ? { keyspace: result.resolvedKeyspace } : {}),
+    });
+    setCapabilities(result.capabilities);
     setCollections(result.collections);
     setCollectionFields(result.fields);
+    setKeyspaces(result.keyspaces);
+    const resolvedKeyspace = result.resolvedKeyspace ?? nextConnection.keyspace;
+    if (resolvedKeyspace) {
+      setSelectedKeyspace(resolvedKeyspace);
+    } else if (result.keyspaces.length > 0) {
+      setSelectedKeyspace(result.keyspaces[0]);
+    }
     const firstUserCollection = result.collections[0]?.name ?? "";
     setActiveCollection(firstUserCollection);
-    setKeyspaces(result.keyspaces);
-    if (result.keyspaces.length > 0) setSelectedKeyspace(result.keyspaces[0]);
   }, []);
 
-  const fetchCollections = useCallback(async (token: string, endpoint: string, keyspace?: string) => {
-    const result = await fetchCollectionsFromApi(token, endpoint, keyspace);
+  const fetchCollections = useCallback(async (
+    nextConnection: BackendConnectionState,
+    keyspace?: string
+  ) => {
+    const result =
+      nextConnection.backend === "astra"
+        ? await fetchCollectionsFromApi(nextConnection.token, nextConnection.endpoint, keyspace)
+        : await fetchCollectionsFromApi(nextConnection, keyspace);
     setCollections(result.collections);
     setCollectionFields(result.fields);
+    setKeyspaces(result.keyspaces);
+    setCapabilities(result.capabilities);
     setActiveCollection(result.collections[0]?.name ?? "");
+    if (result.resolvedKeyspace) {
+      setSelectedKeyspace(result.resolvedKeyspace);
+    } else if (keyspace) {
+      setSelectedKeyspace(keyspace);
+    }
     return result;
   }, []);
 
-  // ── Initialization ─────────────────────────────────────────────────
   useEffect(() => {
     const restorePromise = (async () => {
-      await bootstrapConversations().catch(() => {
+      await bootstrapConversationsRef.current().catch(() => {
         // Keep the local placeholder conversation when persisted bootstrap fails.
       });
 
       try {
-        const status = await fetch("/api/astra-status").then((r) => r.json() as Promise<{ hasToken: boolean; hasEndpoint: boolean }>);
-        setEnvReady(status.hasToken && status.hasEndpoint);
-        if (status.hasToken && status.hasEndpoint) {
-          await fetchCollectionsFromApi("", "")
+        const statuses = await fetch("/api/backend-status")
+          .then((response) =>
+            response.json() as Promise<BackendStatuses | { hasToken?: boolean; hasEndpoint?: boolean }>
+          )
+          .then(normalizeBackendStatuses)
+          .catch(async () => {
+            const fallback = await fetch("/api/astra-status").then((response) =>
+              response.json() as Promise<{ hasToken: boolean; hasEndpoint: boolean }>
+            );
+            return normalizeBackendStatuses(fallback);
+          });
+        setBackendStatuses(statuses);
+        if (statuses.defaultBackend) {
+          setSelectedBackend(statuses.defaultBackend);
+          const envConnection =
+            statuses.defaultBackend === "astra"
+              ? {
+                  backend: "astra" as const,
+                  endpoint: initialAstraEndpoint,
+                  token: "",
+                  fromEnv: true,
+                }
+              : createEnvConnection(statuses.defaultBackend);
+          await (envConnection.backend === "astra"
+            ? fetchCollectionsFromApi(envConnection.token, envConnection.endpoint)
+            : fetchCollectionsFromApi(envConnection))
             .then((result) => {
-              applyConnectionResult(result, true, "", "");
-              if (result.keyspacesError) {
-                setConnectError(formatKeyspacesWarning(result.keyspacesError, "env"));
-              }
+              applyConnectionResult(result, envConnection);
             })
             .catch(() => {
               // Env-based auto-connect failed; user can connect manually via dialog.
             });
         }
       } catch {
-        // Astra status endpoint unreachable during init — non-critical.
+        // Backend status endpoint unreachable during init — non-critical.
       }
     })();
 
     void restorePromise.finally(() => setInitializing(false));
-  }, [applyConnectionResult, bootstrapConversations, formatKeyspacesWarning]);
+  }, [applyConnectionResult, fetchCollections, initialAstraEndpoint]);
 
-  // ── Handlers ───────────────────────────────────────────────────────
-  const handleConnect = useCallback(async (token: string, endpoint: string) => {
+  const handleConnect = useCallback(async (
+    nextConnectionOrToken: BackendConnectionState | string,
+    legacyEndpoint?: string
+  ) => {
     setConnectError("");
-    const fromEnv = !token && !endpoint;
+    const nextConnection =
+      typeof nextConnectionOrToken === "string"
+        ? {
+            backend: "astra" as const,
+            token: nextConnectionOrToken,
+            endpoint: normalizeEndpoint(legacyEndpoint ?? ""),
+          }
+        : nextConnectionOrToken;
+    setSelectedBackend(nextConnection.backend);
     try {
-      const result = await fetchCollections(token, endpoint);
-      setAstraToken(fromEnv ? "" : token);
-      setAstraEndpoint(fromEnv ? "" : endpoint.replace(/\/$/, ""));
-      setAstraFromEnv(fromEnv);
-      setKeyspaces(result.keyspaces);
-      if (result.keyspaces.length > 0) setSelectedKeyspace(result.keyspaces[0]);
-      resetConversationTracking();
-      await bootstrapConversations().catch(() => {
-        // A conversation refresh failure should not block a successful Astra connect.
+      const result = await fetchCollections(nextConnection, nextConnection.keyspace);
+      applyConnectionResult(result, nextConnection);
+      resetConversationTrackingRef.current();
+      await bootstrapConversationsRef.current().catch(() => {
+        // A conversation refresh failure should not block a successful connect.
       });
       if (result.keyspacesError) {
-        const warning = formatKeyspacesWarning(result.keyspacesError);
-        setConnectError(warning);
-        throw new Error(warning);
+        const message = `Connected, but keyspaces could not be listed. ${result.keyspacesError}`;
+        setConnectError(message);
+        throw new Error(message);
       }
     } catch (err) {
       setConnectError(err instanceof Error ? err.message : "Connection failed");
       throw err;
     }
-  }, [bootstrapConversations, formatKeyspacesWarning, fetchCollections, resetConversationTracking]);
+  }, [applyConnectionResult, fetchCollections]);
 
-  const handleDisconnect = () => {
-    setAstraToken("");
-    setAstraEndpoint("");
-    setAstraFromEnv(false);
+  const handleDisconnect = useCallback(() => {
+    setConnection(null);
+    setCapabilities(DEFAULT_CAPABILITIES);
     setCollections([]);
     setCollectionFields({});
     setActiveCollection("");
     setCollectionCreateError("");
     setKeyspaces([]);
     setSelectedKeyspace("default_keyspace");
-    resetConversationTracking();
-    onDisconnectViewReset?.();
-    void bootstrapConversations().catch(() => {
+    resetConversationTrackingRef.current();
+    onDisconnectViewResetRef.current?.();
+    void bootstrapConversationsRef.current().catch(() => {
       // Best-effort conversation bootstrap after disconnect.
     });
-  };
+  }, []);
 
-  const handleSelectCollection = (name: string) => {
+  const handleSelectCollection = useCallback((name: string) => {
     setActiveCollection(name);
-  };
+  }, []);
 
   const handleKeyspaceChange = useCallback(async (keyspace: string) => {
-    if (!astraFromEnv && (!astraToken || !astraEndpoint)) {
+    if (!connection) {
       setSelectedKeyspace(keyspace);
       return;
     }
+
     try {
-      const result = await fetchCollections(
-        astraFromEnv ? "" : astraToken,
-        astraFromEnv ? "" : astraEndpoint,
-        keyspace
-      );
+      const result = await fetchCollections(connection, keyspace);
       setKeyspaces(result.keyspaces);
-      setSelectedKeyspace(keyspace);
-      setConnectError(
-        result.keyspacesError
-          ? formatKeyspacesWarning(
-              result.keyspacesError,
-              astraFromEnv ? "env" : "manual"
-            )
-          : ""
-      );
+      setSelectedKeyspace(result.resolvedKeyspace ?? keyspace);
     } catch {
       // Keep the previous keyspace selection and collection snapshot in sync.
     }
-  }, [astraEndpoint, astraFromEnv, astraToken, fetchCollections, formatKeyspacesWarning]);
+  }, [connection, fetchCollections]);
 
-  const isConnected = astraFromEnv || !!astraToken;
+  const isConnected = !!connection;
   const activeCollectionObj = collections.find((c) => c.name === activeCollection) ?? collections[0];
+  const envReady = selectedBackend === "hcd"
+    ? Boolean(backendStatuses?.hcd?.ready)
+    : Boolean(backendStatuses?.astra?.ready);
+  const astraConnection = connection?.backend === "astra" ? connection : null;
 
   return {
-    astraToken,
-    astraEndpoint,
-    astraFromEnv,
+    connection,
+    astraToken: astraConnection?.token ?? "",
+    astraEndpoint: astraConnection?.endpoint ?? "",
+    astraFromEnv: Boolean(astraConnection?.fromEnv),
+    selectedBackend,
+    setSelectedBackend,
+    backendStatuses,
+    capabilities,
     envReady,
     initializing,
     isConnected,

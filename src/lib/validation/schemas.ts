@@ -1,10 +1,24 @@
 import { z } from "zod";
 
-// ── Shared Astra connection fields ──────────────────────────────────
-export const astraConnectionSchema = z.object({
+export const backendKindSchema = z.enum(["astra", "hcd"]).optional().default("astra");
+export const knowledgeBackendKindSchema = z
+  .enum(["astra", "hcd", "openrag"])
+  .optional();
+
+// ── Shared backend connection fields ────────────────────────────────
+export const backendConnectionSchema = z.object({
+  backend: backendKindSchema,
   token: z.string().optional(),
   endpoint: z.string().optional(),
+  username: z.string().optional(),
+  password: z.string().optional(),
   keyspace: z.string().optional(),
+});
+
+export const knowledgeConnectionSchema = z.object({
+  knowledgeBackend: knowledgeBackendKindSchema,
+  openragApiKey: z.string().optional(),
+  openragBaseUrl: z.string().optional(),
 });
 
 // ── Auth ─────────────────────────────────────────────────────────────
@@ -12,10 +26,10 @@ export const loginBodySchema = z.object({
   password: z.string().optional().default(""),
 });
 
-// ── Astra connection & browse ────────────────────────────────────────
-export const connectBodySchema = astraConnectionSchema;
+// ── Backend connection & browse ─────────────────────────────────────
+export const connectBodySchema = backendConnectionSchema;
 
-export const browseBodySchema = astraConnectionSchema.extend({
+export const browseBodySchema = backendConnectionSchema.extend({
   collection: z.string().min(1),
   pageState: z.string().nullable().optional(),
   sort: z
@@ -26,21 +40,21 @@ export const browseBodySchema = astraConnectionSchema.extend({
     .optional(),
 });
 
-export const countBodySchema = astraConnectionSchema.extend({
+export const countBodySchema = backendConnectionSchema.extend({
   collection: z.string().min(1),
 });
 
-export const keyspacesBodySchema = astraConnectionSchema;
+export const keyspacesBodySchema = backendConnectionSchema;
 
-export const embeddingProvidersBodySchema = astraConnectionSchema;
+export const embeddingProvidersBodySchema = backendConnectionSchema;
 
 // ── Field sampling ──────────────────────────────────────────────────
-export const sampleFieldsBodySchema = astraConnectionSchema.extend({
+export const sampleFieldsBodySchema = backendConnectionSchema.extend({
   collection: z.string().min(1),
 });
 
 // ── Collection CRUD ──────────────────────────────────────────────────
-export const createCollectionBodySchema = astraConnectionSchema.extend({
+export const createCollectionBodySchema = backendConnectionSchema.extend({
   name: z.string().min(1),
   dimension: z.number().int().positive(),
   metric: z.enum(["cosine", "dot_product", "euclidean"]),
@@ -56,33 +70,33 @@ export const createCollectionBodySchema = astraConnectionSchema.extend({
   }
 });
 
-export const deleteCollectionBodySchema = astraConnectionSchema.extend({
+export const deleteCollectionBodySchema = backendConnectionSchema.extend({
   name: z.string().min(1),
 });
 
 // ── Documents ────────────────────────────────────────────────────────
-export const deleteDocumentsBodySchema = astraConnectionSchema.extend({
+export const deleteDocumentsBodySchema = backendConnectionSchema.extend({
   collection: z.string().min(1),
   ids: z.array(z.string()).min(1),
 });
 
-export const documentsDeleteBodySchema = astraConnectionSchema.extend({
+export const documentsDeleteBodySchema = backendConnectionSchema.extend({
   source_doc_id: z.string().min(1),
   collection: z.string().min(1),
-});
+}).merge(knowledgeConnectionSchema);
 
-export const documentsChunksBodySchema = astraConnectionSchema.extend({
+export const documentsChunksBodySchema = backendConnectionSchema.extend({
   source_doc_id: z.string().min(1),
   collection: z.string().min(1),
-});
+}).merge(knowledgeConnectionSchema);
 
 // ── Ingest ───────────────────────────────────────────────────────────
-export const ingestBodySchema = astraConnectionSchema.extend({
+export const ingestBodySchema = backendConnectionSchema.extend({
   collection: z.string().min(1),
   rows: z.array(z.record(z.string(), z.string())),
   filename: z.string().min(1),
   huggingfaceApiKey: z.string().optional(),
-});
+}).merge(knowledgeConnectionSchema);
 
 // ── Conversations ────────────────────────────────────────────────────
 export const conversationCreateBodySchema = z.object({
@@ -122,8 +136,9 @@ export const conversationTitleBodySchema = z.object({
 });
 
 // ── Chat ─────────────────────────────────────────────────────────────
-export const chatBodySchema = astraConnectionSchema.extend({
+export const chatBodySchema = backendConnectionSchema.extend({
   query: z.string().min(1),
+  isConnected: z.boolean().optional(),
   searchMode: z.enum(["vector", "hybrid", "lexical"]),
   collections: z
     .array(
@@ -146,10 +161,10 @@ export const chatBodySchema = astraConnectionSchema.extend({
     .max(100)
     .optional(),
   huggingfaceApiKey: z.string().optional(),
-});
+}).merge(knowledgeConnectionSchema);
 
 // ── Data API Proxy ───────────────────────────────────────────────────
-export const dataApiProxyBodySchema = astraConnectionSchema.extend({
+export const dataApiProxyBodySchema = backendConnectionSchema.extend({
   collection: z.string().min(1),
   requestBody: z.record(z.string(), z.unknown()),
 });

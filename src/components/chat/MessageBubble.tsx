@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable security/detect-object-injection -- Message rendering indexes typed pipeline/source records for display only. */
 
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";

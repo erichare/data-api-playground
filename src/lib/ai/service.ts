@@ -70,8 +70,10 @@ export async function getAiStatus(): Promise<AiStatus> {
     ollamaBaseUrl: config.ollamaBaseUrl,
     chatModelInstalled: false,
     embedModelInstalled: false,
-    chatModel: config.ollamaChatModel,
-    embedModel: config.ollamaEmbedModel,
+    huggingfaceChatModel: config.huggingfaceChatModel,
+    huggingfaceEmbedModel: config.huggingfaceEmbedModel,
+    ollamaChatModel: config.ollamaChatModel,
+    ollamaEmbedModel: config.ollamaEmbedModel,
   };
 
   try {

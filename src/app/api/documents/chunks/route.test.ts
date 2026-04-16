@@ -1,17 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const findMock = vi.fn();
-const collectionMock = vi.fn(() => ({
-  find: findMock,
-}));
-const getAstraDbMock = vi.fn(() => ({
-  collection: collectionMock,
-}));
+const loadIngestedDocumentContentMock = vi.fn();
 const resolveAstraConnectionMock = vi.fn();
 
 vi.mock("@/lib/astra", () => ({
-  getAstraDb: getAstraDbMock,
   resolveAstraConnection: resolveAstraConnectionMock,
+}));
+
+vi.mock("@/lib/collections/service", () => ({
+  loadIngestedDocumentContent: loadIngestedDocumentContentMock,
 }));
 
 describe("/api/documents/chunks route", () => {
@@ -69,18 +66,10 @@ describe("/api/documents/chunks route", () => {
   });
 
   it("loads and sorts document chunks by their metadata index", async () => {
-    async function* makeCursor() {
-      yield {
-        content: "second chunk",
-        metadata: { chunk_index: 2 },
-      };
-      yield {
-        content: "first chunk",
-        metadata: { chunk_index: 1 },
-      };
-    }
-
-    findMock.mockReturnValueOnce(makeCursor());
+    loadIngestedDocumentContentMock.mockResolvedValueOnce([
+      { chunk_index: 1, content: "first chunk" },
+      { chunk_index: 2, content: "second chunk" },
+    ]);
 
     const { POST } = await import("./route");
     const response = await POST(
@@ -100,12 +89,12 @@ describe("/api/documents/chunks route", () => {
         { chunk_index: 2, content: "second chunk" },
       ],
     });
-    expect(findMock).toHaveBeenCalledWith(
-      { "metadata.source_doc_id": { $eq: "doc-1" } },
-      {
-        projection: { content: 1, metadata: 1 },
-        limit: 1000,
-      }
-    );
+    expect(loadIngestedDocumentContentMock).toHaveBeenCalledWith({
+      source_doc_id: "doc-1",
+      collection: "docs",
+      token: "AstraCS:secret",
+      endpoint: "https://db.apps.astra.datastax.com",
+      keyspace: "default_keyspace",
+    });
   });
 });

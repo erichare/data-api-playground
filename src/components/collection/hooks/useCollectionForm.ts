@@ -1,6 +1,11 @@
 "use client";
+/* eslint-disable security/detect-object-injection -- Form state reads typed provider/model maps with constrained keys. */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type {
+  BackendCapabilities,
+  BackendConnectionState,
+} from "@/lib/backends/types";
 import type { Collection } from "@/lib/types";
 import {
   createCollection,
@@ -12,6 +17,8 @@ import {
 
 interface UseCollectionFormArgs {
   open: boolean;
+  connection?: BackendConnectionState | null;
+  capabilities?: BackendCapabilities;
   astraToken?: string;
   astraEndpoint?: string;
   keyspace?: string;
@@ -24,6 +31,17 @@ interface UseCollectionFormArgs {
 
 export function useCollectionForm({
   open,
+  connection,
+  capabilities = {
+    connect: true,
+    keyspaces: true,
+    collectionCrud: true,
+    embeddingProviders: true,
+    vectorizeCollections: true,
+    rawBrowse: true,
+    deleteDocuments: true,
+    apiProxy: true,
+  },
   astraToken,
   astraEndpoint,
   keyspace,
@@ -33,6 +51,19 @@ export function useCollectionForm({
   onCreated,
   onClose,
 }: UseCollectionFormArgs) {
+  const resolvedConnection = useMemo(
+    () =>
+      connection ??
+      (astraToken || astraEndpoint
+        ? {
+            backend: "astra" as const,
+            token: astraToken ?? "",
+            endpoint: astraEndpoint ?? "",
+          }
+        : null),
+    [astraEndpoint, astraToken, connection]
+  );
+
   const [name, setName] = useState("");
   const [mode, setMode] = useState<CollectionMode>("vectorize");
   const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
@@ -55,7 +86,7 @@ export function useCollectionForm({
     setLoadingProviders(true);
     setProvidersError("");
     try {
-      const models = await fetchProviderModels(astraToken, astraEndpoint);
+      const models = await fetchProviderModels(resolvedConnection);
       setProviderModels(models);
       setSelectedModelIdx(0);
     } catch (err) {
@@ -65,7 +96,7 @@ export function useCollectionForm({
     } finally {
       setLoadingProviders(false);
     }
-  }, [astraEndpoint, astraToken, isConnected]);
+  }, [isConnected, resolvedConnection]);
 
   useEffect(() => {
     if (!open || !isConnected || mode !== "vectorize" || providerModels.length > 0) {
@@ -73,6 +104,12 @@ export function useCollectionForm({
     }
     void loadProviderModels();
   }, [open, isConnected, mode, providerModels.length, loadProviderModels]);
+
+  useEffect(() => {
+    if (isConnected && !capabilities.vectorizeCollections && mode === "vectorize") {
+      setMode("client");
+    }
+  }, [capabilities.vectorizeCollections, isConnected, mode]);
 
   const resetAfterCreate = useCallback(() => {
     setName("");
@@ -109,8 +146,8 @@ export function useCollectionForm({
       }
 
       const collection = await createCollection({
-        astraToken,
-        astraEndpoint,
+        connection: resolvedConnection,
+        capabilities,
         keyspace,
         isConnected,
         name: trimmedName,
@@ -137,9 +174,8 @@ export function useCollectionForm({
       setLoading(false);
     }
   }, [
-    astraEndpoint,
-    astraToken,
     canSubmit,
+    capabilities,
     dimension,
     isConnected,
     keyspace,
@@ -151,6 +187,7 @@ export function useCollectionForm({
     onCreateStarted,
     onCreated,
     resetAfterCreate,
+    resolvedConnection,
     selectedModel,
   ]);
 
@@ -165,6 +202,7 @@ export function useCollectionForm({
       setSelectedModelIdx,
       loadingProviders,
       providersError,
+      supportsVectorize: capabilities.vectorizeCollections,
       dimension,
       setDimension,
       metric,
@@ -189,6 +227,7 @@ export function useCollectionForm({
       name,
       providerModels,
       providersError,
+      capabilities.vectorizeCollections,
       selectedModel,
       selectedModelIdx,
     ]

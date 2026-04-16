@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+/* eslint-disable security/detect-non-literal-regexp -- Test assertions build regexes from controlled fixture strings only. */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

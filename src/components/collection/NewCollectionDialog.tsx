@@ -2,6 +2,10 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Cpu, Loader2, Plus, X, Zap } from "lucide-react";
+import type {
+  BackendCapabilities,
+  BackendConnectionState,
+} from "@/lib/backends/types";
 import type { Collection } from "@/lib/types";
 import { CollectionCodePreview } from "@/components/collection/CollectionCodePreview";
 import { useCollectionForm } from "@/components/collection/hooks/useCollectionForm";
@@ -16,6 +20,8 @@ interface NewCollectionDialogProps {
   onCreateStarted?: (collection: Collection) => void;
   onCreateFailed?: (name: string, message: string) => void;
   onCreated: (collection: Collection) => void;
+  connection?: BackendConnectionState | null;
+  capabilities?: BackendCapabilities;
   astraToken?: string;
   astraEndpoint?: string;
   keyspace?: string;
@@ -30,6 +36,17 @@ export function NewCollectionDialog({
   onCreateStarted,
   onCreateFailed,
   onCreated,
+  connection,
+  capabilities = {
+    connect: true,
+    keyspaces: true,
+    collectionCrud: true,
+    embeddingProviders: true,
+    vectorizeCollections: true,
+    rawBrowse: true,
+    deleteDocuments: true,
+    apiProxy: true,
+  },
   astraToken,
   astraEndpoint,
   keyspace,
@@ -43,6 +60,7 @@ export function NewCollectionDialog({
     providerModels,
     selectedModelIdx,
     setSelectedModelIdx,
+    supportsVectorize,
     loadingProviders,
     providersError,
     dimension,
@@ -57,6 +75,8 @@ export function NewCollectionDialog({
     handleCreate,
   } = useCollectionForm({
     open,
+    connection,
+    capabilities,
     astraToken,
     astraEndpoint,
     keyspace,
@@ -176,10 +196,16 @@ export function NewCollectionDialog({
                   <div className="grid grid-cols-2 gap-2">
                     {MODES.map((nextMode) => {
                       const active = mode === nextMode;
+                      const disabled =
+                        nextMode === "vectorize" && !supportsVectorize;
                       return (
                         <motion.button
                           key={nextMode}
-                          onClick={() => setMode(nextMode)}
+                          onClick={() => {
+                            if (!disabled) {
+                              setMode(nextMode);
+                            }
+                          }}
                           className="flex items-center gap-2.5 px-3 py-3 rounded-xl text-left"
                           style={{
                             backgroundColor: active
@@ -187,6 +213,7 @@ export function NewCollectionDialog({
                                 ? "rgba(108,99,255,0.1)"
                                 : "rgba(0,194,203,0.08)"
                               : "var(--bg-card)",
+                            opacity: disabled ? 0.55 : 1,
                             border: `1px solid ${
                               active
                                 ? nextMode === "vectorize"
@@ -240,7 +267,9 @@ export function NewCollectionDialog({
                               style={{ color: "var(--text-muted)" }}
                             >
                               {nextMode === "vectorize"
-                                ? "Server-side embeddings"
+                                ? disabled
+                                  ? "Not available for this backend"
+                                  : "Server-side embeddings"
                                 : "Bring your own vectors"}
                             </div>
                           </div>
@@ -255,6 +284,18 @@ export function NewCollectionDialog({
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                   >
+                    {!supportsVectorize && (
+                      <div
+                        className="text-xs px-3 py-2 rounded-lg mb-3"
+                        style={{
+                          backgroundColor: "rgba(251,191,36,0.08)",
+                          border: "1px solid rgba(251,191,36,0.25)",
+                          color: "#fbbf24",
+                        }}
+                      >
+                        This backend does not support vectorize collections yet. Use Client-Side mode instead.
+                      </div>
+                    )}
                     <label
                       className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5"
                       style={{ color: "var(--text-muted)" }}
@@ -270,7 +311,7 @@ export function NewCollectionDialog({
                           color: "var(--text-secondary)",
                         }}
                       >
-                        Connect to Astra DB to browse available models
+                        Connect to your backend to browse available models
                       </div>
                     ) : loadingProviders ? (
                       <div
@@ -434,7 +475,9 @@ export function NewCollectionDialog({
                 <div className="flex items-center justify-between gap-2">
                   {!isConnected && (
                     <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                      Demo mode — not saved to Astra DB
+                      {connection?.backend === "hcd"
+                        ? "Demo mode — not saved to DataStax HCD"
+                        : "Demo mode — not saved to Astra DB"}
                     </span>
                   )}
                   <div className="flex items-center gap-2 ml-auto">

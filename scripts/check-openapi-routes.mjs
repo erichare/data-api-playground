@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-non-literal-fs-filename -- This repo script only walks trusted workspace paths derived from process.cwd(). */
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 

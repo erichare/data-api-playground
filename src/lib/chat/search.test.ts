@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-object-injection -- Search tests intentionally inspect typed fixture maps keyed by known collection names. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ResolvedAiBackend } from "@/lib/ai/service";
 

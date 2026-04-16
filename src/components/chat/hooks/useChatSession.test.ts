@@ -184,6 +184,50 @@ describe("useChatSession", () => {
     expect(result.current.chatError).toBe("");
   });
 
+  it("marks env-backed Astra sessions as connected in the chat request body", async () => {
+    global.fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as {
+        isConnected: boolean;
+        query: string;
+      };
+
+      expect(body.isConnected).toBe(true);
+      expect(body.query).toBe("Find active orders");
+
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.close();
+          },
+        })
+      );
+    }) as typeof fetch;
+
+    const { result } = renderHook(() =>
+      useChatSession({
+        ...defaultArgs,
+        astraToken: "",
+        astraEndpoint: "",
+        connection: {
+          backend: "astra",
+          token: "",
+          endpoint: "",
+          fromEnv: true,
+        },
+      })
+    );
+
+    act(() => {
+      result.current.setInput("Find active orders");
+    });
+
+    await act(async () => {
+      await result.current.sendMessage();
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("captures request-scoped chat failures and still appends an assistant error message", async () => {
     const onMessagesUpdate = vi.fn();
     const stream = new ReadableStream({

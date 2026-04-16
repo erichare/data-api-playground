@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-object-injection -- Bounded concurrency stores settled results by trusted array indices. */
 /**
  * Map over items with bounded concurrency, returning settled results.
  *

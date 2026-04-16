@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-object-injection -- Text extraction tests inspect typed row maps built from fixture data only. */
 import { describe, expect, it } from "vitest";
 import {
   chunkText,

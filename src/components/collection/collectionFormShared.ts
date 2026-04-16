@@ -1,3 +1,8 @@
+import type {
+  BackendCapabilities,
+  BackendConnectionState,
+} from "@/lib/backends/types";
+import { buildConnectionRequestBody } from "@/lib/backends/types";
 import type { Collection } from "@/lib/types";
 
 export interface ProviderModel {
@@ -14,8 +19,8 @@ export type CollectionMetric = typeof METRICS[number];
 export type CodeLang = "ts" | "python" | "java" | "curl";
 
 interface CreateCollectionArgs {
-  astraToken?: string;
-  astraEndpoint?: string;
+  connection: BackendConnectionState | null;
+  capabilities: BackendCapabilities;
   keyspace?: string;
   isConnected?: boolean;
   name: string;
@@ -26,13 +31,12 @@ interface CreateCollectionArgs {
 }
 
 export async function fetchProviderModels(
-  astraToken?: string,
-  astraEndpoint?: string
+  connection: BackendConnectionState | null
 ): Promise<ProviderModel[]> {
   const response = await fetch("/api/embedding-providers", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: astraToken ?? "", endpoint: astraEndpoint ?? "" }),
+    body: JSON.stringify(buildConnectionRequestBody(connection)),
   });
   const data = (await response.json()) as { models?: ProviderModel[]; error?: string };
   if (!response.ok || data.error) {
@@ -42,8 +46,8 @@ export async function fetchProviderModels(
 }
 
 export async function createCollection({
-  astraToken,
-  astraEndpoint,
+  connection,
+  capabilities,
   keyspace,
   isConnected = false,
   name,
@@ -77,13 +81,16 @@ export async function createCollection({
     throw new Error("Select an embedding model");
   }
 
+  if (mode === "vectorize" && !capabilities.vectorizeCollections) {
+    throw new Error("This backend does not support server-side vectorize collections");
+  }
+
   const resolvedModel = selectedModel;
 
   const body =
     mode === "vectorize"
       ? {
-          token: astraToken ?? "",
-          endpoint: astraEndpoint ?? "",
+          ...buildConnectionRequestBody(connection, { keyspace }),
           keyspace,
           name: trimmedName,
           provider: resolvedModel!.provider,
@@ -92,9 +99,7 @@ export async function createCollection({
           metric: "cosine",
         }
       : {
-          token: astraToken ?? "",
-          endpoint: astraEndpoint ?? "",
-          keyspace,
+          ...buildConnectionRequestBody(connection, { keyspace }),
           name: trimmedName,
           provider: "none",
           model: "",

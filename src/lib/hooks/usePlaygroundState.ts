@@ -7,11 +7,21 @@ import { usePlaygroundAuth } from "@/lib/hooks/usePlaygroundAuth";
 import { useConversationState } from "@/lib/hooks/useConversationState";
 import { usePlaygroundConnection } from "@/lib/hooks/usePlaygroundConnection";
 import { useThemeState } from "@/lib/hooks/useThemeState";
+import {
+  getKnowledgeBackendCapabilities,
+  getResolvedKnowledgeBackendKind,
+  type KnowledgeBackendMode,
+  type OpenragKnowledgeState,
+} from "@/lib/knowledge/types";
 
 // ── Hook ────────────────────────────────────────────────────────────────────
 
 export function usePlaygroundState() {
   const [huggingfaceApiKey, setHuggingfaceApiKey] = useState("");
+  const [knowledgeBackendMode, setKnowledgeBackendMode] =
+    useState<KnowledgeBackendMode>("connected");
+  const [openragConnection, setOpenragConnection] =
+    useState<OpenragKnowledgeState | null>(null);
 
   // UI state
   const [viewMode, setViewMode] = useState<ViewMode>("chat");
@@ -71,10 +81,24 @@ export function usePlaygroundState() {
     resolvedCollections.find(
       (collection) => collection.name === connectionState.activeCollection
     ) ?? resolvedCollections[0];
+  const knowledgeBackendKind = getResolvedKnowledgeBackendKind({
+    selectedBackend: connectionState.selectedBackend,
+    knowledgeBackendMode,
+  });
+  const knowledgeCapabilities =
+    getKnowledgeBackendCapabilities(knowledgeBackendKind);
 
   const connectionValue: ConnectionContextValue = {
+    connection: connectionState.connection,
     astraToken: connectionState.astraToken,
     astraEndpoint: connectionState.astraEndpoint,
+    astraFromEnv: connectionState.astraFromEnv,
+    selectedBackend: connectionState.selectedBackend,
+    knowledgeBackendMode,
+    knowledgeBackendKind,
+    knowledgeCapabilities,
+    openragConnection,
+    capabilities: connectionState.capabilities,
     keyspace: connectionState.selectedKeyspace,
     isConnected: connectionState.isConnected,
     initializing: connectionState.initializing,
@@ -90,6 +114,7 @@ export function usePlaygroundState() {
     headerProps: {
       connected: connectionState.isConnected,
       envReady: connectionState.envReady && !connectionState.isConnected,
+      selectedBackend: connectionState.selectedBackend,
       onConnectionClick: handleConnectionClick,
       onSettingsClick: () => setQuickStartOpen(true),
       authEnabled: authState.authEnabled,
@@ -139,8 +164,15 @@ export function usePlaygroundState() {
       onCollectionCreateStarted: connectionState.handleCollectionCreateStarted,
       onCollectionCreateFailed: connectionState.handleCollectionCreateFailed,
       onCollectionCreated: connectionState.handleCollectionCreated,
-      astraToken: connectionState.astraToken,
-      astraEndpoint: connectionState.astraEndpoint,
+      connection: connectionState.connection,
+      selectedBackend: connectionState.selectedBackend,
+      knowledgeBackendMode,
+      openragConnection,
+      onSelectedBackendChange: connectionState.setSelectedBackend,
+      onKnowledgeBackendModeChange: setKnowledgeBackendMode,
+      onOpenragConnectionChange: setOpenragConnection,
+      backendStatuses: connectionState.backendStatuses,
+      capabilities: connectionState.capabilities,
       selectedKeyspace: connectionState.selectedKeyspace,
       quickStartOpen,
       onCloseQuickStart: () => setQuickStartOpen(false),
@@ -148,7 +180,6 @@ export function usePlaygroundState() {
       onCloseConnect: handleCloseConnect,
       onConnect: connectionState.handleConnect,
       onDisconnect: connectionState.handleDisconnect,
-      astraFromEnv: connectionState.astraFromEnv,
       huggingfaceApiKey,
       onHuggingfaceApiKeyChange: handleHuggingfaceApiKeyChange,
       connectError: connectionState.connectError,

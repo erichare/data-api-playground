@@ -29,8 +29,10 @@ export interface AiStatus {
   ollamaBaseUrl: string;
   chatModelInstalled: boolean;
   embedModelInstalled: boolean;
-  chatModel: string;
-  embedModel: string;
+  huggingfaceChatModel: string;
+  huggingfaceEmbedModel: string;
+  ollamaChatModel: string;
+  ollamaEmbedModel: string;
 }
 
 /** Real-time progress event emitted during an Ollama model pull. */

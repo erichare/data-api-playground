@@ -57,6 +57,7 @@ describe("Header", () => {
     render(
       <Header
         envReady={true}
+        selectedBackend="hcd"
         onConnectionClick={onConnectionClick}
         onSettingsClick={onSettingsClick}
         onToggleTheme={onToggleTheme}
@@ -67,6 +68,7 @@ describe("Header", () => {
     );
 
     expect(screen.getByTestId("header-connect-button").textContent).toContain("Env Ready");
+    expect(screen.getByTitle(/DataStax HCD credentials detected/)).toBeTruthy();
 
     fireEvent.click(screen.getByTestId("header-connect-button"));
     fireEvent.click(screen.getByTitle("Quick Start & Settings"));
@@ -85,6 +87,7 @@ describe("Header", () => {
     render(
       <Header
         connected={true}
+        selectedBackend="astra"
         onConnectionClick={onConnectionClick}
         theme="light"
       />
@@ -98,5 +101,14 @@ describe("Header", () => {
 
     expect(onConnectionClick).toHaveBeenCalledTimes(1);
     expect(screen.getByTitle("Switch to dark mode")).toBeTruthy();
+  });
+
+  it("uses a generic label when disconnected without env credentials", () => {
+    render(<Header selectedBackend="astra" />);
+
+    expect(screen.getByTestId("header-connect-button").textContent).toContain(
+      "Connections"
+    );
+    expect(screen.getByTitle("Open connections")).toBeTruthy();
   });
 });

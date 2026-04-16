@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable security/detect-object-injection -- Ingest helpers read typed file metadata maps for presentation only. */
 
 import { Braces, FileCode, FileText, Table } from "lucide-react";
 import type { IngestFileType, IngestedDocumentSummary } from "@/lib/types";

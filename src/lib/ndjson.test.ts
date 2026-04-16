@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-object-injection -- NDJSON tests index fixture chunks by numeric positions only. */
 import { describe, expect, it, vi } from "vitest";
 import { readNdjsonStream } from "./ndjson";
 

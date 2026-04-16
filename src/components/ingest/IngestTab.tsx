@@ -2,6 +2,15 @@
 
 import { AnimatePresence } from "framer-motion";
 import { useMemo } from "react";
+import type {
+  BackendConnectionState,
+  DataApiBackendKind,
+} from "@/lib/backends/types";
+import type {
+  KnowledgeBackendCapabilities,
+  KnowledgeBackendMode,
+  OpenragKnowledgeState,
+} from "@/lib/knowledge/types";
 import type { Collection } from "@/lib/types";
 import { DocumentLibraryPanel } from "@/components/ingest/DocumentLibraryPanel";
 import { DocumentViewer } from "@/components/ingest/DocumentViewer";
@@ -11,8 +20,11 @@ import { useDocumentLibrary } from "@/components/ingest/hooks/useDocumentLibrary
 import { useIngestUpload } from "@/components/ingest/hooks/useIngestUpload";
 
 interface IngestTabProps {
-  astraToken: string;
-  astraEndpoint: string;
+  connection: BackendConnectionState | null;
+  selectedBackend: DataApiBackendKind;
+  knowledgeBackendMode?: KnowledgeBackendMode;
+  openragConnection?: OpenragKnowledgeState | null;
+  knowledgeCapabilities?: KnowledgeBackendCapabilities;
   keyspace: string;
   collections: Collection[];
   activeCollection?: string;
@@ -25,8 +37,20 @@ interface IngestTabProps {
 }
 
 export function IngestTab({
-  astraToken,
-  astraEndpoint,
+  connection,
+  selectedBackend,
+  knowledgeBackendMode = "connected",
+  openragConnection = null,
+  knowledgeCapabilities = {
+    listSources: true,
+    vectorSearch: true,
+    hybridSearch: true,
+    lexicalSearch: true,
+    csvIngest: true,
+    documentIngest: true,
+    documentDelete: true,
+    documentContentLoad: true,
+  },
   keyspace,
   collections,
   activeCollection,
@@ -60,8 +84,10 @@ export function IngestTab({
   } = useDocumentLibrary({
     isConnected,
     selectedCollection,
-    astraToken,
-    astraEndpoint,
+    connection,
+    selectedBackend,
+    knowledgeBackendMode,
+    openragConnection,
     keyspace,
     onCollectionStatsDelta,
   });
@@ -77,8 +103,10 @@ export function IngestTab({
     handleIngest,
     resolveConflict,
   } = useIngestUpload({
-    astraToken,
-    astraEndpoint,
+    connection,
+    selectedBackend,
+    knowledgeBackendMode,
+    openragConnection,
     keyspace,
     selectedCollection,
     huggingfaceApiKey,
@@ -117,14 +145,15 @@ export function IngestTab({
           onDelete={handleDelete}
           onView={setViewingDoc}
           isConnected={isConnected}
+          selectedBackend={selectedBackend}
         />
 
         <RawCollectionBrowser
           isConnected={isConnected}
           selectedCollection={selectedCollection}
-          astraToken={astraToken}
-          astraEndpoint={astraEndpoint}
+          connection={connection}
           keyspace={keyspace}
+          selectedBackend={selectedBackend}
         />
       </div>
 
@@ -132,10 +161,13 @@ export function IngestTab({
         {viewingDoc && (
           <DocumentViewer
             doc={viewingDoc}
-            astraToken={astraToken}
-            astraEndpoint={astraEndpoint}
+            connection={connection}
+            selectedBackend={selectedBackend}
+            knowledgeBackendMode={knowledgeBackendMode}
+            openragConnection={openragConnection}
             keyspace={keyspace}
             isConnected={isConnected}
+            knowledgeCapabilities={knowledgeCapabilities}
             onClose={() => setViewingDoc(null)}
           />
         )}

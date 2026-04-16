@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAstraDb, resolveAstraConnection } from "@/lib/astra";
-import {
-  buildTsCall,
-  formatTsMethodCall,
-  recordAstraClientCall,
-  withRequestLog,
-} from "@/lib/astraClientLog";
+import { withRequestLog } from "@/lib/astraClientLog";
 import { requireApiAuth } from "@/lib/auth";
+import { resolveDataApiBackend } from "@/lib/dataApi";
+import { toLegacyAstraCredentialMessage } from "@/lib/dataApi/errors";
 import { createRequestLogContext, jsonError, logError, sanitizeErrorForClient } from "@/lib/server/log";
 import { keyspacesBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
@@ -19,32 +15,23 @@ export async function POST(req: NextRequest) {
   if (authError) return authError;
   const result = await parseJsonBody(req, keyspacesBodySchema);
   if (isErrorResponse(result)) return result;
-  const { token, endpoint } = resolveAstraConnection(result);
-
-  if (!token || !endpoint) {
-    return jsonError(logContext, 400, "token and endpoint are required");
-  }
 
   return withRequestLog(async () => {
     try {
-      const admin = getAstraDb(token, endpoint).admin();
-      recordAstraClientCall({
-        label: "List Keyspaces",
-        code: buildTsCall("db.admin()", [
-          formatTsMethodCall("listKeyspaces", []),
-        ]),
-      });
-      const keyspaces = await admin.listKeyspaces();
+      const { config, backend } = resolveDataApiBackend(result);
+      const keyspaces = await backend.listKeyspaces(config);
       return NextResponse.json(
         { keyspaces },
         { headers: { "X-Request-Id": logContext.requestId } }
       );
     } catch (err) {
-      logError(logContext, "keyspaces.failed", err);
+      logError(logContext, "keyspaces.failed", err, { backend: result.backend });
       return jsonError(
         logContext,
         400,
-        sanitizeErrorForClient(err, "Failed to list keyspaces")
+        toLegacyAstraCredentialMessage(
+          sanitizeErrorForClient(err, "Failed to list keyspaces")
+        )
       );
     }
   });

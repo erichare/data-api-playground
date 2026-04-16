@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlaygroundDialogs } from "./PlaygroundDialogs";
+import type { BackendConnectionState } from "@/lib/backends/types";
 
 vi.mock("@/components/collection/NewCollectionDialog", () => ({
   NewCollectionDialog: ({
@@ -51,11 +52,10 @@ vi.mock("@/components/onboarding/QuickStartGuide", () => ({
   ),
 }));
 
-vi.mock("@/components/connection/AstraConnectDialog", () => ({
-  AstraConnectDialog: ({
+vi.mock("@/components/connection/ConnectionDialog", () => ({
+  ConnectionDialog: ({
     open,
-    currentToken,
-    currentEndpoint,
+    currentConnection,
     currentHuggingfaceApiKey,
     error,
     connected,
@@ -65,28 +65,48 @@ vi.mock("@/components/connection/AstraConnectDialog", () => ({
     onHuggingfaceApiKeyChange,
   }: {
     open: boolean;
-    currentToken: string;
-    currentEndpoint: string;
+    currentConnection?: {
+      backend: "astra" | "hcd";
+      token?: string;
+      endpoint: string;
+      fromEnv?: boolean;
+    } | null;
     currentHuggingfaceApiKey?: string;
     error?: string;
     connected: boolean;
     onClose: () => void;
     onDisconnect: () => void;
-    onConnect: (token: string, endpoint: string) => Promise<void>;
+    onConnect: (connection: BackendConnectionState) => Promise<void>;
     onHuggingfaceApiKeyChange: (value: string) => void;
   }) => (
     <div data-testid="connect-dialog">
       {JSON.stringify({
         open,
-        currentToken,
-        currentEndpoint,
+        currentToken:
+          currentConnection?.backend === "astra" && !currentConnection.fromEnv
+            ? currentConnection.token ?? ""
+            : "",
+        currentEndpoint:
+          currentConnection?.backend === "astra" && !currentConnection.fromEnv
+            ? currentConnection.endpoint
+            : "",
         currentHuggingfaceApiKey,
         error,
         connected,
       })}
       <button onClick={onClose}>Close Connect</button>
       <button onClick={onDisconnect}>Disconnect</button>
-      <button onClick={() => void onConnect("token", "endpoint")}>Connect</button>
+      <button
+        onClick={() =>
+          void onConnect({
+            backend: "astra",
+            token: "token",
+            endpoint: "endpoint",
+          })
+        }
+      >
+        Connect
+      </button>
       <button onClick={() => onHuggingfaceApiKeyChange("hf-next")}>
         Update Hugging Face
       </button>
@@ -164,7 +184,11 @@ describe("PlaygroundDialogs", () => {
     expect(props.onCloseQuickStart).toHaveBeenCalled();
     expect(props.onCloseConnect).toHaveBeenCalled();
     expect(props.onDisconnect).toHaveBeenCalled();
-    expect(props.onConnect).toHaveBeenCalledWith("token", "endpoint");
+    expect(props.onConnect).toHaveBeenCalledWith({
+      backend: "astra",
+      token: "token",
+      endpoint: "endpoint",
+    });
     expect(props.onHuggingfaceApiKeyChange).toHaveBeenCalledWith("hf-next");
   });
 

@@ -1,23 +1,53 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type {
+  BackendConnectionState,
+  DataApiBackendKind,
+} from "@/lib/backends/types";
+import { buildConnectionRequestBody } from "@/lib/backends/types";
+import { buildKnowledgeRequestBody } from "@/lib/knowledge/client";
+import type {
+  KnowledgeBackendMode,
+  OpenragKnowledgeState,
+} from "@/lib/knowledge/types";
 import type { IngestedDocumentSummary } from "@/lib/types";
 
 interface UseDocumentChunksArgs {
   doc: IngestedDocumentSummary;
-  astraToken: string;
-  astraEndpoint: string;
+  connection?: BackendConnectionState | null;
+  astraToken?: string;
+  astraEndpoint?: string;
+  selectedBackend?: DataApiBackendKind;
+  knowledgeBackendMode?: KnowledgeBackendMode;
+  openragConnection?: OpenragKnowledgeState | null;
   keyspace: string;
   isConnected: boolean;
 }
 
 export function useDocumentChunks({
   doc,
+  connection,
   astraToken,
   astraEndpoint,
+  selectedBackend = "astra",
+  knowledgeBackendMode = "connected",
+  openragConnection = null,
   keyspace,
   isConnected,
 }: UseDocumentChunksArgs) {
+  const resolvedConnection = useMemo(
+    () =>
+      connection ??
+      (astraToken || astraEndpoint
+        ? {
+            backend: "astra" as const,
+            token: astraToken ?? "",
+            endpoint: astraEndpoint ?? "",
+          }
+        : null),
+    [astraEndpoint, astraToken, connection]
+  );
   const [chunks, setChunks] = useState<Array<{ chunk_index: number; content: string }>>([]);
   const [loading, setLoading] = useState(isConnected);
   const [error, setError] = useState("");
@@ -32,9 +62,12 @@ export function useDocumentChunks({
       body: JSON.stringify({
         source_doc_id: doc.source_doc_id,
         collection: doc.collection,
-        token: astraToken,
-        endpoint: astraEndpoint,
-        keyspace,
+        ...buildConnectionRequestBody(resolvedConnection, { keyspace }),
+        ...buildKnowledgeRequestBody({
+          selectedBackend,
+          knowledgeBackendMode,
+          openragConnection,
+        }),
       }),
     })
       .then((r) => r.json() as Promise<{ chunks?: typeof chunks; error?: string }>)
@@ -44,7 +77,15 @@ export function useDocumentChunks({
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Failed to load"))
       .finally(() => setLoading(false));
-  }, [doc, astraToken, astraEndpoint, keyspace, isConnected]);
+  }, [
+    doc,
+    isConnected,
+    keyspace,
+    knowledgeBackendMode,
+    openragConnection,
+    resolvedConnection,
+    selectedBackend,
+  ]);
 
   const fullText = useMemo(() => chunks.map((c) => c.content).join("\n\n"), [chunks]);
 

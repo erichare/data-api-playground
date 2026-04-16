@@ -1,3 +1,6 @@
+import type { BackendConnectionInput } from "@/lib/backends/types";
+import type { KnowledgeBackendInput } from "@/lib/knowledge/types";
+
 export type CollectionDescription = {
   name: string;
   definition?: {
@@ -22,6 +25,16 @@ export type ExistingIngestedDocument = {
   content_hash: string;
   ingested_at: string;
   collection: string;
+  backend_kind?: string | null;
+  backend_source?: string | null;
+  backend_document_ref?: string | null;
+};
+
+export type StoredIngestedDocument = ExistingIngestedDocument & {
+  file_type: string;
+  file_size: number;
+  chunk_total: number;
+  metadata?: string;
 };
 
 export type NameConflictAction = "overwrite" | "skip";
@@ -53,12 +66,18 @@ export interface ParsedDocumentUpload {
   filename: string;
   fileType: string;
   collectionName: string;
-  token?: string;
-  endpoint?: string;
   keyspace?: string;
   chunkSize: number;
   metadata: Record<string, unknown>;
   buffer: Buffer;
   huggingfaceApiKey?: string;
   nameConflictAction?: NameConflictAction;
+  backend?: BackendConnectionInput["backend"];
+  token?: string;
+  endpoint?: string;
+  username?: string;
+  password?: string;
+  knowledgeBackend?: KnowledgeBackendInput["knowledgeBackend"];
+  openragApiKey?: string;
+  openragBaseUrl?: string;
 }

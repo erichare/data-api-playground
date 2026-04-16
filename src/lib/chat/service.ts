@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-object-injection, security/detect-unsafe-regex -- Chat orchestration uses static regexes and typed map lookups, not dynamic code or user-controlled object mutation. */
 import {
   ANALYZE_MAX_TOKENS,
   MAX_LIMIT,
@@ -11,6 +12,9 @@ import {
   type EnsureModelResult,
   type ResolvedAiBackend,
 } from "@/lib/ai/service";
+import type { BackendConnectionInput } from "@/lib/backends/types";
+import { normalizeBackendKind } from "@/lib/backends/types";
+import type { KnowledgeBackendInput } from "@/lib/knowledge/types";
 import type {
   AnalyzeDecision,
   ChatRequestPayload,
@@ -19,10 +23,33 @@ import type {
 
 interface RunChatWorkflowArgs {
   payload: ChatRequestPayload;
+  connection?: BackendConnectionInput;
+  connectionActive?: boolean;
   token?: string;
   endpoint?: string;
+  username?: string;
+  password?: string;
+  knowledgeBackend?: KnowledgeBackendInput["knowledgeBackend"];
+  openragApiKey?: string;
+  openragBaseUrl?: string;
   backend: ResolvedAiBackend;
   send: (event: StepEvent) => void;
+}
+
+function hasUsableConnection(connection: BackendConnectionInput) {
+  const kind = normalizeBackendKind(connection.backend);
+  return kind === "hcd"
+    ? Boolean(
+        connection.endpoint &&
+          connection.backend === "hcd" &&
+          connection.username &&
+          connection.password
+      )
+    : Boolean(
+        connection.endpoint &&
+          connection.backend !== "hcd" &&
+          connection.token
+      );
 }
 
 /**
@@ -34,12 +61,35 @@ interface RunChatWorkflowArgs {
  */
 export async function runChatWorkflow({
   payload,
+  connection,
+  connectionActive,
   token,
   endpoint,
+  username,
+  password,
+  knowledgeBackend,
+  openragApiKey,
+  openragBaseUrl,
   backend,
   send,
 }: RunChatWorkflowArgs) {
-  const isConnected = !!(token && endpoint);
+  const resolvedConnection: BackendConnectionInput =
+    connection ??
+    (username || password
+      ? {
+          backend: "hcd",
+          endpoint,
+          username,
+          password,
+          keyspace: payload.keyspace,
+        }
+      : {
+          backend: "astra",
+          token,
+          endpoint,
+          keyspace: payload.keyspace,
+        });
+  const isConnected = connectionActive ?? hasUsableConnection(resolvedConnection);
   const decision = await analyzeChatRequest({
     payload,
     backend,
@@ -104,9 +154,22 @@ export async function runChatWorkflow({
     send({ step: "search", status: "running" });
     const searchStart = Date.now();
     const searchOutcome = await searchCollections({
-      token,
-      endpoint,
+      backend: resolvedConnection.backend,
+      token:
+        resolvedConnection.backend === "hcd" ? undefined : resolvedConnection.token,
+      endpoint: resolvedConnection.endpoint,
+      username:
+        resolvedConnection.backend === "hcd"
+          ? resolvedConnection.username
+          : undefined,
+      password:
+        resolvedConnection.backend === "hcd"
+          ? resolvedConnection.password
+          : undefined,
       keyspace: payload.keyspace,
+      knowledgeBackend,
+      openragApiKey,
+      openragBaseUrl,
       isConnected,
       query: payload.query,
       collection: decision.collection,

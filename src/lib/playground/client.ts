@@ -1,5 +1,11 @@
 "use client";
+/* eslint-disable security/detect-unsafe-regex -- The untitled-conversation regex is static, simple, and never built from user input. */
 
+import type {
+  BackendCapabilities,
+  BackendConnectionState,
+} from "@/lib/backends/types";
+import { buildConnectionRequestBody } from "@/lib/backends/types";
 import type { Collection, Conversation, Message } from "@/lib/types";
 
 export interface RemoteConversation {
@@ -32,24 +38,39 @@ export const UNTITLED_CONVERSATION_NAME = "Untitled";
 const UNTITLED_CONVERSATION_PATTERN = /^Untitled(?: \((\d+)\))?$/;
 
 export async function fetchCollectionsFromApi(
-  token: string,
-  endpoint: string,
-  keyspace?: string
+  connectionOrToken: BackendConnectionState | string | null,
+  endpointOrKeyspace?: string,
+  legacyKeyspace?: string
 ): Promise<{
   collections: Collection[];
   fields: Record<string, string[]>;
   keyspaces: string[];
+  resolvedKeyspace?: string;
+  capabilities: BackendCapabilities;
   keyspacesError?: string;
 }> {
+  const connection =
+    typeof connectionOrToken === "string"
+      ? {
+          backend: "astra" as const,
+          token: connectionOrToken,
+          endpoint: endpointOrKeyspace ?? "",
+        }
+      : connectionOrToken;
+  const keyspace =
+    typeof connectionOrToken === "string" ? legacyKeyspace : endpointOrKeyspace;
   const connectRes = await fetch("/api/connect", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token, endpoint, keyspace }),
+    body: JSON.stringify(buildConnectionRequestBody(connection, { keyspace })),
   });
 
   const data = await connectRes.json() as {
     collections?: Collection[];
     fields?: Record<string, string[]>;
+    keyspaces?: string[];
+    resolvedKeyspace?: string;
+    capabilities?: BackendCapabilities;
     error?: string;
     requestId?: string;
   };
@@ -58,40 +79,22 @@ export async function fetchCollectionsFromApi(
     throw new Error(data.requestId ? `${message} (request ${data.requestId})` : message);
   }
 
-  let keyspaces: string[] = [];
-  let keyspacesError: string | undefined;
-
-  const keyspacesRes = await fetch("/api/keyspaces", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token, endpoint }),
-  });
-
-  if (!keyspacesRes.ok) {
-    keyspacesError = await readApiErrorMessage(
-      keyspacesRes,
-      "Failed to list keyspaces"
-    );
-  } else {
-    const keyspacesData = await keyspacesRes.json() as {
-      keyspaces?: string[];
-      error?: string;
-      requestId?: string;
-    };
-    if (keyspacesData.error) {
-      keyspacesError = keyspacesData.requestId
-        ? `${keyspacesData.error} (request ${keyspacesData.requestId})`
-        : keyspacesData.error;
-    } else {
-      keyspaces = keyspacesData.keyspaces ?? [];
-    }
-  }
-
   return {
     collections: data.collections ?? [],
     fields: data.fields ?? {},
-    keyspaces,
-    ...(keyspacesError ? { keyspacesError } : {}),
+    keyspaces: data.keyspaces ?? [],
+    resolvedKeyspace: data.resolvedKeyspace,
+    capabilities: data.capabilities ?? {
+      connect: true,
+      keyspaces: true,
+      collectionCrud: true,
+      embeddingProviders: true,
+      vectorizeCollections: true,
+      rawBrowse: true,
+      deleteDocuments: true,
+      apiProxy: true,
+    },
+    keyspacesError: data.error,
   };
 }
 

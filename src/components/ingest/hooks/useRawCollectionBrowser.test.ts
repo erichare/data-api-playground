@@ -100,6 +100,133 @@ describe("useRawCollectionBrowser", () => {
       });
     });
 
+    it("uses an explicit HCD backend connection when one is provided", async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        json: vi.fn().mockResolvedValue({ documents: [], nextPageState: null }),
+      } as unknown as Response);
+
+      const { result } = renderHook(() =>
+        useRawCollectionBrowser({
+          ...defaultArgs,
+          connection: {
+            backend: "hcd",
+            endpoint: "https://hcd.example.com:8181",
+            username: "cassandra",
+            password: "secret",
+          },
+          astraToken: undefined,
+          astraEndpoint: undefined,
+        })
+      );
+
+      await act(async () => {
+        await result.current.loadRawDocs(null);
+      });
+
+      expect(fetch).toHaveBeenCalledWith("/api/browse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          backend: "hcd",
+          endpoint: "https://hcd.example.com:8181",
+          username: "cassandra",
+          password: "secret",
+          keyspace: "ks",
+          collection: "test-col",
+          pageState: null,
+        }),
+      });
+    });
+
+    it("omits backend credentials when neither an explicit connection nor Astra creds are present", async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        json: vi.fn().mockResolvedValue({ documents: [], nextPageState: null }),
+      } as unknown as Response);
+
+      const { result } = renderHook(() =>
+        useRawCollectionBrowser({
+          ...defaultArgs,
+          connection: null,
+          astraToken: undefined,
+          astraEndpoint: undefined,
+        })
+      );
+
+      await act(async () => {
+        await result.current.loadRawDocs(null);
+      });
+
+      expect(fetch).toHaveBeenCalledWith("/api/browse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          keyspace: "ks",
+          collection: "test-col",
+          pageState: null,
+        }),
+      });
+    });
+
+    it("derives a legacy Astra connection when only the endpoint is provided", async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        json: vi.fn().mockResolvedValue({ documents: [], nextPageState: null }),
+      } as unknown as Response);
+
+      const { result } = renderHook(() =>
+        useRawCollectionBrowser({
+          ...defaultArgs,
+          astraToken: undefined,
+          astraEndpoint: "https://endpoint-only.example.com",
+        })
+      );
+
+      await act(async () => {
+        await result.current.loadRawDocs(null);
+      });
+
+      expect(fetch).toHaveBeenCalledWith("/api/browse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: "",
+          endpoint: "https://endpoint-only.example.com",
+          keyspace: "ks",
+          collection: "test-col",
+          pageState: null,
+        }),
+      });
+    });
+
+    it("derives a legacy Astra connection when only the token is provided", async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        json: vi.fn().mockResolvedValue({ documents: [], nextPageState: null }),
+      } as unknown as Response);
+
+      const { result } = renderHook(() =>
+        useRawCollectionBrowser({
+          ...defaultArgs,
+          astraToken: "AstraCS:token-only",
+          astraEndpoint: undefined,
+        })
+      );
+
+      await act(async () => {
+        await result.current.loadRawDocs(null);
+      });
+
+      expect(fetch).toHaveBeenCalledWith("/api/browse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: "AstraCS:token-only",
+          endpoint: "",
+          keyspace: "ks",
+          collection: "test-col",
+          pageState: null,
+        }),
+      });
+    });
+
     it("does nothing when not connected", async () => {
       const { result } = renderHook(() =>
         useRawCollectionBrowser({ ...defaultArgs, isConnected: false })

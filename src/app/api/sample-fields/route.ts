@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAstraDb, resolveAstraConnection, SYSTEM_FIELDS } from "@/lib/astra";
 import { requireApiAuth } from "@/lib/auth";
+import { resolveDataApiBackend } from "@/lib/dataApi";
+import { getDataApiErrorStatus } from "@/lib/dataApi/errors";
 import { createRequestLogContext, jsonError, logError, sanitizeErrorForClient } from "@/lib/server/log";
 import { sampleFieldsBodySchema } from "@/lib/validation/schemas";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
@@ -20,32 +21,20 @@ export async function POST(req: NextRequest) {
   const result = await parseJsonBody(req, sampleFieldsBodySchema);
   if (isErrorResponse(result)) return result;
   const { collection } = result;
-  const { token, endpoint, keyspace } = resolveAstraConnection(result, {
-    includeDefaultKeyspace: true,
-  });
-
-  if (!token || !endpoint) {
-    return jsonError(logContext, 400, "token and endpoint are required");
-  }
 
   try {
-    const db = getAstraDb(token, endpoint, keyspace);
-    const collectionRef = db.collection(collection);
-    const sample = await collectionRef.find({}, { limit: 1 }).toArray();
-
-    const fields: string[] = [];
-    for (const doc of sample) {
-      for (const key of Object.keys(doc)) {
-        if (!SYSTEM_FIELDS.has(key)) fields.push(key);
-      }
-    }
+    const { config, backend } = resolveDataApiBackend(result, {
+      includeDefaultKeyspace: true,
+    });
+    const fields = await backend.sampleFields(config, collection);
 
     return NextResponse.json(
       { collection, fields },
       { headers: { "X-Request-Id": logContext.requestId } }
     );
   } catch (err) {
-    logError(logContext, "sampleFields.failed", err);
-    return jsonError(logContext, 500, sanitizeErrorForClient(err, "Failed to sample fields"));
+    logError(logContext, "sampleFields.failed", err, { backend: result.backend });
+    const message = sanitizeErrorForClient(err, "Failed to sample fields");
+    return jsonError(logContext, getDataApiErrorStatus(message, 500), message);
   }
 }

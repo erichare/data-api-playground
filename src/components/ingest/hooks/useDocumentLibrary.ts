@@ -1,6 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type {
+  BackendConnectionState,
+  DataApiBackendKind,
+} from "@/lib/backends/types";
+import { buildConnectionRequestBody } from "@/lib/backends/types";
+import { buildKnowledgeRequestBody } from "@/lib/knowledge/client";
+import type {
+  KnowledgeBackendMode,
+  OpenragKnowledgeState,
+} from "@/lib/knowledge/types";
 import type { IngestFileType, IngestedDocumentSummary } from "@/lib/types";
 import { getMockDocuments } from "@/components/ingest/ingestShared";
 import { readApiErrorMessage } from "@/lib/playground/client";
@@ -8,8 +18,12 @@ import { readApiErrorMessage } from "@/lib/playground/client";
 interface UseDocumentLibraryArgs {
   isConnected: boolean;
   selectedCollection: string;
-  astraToken: string;
-  astraEndpoint: string;
+  connection?: BackendConnectionState | null;
+  astraToken?: string;
+  astraEndpoint?: string;
+  selectedBackend?: DataApiBackendKind;
+  knowledgeBackendMode?: KnowledgeBackendMode;
+  openragConnection?: OpenragKnowledgeState | null;
   keyspace: string;
   onCollectionStatsDelta?: (
     name: string,
@@ -20,11 +34,27 @@ interface UseDocumentLibraryArgs {
 export function useDocumentLibrary({
   isConnected,
   selectedCollection,
+  connection,
   astraToken,
   astraEndpoint,
+  selectedBackend = "astra",
+  knowledgeBackendMode = "connected",
+  openragConnection = null,
   keyspace,
   onCollectionStatsDelta,
 }: UseDocumentLibraryArgs) {
+  const resolvedConnection = useMemo(
+    () =>
+      connection ??
+      (astraToken || astraEndpoint
+        ? {
+            backend: "astra" as const,
+            token: astraToken ?? "",
+            endpoint: astraEndpoint ?? "",
+          }
+        : null),
+    [astraEndpoint, astraToken, connection]
+  );
   const [documents, setDocuments] = useState<IngestedDocumentSummary[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [search, setSearch] = useState("");
@@ -77,11 +107,14 @@ export function useDocumentLibrary({
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            ...buildConnectionRequestBody(resolvedConnection, { keyspace }),
+            ...buildKnowledgeRequestBody({
+              selectedBackend,
+              knowledgeBackendMode,
+              openragConnection,
+            }),
             source_doc_id: doc.source_doc_id,
             collection: doc.collection,
-            token: astraToken,
-            endpoint: astraEndpoint,
-            keyspace,
           }),
         });
 
@@ -103,7 +136,15 @@ export function useDocumentLibrary({
     } finally {
       setDeletingId(null);
     }
-  }, [isConnected, astraToken, astraEndpoint, keyspace, onCollectionStatsDelta]);
+  }, [
+    isConnected,
+    keyspace,
+    knowledgeBackendMode,
+    onCollectionStatsDelta,
+    openragConnection,
+    resolvedConnection,
+    selectedBackend,
+  ]);
 
   const prependDocument = useCallback((doc: IngestedDocumentSummary) => {
     setDocuments((prev) => [doc, ...prev]);

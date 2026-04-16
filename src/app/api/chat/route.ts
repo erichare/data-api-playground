@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { resolveAstraConnection } from "@/lib/astra";
 import { resolveBackend } from "@/lib/ai/service";
 import { requireApiAuth } from "@/lib/auth";
+import type { BackendConnectionInput } from "@/lib/backends/types";
 import { runChatWorkflow } from "@/lib/chat/service";
 import type { StepEvent } from "@/lib/chat/types";
 import { withRequestLog } from "@/lib/astraClientLog";
@@ -38,18 +38,27 @@ export async function POST(req: NextRequest) {
   if (isErrorResponse(result)) return result;
 
   const {
+    backend: backendKind,
     token: bodyToken,
     endpoint: bodyEndpoint,
+    username,
+    password,
+    isConnected,
     huggingfaceApiKey,
     keyspace,
+    knowledgeBackend,
+    openragApiKey,
+    openragBaseUrl,
     ...payload
   } = result;
-
-  const { token, endpoint } = resolveAstraConnection({
+  const connection: BackendConnectionInput = {
+    backend: backendKind,
     token: bodyToken,
     endpoint: bodyEndpoint,
+    username,
+    password,
     keyspace,
-  });
+  } as BackendConnectionInput;
 
   const encoder = new TextEncoder();
 
@@ -64,8 +73,20 @@ export async function POST(req: NextRequest) {
         try {
           await runChatWorkflow({
             payload,
-            token,
-            endpoint,
+            connection,
+            connectionActive: isConnected,
+            ...(connection.backend === "hcd"
+              ? {
+                  username: connection.username ?? "",
+                  password: connection.password ?? "",
+                }
+              : {
+                  token: connection.token ?? "",
+                }),
+            endpoint: connection.endpoint ?? "",
+            knowledgeBackend,
+            openragApiKey,
+            openragBaseUrl,
             backend,
             send,
           });
