@@ -13,6 +13,45 @@ import type {
   KnowledgeSource,
 } from "@/lib/knowledge/types";
 
+/** Single point of structured logging for the OpenRAG backend so callers (or tests) can swap it. */
+type OpenragLogger = (
+  level: "warn" | "error",
+  event: string,
+  details: Record<string, unknown>
+) => void;
+
+const defaultOpenragLogger: OpenragLogger = (level, event, details) => {
+  const payload = JSON.stringify({
+    level,
+    component: "openragBackend",
+    event,
+    ...details,
+  });
+  if (level === "error") {
+    console.error(payload);
+  } else {
+    console.warn(payload);
+  }
+};
+
+let activeLogger: OpenragLogger = defaultOpenragLogger;
+
+/** Test-only override hook. Restoring `null` reverts to the structured console logger. */
+export function __setOpenragLoggerForTests(logger: OpenragLogger | null) {
+  activeLogger = logger ?? defaultOpenragLogger;
+}
+
+function describeError(err: unknown): Record<string, unknown> {
+  if (err instanceof Error) {
+    return {
+      errorMessage: err.message,
+      errorName: err.name,
+      ...(err.stack ? { stack: err.stack } : {}),
+    };
+  }
+  return { errorMessage: String(err) };
+}
+
 type OpenragConfig = Extract<KnowledgeBackendConfig, { kind: "openrag" }>;
 
 type CollectionRow = {
@@ -188,7 +227,11 @@ async function getKnowledgeSettings(
 ): Promise<SettingsResponse | null> {
   try {
     return await client.settings.get();
-  } catch {
+  } catch (err) {
+    activeLogger("warn", "settings.get_failed", {
+      ...describeError(err),
+      hint: "OpenRAG settings unavailable; falling back to default provider metadata",
+    });
     return null;
   }
 }
@@ -246,6 +289,14 @@ export const openragKnowledgeBackend: KnowledgeBackend = {
     const response = await client.search.query(request.query, {
       filters,
       limit: request.limit,
+    }).catch((err: unknown) => {
+      activeLogger("error", "search.query_failed", {
+        ...describeError(err),
+        collection: request.collection,
+        targetCollections,
+        limit: request.limit,
+      });
+      throw err;
     });
 
     const searchResults: SearchResult[] = response.results.map((result, index) => ({
@@ -284,10 +335,20 @@ export const openragKnowledgeBackend: KnowledgeBackend = {
     const file = new File([fileBytes], request.filename, {
       type: inferMimeType(request.fileType),
     });
-    await client.documents.ingest({
-      file,
-      filename: request.filename,
-    });
+    try {
+      await client.documents.ingest({
+        file,
+        filename: request.filename,
+      });
+    } catch (err) {
+      activeLogger("error", "documents.ingest_failed", {
+        ...describeError(err),
+        filename: request.filename,
+        fileType: request.fileType,
+        collectionName: request.collectionName,
+      });
+      throw err;
+    }
 
     send({
       type: "chunk_progress",
@@ -306,7 +367,16 @@ export const openragKnowledgeBackend: KnowledgeBackend = {
     const client = createClient(normalizedConfig);
     const ref = parseOpenragDocumentRef(request.documentRef);
 
-    await client.documents.delete(ref.filename);
+    try {
+      await client.documents.delete(ref.filename);
+    } catch (err) {
+      activeLogger("error", "documents.delete_failed", {
+        ...describeError(err),
+        filename: ref.filename,
+        source: request.source,
+      });
+      throw err;
+    }
   },
 
   async loadDocumentContent(request) {

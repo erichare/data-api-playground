@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   openRAGClientMock,
@@ -27,6 +27,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 import {
+  __setOpenragLoggerForTests,
   createOpenragDocumentRef,
   openragKnowledgeBackend,
 } from "@/lib/knowledge/openragBackend";
@@ -41,12 +42,21 @@ describe("openragKnowledgeBackend", () => {
   let collectionRows: Array<{ collection: string }>;
   let filenameRows: Array<{ collection: string; source_filename: string }>;
   let chunkRows: Array<{ chunk_index: number; content: string }>;
+  let logEntries: Array<{
+    level: "warn" | "error";
+    event: string;
+    details: Record<string, unknown>;
+  }>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     collectionRows = [];
     filenameRows = [];
     chunkRows = [];
+    logEntries = [];
+    __setOpenragLoggerForTests((level, event, details) => {
+      logEntries.push({ level, event, details });
+    });
 
     openRAGClientMock.mockImplementation(function OpenRAGClient() {
       return {
@@ -86,6 +96,10 @@ describe("openragKnowledgeBackend", () => {
     });
   });
 
+  afterEach(() => {
+    __setOpenragLoggerForTests(null);
+  });
+
   it("lists logical sources from local metadata and enriches them with OpenRAG settings", async () => {
     collectionRows = [{ collection: "orders" }, { collection: "support" }];
     settingsGetMock.mockResolvedValue({
@@ -112,7 +126,7 @@ describe("openragKnowledgeBackend", () => {
     ]);
   });
 
-  it("falls back to default provider metadata when settings are unavailable", async () => {
+  it("falls back to default provider metadata when settings are unavailable and logs the failure", async () => {
     collectionRows = [{ collection: "orders" }];
     settingsGetMock.mockRejectedValue(new Error("settings unavailable"));
 
@@ -124,6 +138,73 @@ describe("openragKnowledgeBackend", () => {
         vectorizeModel: null,
       },
     ]);
+
+    const settingsLog = logEntries.find((entry) => entry.event === "settings.get_failed");
+    expect(settingsLog).toBeDefined();
+    expect(settingsLog?.level).toBe("warn");
+    expect(settingsLog?.details.errorMessage).toBe("settings unavailable");
+    expect(settingsLog?.details.hint).toMatch(/falling back/i);
+  });
+
+  it("logs and rethrows when search, ingest, or delete fail at the SDK boundary", async () => {
+    searchQueryMock.mockRejectedValue(new Error("search boom"));
+    await expect(
+      openragKnowledgeBackend.search({
+        config,
+        query: "boom",
+        collection: "orders",
+        collections: [],
+        collectionsToSearch: [],
+        userCollections: ["orders"],
+        searchMode: "vector",
+        sortField: null,
+        sortDir: "desc",
+        limit: 3,
+        filterField: null,
+        filterOp: null,
+        filterValue: null,
+        embeddingVector: [],
+      })
+    ).rejects.toThrow("search boom");
+    const searchLog = logEntries.find((entry) => entry.event === "search.query_failed");
+    expect(searchLog?.level).toBe("error");
+    expect(searchLog?.details.collection).toBe("orders");
+    expect(searchLog?.details.limit).toBe(3);
+
+    documentsIngestMock.mockRejectedValue(new Error("ingest boom"));
+    await expect(
+      openragKnowledgeBackend.ingestDocument(
+        {
+          config,
+          sourceDocId: "doc-9",
+          collectionName: "orders",
+          filename: "broken.pdf",
+          fileType: "pdf",
+          text: "data",
+          fileBytes: new Uint8Array([1]),
+          chunks: ["data"],
+          metadata: {},
+        },
+        vi.fn()
+      )
+    ).rejects.toThrow("ingest boom");
+    const ingestLog = logEntries.find((entry) => entry.event === "documents.ingest_failed");
+    expect(ingestLog?.level).toBe("error");
+    expect(ingestLog?.details.filename).toBe("broken.pdf");
+    expect(ingestLog?.details.collectionName).toBe("orders");
+
+    documentsDeleteMock.mockRejectedValue(new Error("delete boom"));
+    await expect(
+      openragKnowledgeBackend.deleteDocument({
+        config,
+        source: "orders",
+        documentRef: "broken.pdf",
+      })
+    ).rejects.toThrow("delete boom");
+    const deleteLog = logEntries.find((entry) => entry.event === "documents.delete_failed");
+    expect(deleteLog?.level).toBe("error");
+    expect(deleteLog?.details.filename).toBe("broken.pdf");
+    expect(deleteLog?.details.source).toBe("orders");
   });
 
   it("maps semantic search results back onto logical collections", async () => {
