@@ -113,7 +113,7 @@ describe("DocumentViewer", () => {
     );
 
     expect(
-      screen.getByText("Connect to Astra DB to view document content")
+      screen.getByText("Connect to Data API to view document content")
     ).toBeTruthy();
   });
 

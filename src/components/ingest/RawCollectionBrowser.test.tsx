@@ -116,7 +116,7 @@ describe("RawCollectionBrowser", () => {
     const { rerender } = renderBrowser({}, { isConnected: false });
 
     expect(
-      screen.getByText("Connect to Astra DB to browse raw documents")
+      screen.getByText("Connect to Data API to browse raw documents")
     ).toBeTruthy();
 
     useRawCollectionBrowserMock.mockReturnValue({

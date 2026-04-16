@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Data API Playground
   description: >
-    Interactive web app for exploring DataStax Astra DB via the Data API.
+    Interactive web app for exploring DataStax Data API backends.
     Provides collection management, document ingestion, RAG chat, and a
     Data API proxy with TypeScript client call logging.
   version: 0.1.0
@@ -20,7 +20,7 @@ tags:
   - name: Status
     description: Health and connection status checks
   - name: Collections
-    description: Astra DB collection management
+    description: Data API collection management
   - name: Documents
     description: Ingested document metadata and chunks
   - name: Ingest
@@ -32,7 +32,7 @@ tags:
   - name: Proxy
     description: Data API proxy and client call logging
   - name: Keyspaces
-    description: Astra DB keyspace management
+    description: Data API keyspace management
 
 components:
   schemas:
@@ -41,13 +41,22 @@ components:
       properties:
         token:
           type: string
-          description: Astra DB application token
+          description: Data API application token
         endpoint:
           type: string
-          description: Astra DB API endpoint URL
+          description: Data API endpoint URL
         keyspace:
           type: string
-          description: Astra DB keyspace name
+          description: Data API keyspace name
+        fromAstraCli:
+          type: boolean
+          description: Resolve the Data API token and endpoint from a local Astra CLI profile/database selection.
+        astraCliProfile:
+          type: string
+          description: Astra CLI profile name.
+        astraCliDatabase:
+          type: string
+          description: Astra CLI database ID or name.
 
     Conversation:
       type: object
@@ -203,7 +212,7 @@ paths:
   /api/astra-status:
     get:
       tags: [Status]
-      summary: Check Astra DB connection status
+      summary: Check Data API connection status
       security:
         - cookieAuth: []
       responses:
@@ -299,6 +308,65 @@ paths:
                     nullable: true
                     enum: [astra, hcd]
 
+  /api/data-api-config:
+    get:
+      tags: [Status]
+      summary: Get optional local Data API config sources
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: query
+          name: profile
+          schema:
+            type: string
+          description: Optional Astra CLI profile name to resolve database choices for.
+      responses:
+        "200":
+          description: Local Data API config source status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  astraCli:
+                    type: object
+                    properties:
+                      available:
+                        type: boolean
+                      configured:
+                        type: boolean
+                      selectedProfile:
+                        type: string
+                        nullable: true
+                      error:
+                        type: string
+                      profiles:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            isDefault:
+                              type: boolean
+                      databases:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                            endpoint:
+                              type: string
+                            keyspace:
+                              type: string
+                            region:
+                              type: string
+                            status:
+                              type: string
+
   /api/knowledge-backend-status:
     get:
       tags: [Status]
@@ -330,7 +398,7 @@ paths:
   /api/connect:
     post:
       tags: [Collections]
-      summary: Connect to Astra DB and list collections
+      summary: Connect to the Data API and list collections
       security:
         - cookieAuth: []
       requestBody:
@@ -617,7 +685,7 @@ paths:
       tags: [Ingest]
       summary: Stream CSV row ingestion
       description: >
-        Ingests rows from a parsed CSV/XLSX file into an Astra DB collection.
+        Ingests rows from a parsed CSV/XLSX file into a Data API collection.
         Returns NDJSON streaming progress events.
         Rate limited to 10 requests per 60 seconds.
       security:
@@ -656,7 +724,7 @@ paths:
       summary: Upload and ingest a document file
       description: >
         Accepts a multipart form upload (PDF, DOCX, CSV, XLSX, JSON, TXT, MD),
-        extracts text, chunks it, and inserts into an Astra DB collection.
+        extracts text, chunks it, and inserts into a Data API collection.
         Returns NDJSON streaming progress events. Max file size 50 MB.
         Rate limited to 10 requests per 60 seconds.
       security:
@@ -991,7 +1059,7 @@ paths:
   /api/data-api-proxy:
     post:
       tags: [Proxy]
-      summary: Proxy a Data API request to Astra DB
+      summary: Proxy a Data API request to the Data API backend
       security:
         - cookieAuth: []
       requestBody:

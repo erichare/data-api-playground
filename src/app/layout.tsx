@@ -17,9 +17,9 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Astra DB — Data API Playground",
+  title: "Data API Playground",
   description:
-    "Interactive playground for exploring your Astra DB collections with vector search and AI-powered queries.",
+    "Interactive playground for exploring your Data API collections with vector search and AI-powered queries.",
 };
 
 export default function RootLayout({

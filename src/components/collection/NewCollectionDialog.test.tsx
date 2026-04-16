@@ -187,7 +187,7 @@ describe("NewCollectionDialog", () => {
 
     expect(screen.getByText("Vector Dimension")).toBeTruthy();
     expect(screen.getByText("Similarity Metric")).toBeTruthy();
-    expect(screen.getByText("Demo mode — not saved to Astra DB")).toBeTruthy();
+    expect(screen.getByText("Demo mode — not saved to Data API")).toBeTruthy();
     expect(screen.getByText("Collection already exists")).toBeTruthy();
 
     fireEvent.click(screen.getByText("Client-Side"));

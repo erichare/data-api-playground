@@ -18,7 +18,7 @@ Thank you for considering a contribution! This guide covers the process for repo
    npm run dev
    ```
 
-See the [README](README.md) for full setup details including Astra DB and AI backend configuration.
+See the [README](README.md) for full setup details including data, knowledge, and AI backend configuration.
 
 ## Development Workflow
 
@@ -26,10 +26,10 @@ See the [README](README.md) for full setup details including Astra DB and AI bac
 
 Use a descriptive branch name with a conventional prefix:
 
-```
+```text
 feat/add-collection-search
 fix/chat-streaming-timeout
-docs/update-api-reference
+docs/update-architecture
 refactor/split-chat-service
 ```
 
@@ -60,7 +60,7 @@ Critical modules have higher per-file thresholds defined in `vitest.config.ts`.
 npm run lint
 ```
 
-ESLint is configured via `eslint.config.mjs` with the Next.js recommended rules.
+ESLint is configured via `eslint.config.mjs` with the Next.js recommended rules plus `eslint-plugin-security`.
 
 ## Submitting a Pull Request
 
@@ -75,7 +75,7 @@ ESLint is configured via `eslint.config.mjs` with the Next.js recommended rules.
 
 Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
-```
+```text
 <type>: <description>
 
 <optional body>
@@ -85,17 +85,17 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`
 
 Examples:
 
-```
+```text
 feat: add hybrid search mode toggle
 fix: prevent duplicate document ingestion on retry
-docs: add JSDoc to AI service module
+docs: document backend capability matrix
 ```
 
 ### PR Checklist
 
 Before requesting review, verify:
 
-- [ ] New/changed code has tests
+- [ ] New or changed code has tests
 - [ ] All tests pass (`npm run test`)
 - [ ] No lint errors (`npm run lint`)
 - [ ] Build succeeds (`npm run build`)
@@ -104,14 +104,17 @@ Before requesting review, verify:
 
 ## Project Structure
 
-```
+```text
 src/
   app/           # Next.js App Router pages and API routes
   components/    # React components organized by feature
   lib/           # Business logic, services, and utilities
-    ai/          # AI provider abstraction (HuggingFace, Ollama)
+    ai/          # AI provider abstraction (Hugging Face, Ollama)
+    backends/    # Data-backend kinds, labels, and env resolution
     chat/        # RAG chat pipeline (analyze, embed, search, respond)
-    collections/ # Astra DB collection CRUD
+    collections/ # Collection and document operations
+    dataApi/     # Data API/HCD adapters
+    knowledge/   # Connected/OpenRAG knowledge adapters
     ingest/      # Document and CSV ingestion with streaming
     validation/  # Zod schemas and request body parsing
     server/      # Logging, request limits
@@ -119,7 +122,7 @@ src/
     playground/  # Client-side API wrapper functions
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for a detailed architectural overview.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the backend model and a detailed architectural overview.
 
 ## Code Style
 
@@ -136,7 +139,12 @@ Every API route follows the same pattern:
 
 ```typescript
 import { requireApiAuth } from "@/lib/auth";
-import { createRequestLogContext, logError, sanitizeErrorForClient, jsonError } from "@/lib/server/log";
+import {
+  createRequestLogContext,
+  jsonError,
+  logError,
+  sanitizeErrorForClient,
+} from "@/lib/server/log";
 import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 import { yourSchema } from "@/lib/validation/schemas";
 

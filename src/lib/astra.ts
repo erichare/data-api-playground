@@ -123,7 +123,7 @@ function getOrCreateClient(token: string): DataAPIClient {
 export function getAstraDb(token: string, endpoint: string, keyspace?: string) {
   const normalizedEndpoint = normalizeAstraEndpoint(endpoint);
   if (!isAllowedAstraEndpoint(normalizedEndpoint)) {
-    throw new Error("Invalid Astra DB endpoint");
+    throw new Error("Invalid Data API endpoint");
   }
   const client = getOrCreateClient(token);
   return keyspace ? client.db(normalizedEndpoint, { keyspace }) : client.db(normalizedEndpoint);

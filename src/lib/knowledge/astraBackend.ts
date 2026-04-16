@@ -910,11 +910,11 @@ export const astraKnowledgeBackend = createDataApiKnowledgeBackend({
       throw new Error("Invalid backend for Astra knowledge adapter");
     }
     if (!config.token || !config.endpoint) {
-      throw new Error("Missing Astra DB token or endpoint");
+      throw new Error("Missing Data API token or endpoint");
     }
     const endpointValidator = getOptionalAstraEndpointValidator();
     if (typeof endpointValidator === "function" && !endpointValidator(config.endpoint)) {
-      throw new Error("Endpoint must be a valid Astra DB API endpoint");
+      throw new Error("Endpoint must be a valid Data API endpoint");
     }
     return keyspace == null
       ? astra.getAstraDb(config.token, config.endpoint)
@@ -935,11 +935,11 @@ export function resolveAstraIngestContext(args: {
         throw new Error("Invalid backend for Astra knowledge adapter");
       }
       if (!config.token || !config.endpoint) {
-        throw new Error("Missing Astra DB token or endpoint");
+        throw new Error("Missing Data API token or endpoint");
       }
       const endpointValidator = getOptionalAstraEndpointValidator();
       if (typeof endpointValidator === "function" && !endpointValidator(config.endpoint)) {
-        throw new Error("Endpoint must be a valid Astra DB API endpoint");
+        throw new Error("Endpoint must be a valid Data API endpoint");
       }
       return keyspace == null
         ? astra.getAstraDb(config.token, config.endpoint)

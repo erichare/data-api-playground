@@ -13,6 +13,9 @@ export const backendConnectionSchema = z.object({
   username: z.string().optional(),
   password: z.string().optional(),
   keyspace: z.string().optional(),
+  fromAstraCli: z.boolean().optional(),
+  astraCliProfile: z.string().optional(),
+  astraCliDatabase: z.string().optional(),
 });
 
 export const knowledgeConnectionSchema = z.object({

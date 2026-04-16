@@ -1,0 +1,13 @@
+.git
+.github
+.next
+coverage
+test-results
+node_modules
+npm-debug.log*
+Dockerfile*
+README.md
+docs
+tests
+*.tsbuildinfo
+.DS_Store

@@ -9,7 +9,7 @@ import { parseJsonBody, isErrorResponse } from "@/lib/validation/parse";
 export const runtime = "nodejs";
 
 /**
- * Sample field names from one document in a single Astra DB collection.
+ * Sample field names from one document in a single Data API collection.
  *
  * This lightweight endpoint is called after document ingestion so the
  * client can update its field metadata without re-fetching all collections.

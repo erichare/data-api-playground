@@ -1,4 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+const { resolveAstraCliConnectionMock } = vi.hoisted(() => ({
+  resolveAstraCliConnectionMock: vi.fn(),
+}));
+
+vi.mock("@/lib/astraCli", () => ({
+  resolveAstraCliConnection: resolveAstraCliConnectionMock,
+}));
+
 import {
   ASTRA_DEFAULT_KEYSPACE,
   getBackendStatuses,
@@ -10,6 +18,7 @@ const originalEnv = { ...process.env };
 describe("backend server helpers", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    resolveAstraCliConnectionMock.mockReset();
     process.env = { ...originalEnv };
     delete process.env.ASTRA_DB_APPLICATION_TOKEN;
     delete process.env.ASTRA_DB_API_ENDPOINT;
@@ -40,6 +49,39 @@ describe("backend server helpers", () => {
       endpoint: "https://db.apps.astra.datastax.com",
       keyspace: ASTRA_DEFAULT_KEYSPACE,
       fromEnv: false,
+    });
+  });
+
+  it("resolves Astra connections from a local Astra CLI selection", () => {
+    resolveAstraCliConnectionMock.mockReturnValue({
+      token: "AstraCS:cli",
+      endpoint: "https://cli.apps.astra.datastax.com",
+      keyspace: "cli_keyspace",
+      astraCliProfile: "default",
+      astraCliDatabase: "db-123",
+    });
+
+    const resolved = resolveBackendConnection({
+      backend: "astra",
+      fromAstraCli: true,
+      astraCliProfile: "default",
+      astraCliDatabase: "db-123",
+    });
+
+    expect(resolveAstraCliConnectionMock).toHaveBeenCalledWith({
+      astraCliProfile: "default",
+      astraCliDatabase: "db-123",
+      keyspace: undefined,
+    });
+    expect(resolved).toEqual({
+      backend: "astra",
+      token: "AstraCS:cli",
+      endpoint: "https://cli.apps.astra.datastax.com",
+      keyspace: "cli_keyspace",
+      fromEnv: false,
+      fromAstraCli: true,
+      astraCliProfile: "default",
+      astraCliDatabase: "db-123",
     });
   });
 

@@ -3,7 +3,11 @@
 import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { AlertCircle, Check, Copy, Loader2, X } from "lucide-react";
-import type { BackendConnectionState, DataApiBackendKind } from "@/lib/backends/types";
+import {
+  getBackendDisplayName,
+  type BackendConnectionState,
+  type DataApiBackendKind,
+} from "@/lib/backends/types";
 import type {
   KnowledgeBackendCapabilities,
   KnowledgeBackendMode,
@@ -125,7 +129,7 @@ export function DocumentViewer({
             <div className="flex flex-col items-center justify-center h-40 gap-3" style={{ color: "var(--text-muted)" }}>
               <AlertCircle size={20} strokeWidth={1.5} />
               <p className="text-sm">
-                Connect to {selectedBackend === "hcd" ? "DataStax HCD" : "Astra DB"} to view document content
+                Connect to {getBackendDisplayName(selectedBackend)} to view document content
               </p>
             </div>
           ) : !knowledgeCapabilities.documentContentLoad ? (
