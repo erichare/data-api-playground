@@ -94,6 +94,7 @@ function ModeButton({
   return (
     <motion.button
       onClick={() => onClick(mode)}
+      data-testid={`view-mode-${mode}-button`}
       className="flex items-center gap-1.5 px-4 py-1.5 rounded-md text-xs font-medium"
       style={{
         backgroundColor: isActive

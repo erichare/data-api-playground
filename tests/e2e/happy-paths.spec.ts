@@ -149,7 +149,7 @@ test("runs an API Explorer request and shows the response plus runtime call log"
   await login(page);
   await connectToAstra(page);
 
-  await page.getByRole("button", { name: "API" }).click();
+  await page.getByTestId("view-mode-api-button").click();
   await expect(page.getByTestId("api-run-button")).toBeVisible();
   await page.getByTestId("api-run-button").click();
 
