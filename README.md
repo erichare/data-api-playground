@@ -1,6 +1,6 @@
 # Data API Playground
 
-An interactive web app for exploring DataStax Data API backends across multiple backend combinations. Connect to the Data API or DataStax HCD, choose either the connected knowledge backend or OpenRAG, inspect the underlying API calls, and ingest tabular or document data from the browser.
+An interactive web app for exploring DataStax and Langflow backends from one place. Choose Data API, DataStax HCD, or OpenRAG in the Backend dialog, inspect the underlying API calls when a Data API backend is active, and ingest tabular or document data from the browser.
 
 <p align="center">
   <img src="docs/screenshots/01-chat-dark.png" alt="Data API Playground chat view with collection-aware answers and pipeline tabs" width="49%" />
@@ -12,8 +12,7 @@ An interactive web app for exploring DataStax Data API backends across multiple 
 ## Highlights
 
 - Demo mode or live backend connection
-- Data backend support for the Data API and DataStax HCD
-- Knowledge backend support for the connected backend or OpenRAG
+- Top-level backend choices for Data API, DataStax HCD, and OpenRAG
 - AI chat with a streaming pipeline trace
 - API explorer with generated request bodies, SDK snippets, and a live TypeScript client-call log
 - Hugging Face when a key is available
@@ -22,26 +21,27 @@ An interactive web app for exploring DataStax Data API backends across multiple 
 - Ingest workspace with a local document library and raw collection browser
 - Visible Ollama prepare and download steps during first-run model setup
 - Automatic server-side `$vectorize` support for Astra vectorize-enabled collections
-- Optional Astra CLI-backed Data API config discovery in the Connect dialog
-- Import/export of connection config as YAML
-- Persistent conversations and ingested-document metadata in local SQLite
+- Optional Astra CLI-backed Data API config discovery in the Backend dialog, defaulting to CLI mode when it is installed and already configured
+- Import/export of backend config as YAML, with YAML or JSON import support
+- OpenRAG mode hides Data API-specific collections and API explorer surfaces
+- Persistent conversations and backend-scoped ingested-document metadata in local SQLite
 
 ## Backend Model
 
-The app resolves three backend layers independently:
+The dialog exposes three top-level backend choices:
 
-| Layer | Options | Used for |
-|---|---|---|
-| Data backend | `astra`, `hcd` | connect, keyspaces, collection CRUD, browse/count, API Explorer, raw Data API proxy |
-| Knowledge backend | connected backend, `openrag` | search, document ingest/delete/load, collection-aware chat retrieval |
-| AI backend | `huggingface`, `ollama` | query analysis, answer generation, client-side embeddings when server-side vectorize is unavailable |
+| Backend | Provider | Used for | Notes |
+|---|---|---|---|
+| `Data API` | DataStax | connect, keyspaces, collection CRUD, browse/count, API Explorer, raw Data API proxy, connected retrieval | supports embedding-provider discovery and server-side `$vectorize` collections |
+| `HCD` | DataStax | connect, keyspaces, collection CRUD, browse/count, API Explorer, raw collection browsing, connected retrieval | shares the same shell as Data API, but without Astra-only embedding-provider discovery or vectorize collections |
+| `OpenRAG` | Langflow | chat retrieval plus document ingest/delete/load | hides the collections sidebar, collection CRUD, API Explorer, and raw collection browser; CSV ingest is unavailable |
 
 Current capability notes:
 
-- The Data API backend supports embedding-provider discovery and server-side `$vectorize` collections.
-- DataStax HCD uses the same app surface for connect, browse, chat, and API exploration, but does not expose Astra-style embedding-provider discovery or vectorize collections.
-- OpenRAG is available as an alternate knowledge backend for retrieval and document flows. In this app it supports vector search plus document ingest/delete/load, but not CSV row ingest, lexical search, or hybrid search.
-- API Explorer, collection creation/deletion, keyspace discovery, and raw collection browsing remain data-backend features, so they continue to use the Data API or HCD even when OpenRAG is selected for knowledge retrieval.
+- Under the hood, the app still tracks a data backend (`astra` or `hcd`) plus a knowledge backend mode (`connected` or `openrag`).
+- Selecting OpenRAG promotes it to a first-class choice in the UI, but it only takes over retrieval and document flows.
+- Data-only surfaces stay tied to the selected Data API or HCD backend and are hidden while OpenRAG is active.
+- OpenRAG supports vector search plus document ingest/delete/load, but not CSV row ingest, lexical search, or hybrid search.
 
 ## AI Backend Behavior
 
@@ -49,7 +49,7 @@ All AI work flows through a shared provider layer in `src/lib/ai/service.ts`.
 
 Resolution order:
 
-1. Manual Hugging Face key entered in the Connect dialog
+1. Manual Hugging Face key entered in the Backend dialog
 2. `HUGGINGFACE_API_KEY` from the server environment
 3. Local Ollama fallback
 
@@ -60,7 +60,7 @@ Default models:
 - Ollama chat: `granite3.1-dense:8b`
 - Ollama embeddings: `granite-embedding:278m`
 
-The Connect dialog combines:
+The Backend dialog combines:
 
 - data-backend status from `/api/backend-status`
 - OpenRAG status from `/api/knowledge-backend-status`
@@ -78,7 +78,7 @@ When Ollama needs to pull a model, the chat and ingest UIs surface a dedicated `
   - The Data API with an Application Token and API Endpoint, or
   - DataStax HCD with endpoint, username, and password
 - Optional: the `astra` CLI if you want the app to reuse local Astra profiles and database choices
-- Optional: an OpenRAG deployment if you want to use `openrag` as the knowledge backend
+- Optional: an OpenRAG deployment if you want to use OpenRAG as a backend option
 - Optional: a Hugging Face API key
 - Optional: Ollama running locally if you want the no-key fallback path
 
@@ -99,7 +99,7 @@ Supported variables are documented in [`.env.example`](.env.example).
 Important env-backed behavior:
 
 - If both Data API and HCD env credentials are present, the app prefers the Data API as the default env-backed data connection.
-- OpenRAG env credentials are discovered separately from the data backend and are available when you switch the knowledge backend mode to `openrag`.
+- OpenRAG env credentials are discovered separately from the data backend and are available when you choose OpenRAG in the Backend dialog.
 - You only need to configure the backends you plan to use.
 
 Production safety default:
@@ -110,19 +110,19 @@ Production safety default:
 
 You can also enter credentials at runtime:
 
-- Data API token/endpoint or HCD endpoint/username/password in the Connect dialog
-- Optional Astra CLI profile/database selection in the Connect dialog when `astra` is installed locally
-- Optional OpenRAG API key and base URL in the Connect dialog when `openrag` knowledge mode is selected
-- A manual Hugging Face key in the Connect dialog
+- Data API token/endpoint or HCD endpoint/username/password in the Backend dialog
+- Optional Astra CLI profile/database selection in the Backend dialog when `astra` is installed locally
+- Optional OpenRAG API key and base URL in the Backend dialog when OpenRAG is selected
+- A manual Hugging Face key in the Backend dialog
 
 Runtime credentials and the manual Hugging Face key are kept in memory only for the current page session.
 
-The Connect dialog can also:
+The Backend dialog can also:
 
 - export the current connection/model draft to `data-api-playground.config.yaml`
 - import a previously exported YAML or JSON config file to prefill the dialog
 
-If you select the Astra CLI mode, the app resolves the token and endpoint at runtime from the local `astra` profile and database you chose. If the CLI is not installed, the dialog falls back to the existing manual/environment behavior.
+If the `astra` CLI is installed, already configured, and has a selected profile with databases, the Data API form defaults to Astra CLI mode. In that mode the app resolves the token and endpoint at runtime from the local `astra` profile and database you chose. If the CLI is not installed, the dialog falls back to the existing manual/environment behavior.
 
 If you want to use the local fallback path, make sure Ollama is running:
 
@@ -171,15 +171,15 @@ Notes:
 
 ## Usage
 
-1. Open the Connect dialog and choose a data backend: Data API or DataStax HCD.
-2. Choose a knowledge backend mode:
-   - `connected` to search the selected Data API/HCD backend
-   - `openrag` to route retrieval and document flows through OpenRAG
-3. Optionally add a manual Hugging Face key. Otherwise the app will use `HUGGINGFACE_API_KEY` from env or fall back to Ollama.
-4. Chat with your collections and inspect the Output and Code tabs, and click pipeline step chips to expand details.
-5. Use the ingest workspace to upload CSV or document files, inspect ingested documents, and browse raw collection records.
-6. Switch to the API Explorer to run raw Data API requests and compare them with live TypeScript client calls.
-7. If no Hugging Face key is available, make sure Ollama is running locally and let the app pull missing models on demand.
+1. Open the Backend dialog and choose one of the three top-level backends: Data API, HCD, or OpenRAG.
+2. For Data API, use either manual credentials, env credentials, or Astra CLI. If `astra` is installed and already configured with a selected database, the dialog defaults to Astra CLI mode.
+3. For HCD, use either manual endpoint/username/password credentials or env credentials.
+4. For OpenRAG, use either manual API key/base URL credentials or env credentials. In this mode the collections sidebar, collection CRUD, API Explorer, and raw collection browser stay hidden because they are Data API/HCD-specific surfaces.
+5. Optionally add a manual Hugging Face key. Otherwise the app uses `HUGGINGFACE_API_KEY` from env or falls back to Ollama.
+6. Chat with your collections and inspect the Output and Code tabs, and click pipeline step chips to expand details.
+7. Use the ingest workspace to upload files and inspect ingested documents. CSV ingest is available only for Data API and HCD; OpenRAG is document-only in this app.
+8. When using Data API or HCD, switch to the API Explorer to run raw Data API requests and compare them with live TypeScript client calls.
+9. If no Hugging Face key is available, make sure Ollama is running locally and let the app pull missing models on demand.
 
 ## Ingest Behavior
 
@@ -191,6 +191,7 @@ Notes:
 - Connected non-vectorize collections use the resolved AI backend for embeddings.
 - OpenRAG ingest is document-only in this app; CSV ingest remains a connected-backend capability.
 - Embedding dimensions are validated against collection metadata when the active backend exposes a dimension.
+- The document library is scoped to the active backend and connection details, so Data API, HCD, and OpenRAG ingests stay separated.
 
 ## Tech Stack
 
@@ -239,7 +240,7 @@ src/
     auth/                 # login form
     chat/                 # message bubbles, pipeline trace, code tabs
     collection/           # collection management dialogs
-    connection/           # backend/knowledge/AI connect dialog
+    connection/           # backend and model configuration dialog
     ingest/               # document upload and CSV ingest UI
     onboarding/           # quick-start guide
     shell/                # top-level layout, sidebar, header
@@ -277,10 +278,12 @@ When no Data API/HCD credentials are configured, the app runs in demo mode for c
 
 - Chat responses use only the AI backend with no database search
 - Connected-backend ingest creates local metadata records in SQLite but does not write to the Data API/HCD
-- The document library, raw collection browser, and conversation history remain fully functional
+- The document library and conversation history remain fully functional, and the raw collection browser remains available in Data API/HCD modes
 - The API Explorer shows generated request/response shapes without executing live calls
 
 Demo mode is useful for exploring the UI, testing AI backends, and understanding the pipeline before connecting to a live backend.
+
+If OpenRAG credentials are present, OpenRAG can still run live even while Data API/HCD features stay in demo mode.
 
 ## Notes
 
@@ -288,13 +291,14 @@ Demo mode is useful for exploring the UI, testing AI backends, and understanding
 - `POST /api/conversations/title` is best-effort and returns `null` instead of blocking the UI if generation fails.
 - If a Hugging Face key is present but invalid, the app returns the provider error and does not auto-fallback to Ollama.
 - If Ollama is selected and a required model is missing, the app pulls it on demand and shows download progress in the UI.
-- If `openrag` knowledge mode is selected, available search modes and ingest actions are narrowed to that backend's capabilities.
+- If OpenRAG is selected in the Backend dialog, available search modes and ingest actions are narrowed to that backend's capabilities.
 - `POST /api/embedding-providers` and server-side `$vectorize` collection creation are Data API-only features.
 - General API requests are capped at 10 MB, while ingest routes are allowed up to 50 MB.
 - Auth sessions expire after 12 hours.
 - Production deployments fail closed unless password auth is configured or `PLAYGROUND_ALLOW_UNAUTHENTICATED=true` is set intentionally.
 - On connect, the app samples metadata (estimated count plus field names) for up to 12 collections. Large backends may not show counts for every collection.
 - Ingested documents are tracked with a `content_hash` (SHA-256 of the raw file bytes). Re-uploading the same file to the same collection is skipped as a duplicate.
+- Ingested-document history is stored with backend scope, so switching from Astra or HCD to OpenRAG does not mix document libraries together.
 
 ## Scripts
 
