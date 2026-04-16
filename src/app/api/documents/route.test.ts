@@ -74,7 +74,11 @@ describe("/api/documents route", () => {
         },
       ],
     });
-    expect(listIngestedDocumentsMock).toHaveBeenCalledWith("docs");
+    expect(listIngestedDocumentsMock).toHaveBeenCalledWith({
+      collection: "docs",
+      backendKind: undefined,
+      backendScope: undefined,
+    });
     expect(response.headers.get("X-Request-Id")).toEqual(expect.any(String));
   });
 

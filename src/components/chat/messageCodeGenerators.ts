@@ -22,6 +22,372 @@ export const LANG_SDK: Record<CodeLang, string> = {
   curl: "Data API",
 };
 
+interface TypeScriptCommandContext {
+  collection?: string;
+  collections?: string[];
+}
+
+function indent(text: string, spaces: number) {
+  const prefix = " ".repeat(spaces);
+  return text
+    .split("\n")
+    .map((line) => `${prefix}${line}`)
+    .join("\n");
+}
+
+function trimMultilineValue(value: string) {
+  const lines = value
+    .trim()
+    .split("\n")
+    .map((line) => line.trimEnd());
+
+  const nonEmpty = lines.filter((line) => line.trim().length > 0);
+  const minIndent = nonEmpty.reduce((smallest, line) => {
+    const indentSize = line.match(/^\s*/)?.[0].length ?? 0;
+    return Math.min(smallest, indentSize);
+  }, Number.POSITIVE_INFINITY);
+
+  if (!Number.isFinite(minIndent) || minIndent === 0) {
+    return lines.join("\n");
+  }
+
+  return lines.map((line) => line.slice(minIndent)).join("\n");
+}
+
+function splitTopLevelArgs(rawArgs: string) {
+  const args: string[] = [];
+  let current = "";
+  let parenDepth = 0;
+  let braceDepth = 0;
+  let bracketDepth = 0;
+  let inSingle = false;
+  let inDouble = false;
+  let inTemplate = false;
+  let escaped = false;
+
+  for (const char of rawArgs) {
+    current += char;
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (inSingle) {
+      if (char === "'") inSingle = false;
+      continue;
+    }
+
+    if (inDouble) {
+      if (char === "\"") inDouble = false;
+      continue;
+    }
+
+    if (inTemplate) {
+      if (char === "`") inTemplate = false;
+      continue;
+    }
+
+    if (char === "'") {
+      inSingle = true;
+      continue;
+    }
+
+    if (char === "\"") {
+      inDouble = true;
+      continue;
+    }
+
+    if (char === "`") {
+      inTemplate = true;
+      continue;
+    }
+
+    if (char === "(") {
+      parenDepth += 1;
+      continue;
+    }
+
+    if (char === ")") {
+      parenDepth -= 1;
+      continue;
+    }
+
+    if (char === "{") {
+      braceDepth += 1;
+      continue;
+    }
+
+    if (char === "}") {
+      braceDepth -= 1;
+      continue;
+    }
+
+    if (char === "[") {
+      bracketDepth += 1;
+      continue;
+    }
+
+    if (char === "]") {
+      bracketDepth -= 1;
+      continue;
+    }
+
+    if (
+      char === "," &&
+      parenDepth === 0 &&
+      braceDepth === 0 &&
+      bracketDepth === 0
+    ) {
+      args.push(trimMultilineValue(current.slice(0, -1)));
+      current = "";
+    }
+  }
+
+  const finalArg = trimMultilineValue(current);
+  if (finalArg.length > 0) {
+    args.push(finalArg);
+  }
+
+  return args;
+}
+
+function extractMethodArgs(tsCmd: string, method: string) {
+  const startToken = `.${method}(`;
+  const start = tsCmd.indexOf(startToken);
+  if (start === -1) {
+    return null;
+  }
+
+  let cursor = start + startToken.length;
+  let depth = 1;
+  let inSingle = false;
+  let inDouble = false;
+  let inTemplate = false;
+  let escaped = false;
+  let rawArgs = "";
+
+  while (cursor < tsCmd.length) {
+    const char = tsCmd[cursor];
+
+    if (escaped) {
+      rawArgs += char;
+      escaped = false;
+      cursor += 1;
+      continue;
+    }
+
+    if (char === "\\") {
+      rawArgs += char;
+      escaped = true;
+      cursor += 1;
+      continue;
+    }
+
+    if (inSingle) {
+      rawArgs += char;
+      if (char === "'") inSingle = false;
+      cursor += 1;
+      continue;
+    }
+
+    if (inDouble) {
+      rawArgs += char;
+      if (char === "\"") inDouble = false;
+      cursor += 1;
+      continue;
+    }
+
+    if (inTemplate) {
+      rawArgs += char;
+      if (char === "`") inTemplate = false;
+      cursor += 1;
+      continue;
+    }
+
+    if (char === "'") {
+      rawArgs += char;
+      inSingle = true;
+      cursor += 1;
+      continue;
+    }
+
+    if (char === "\"") {
+      rawArgs += char;
+      inDouble = true;
+      cursor += 1;
+      continue;
+    }
+
+    if (char === "`") {
+      rawArgs += char;
+      inTemplate = true;
+      cursor += 1;
+      continue;
+    }
+
+    if (char === "(") {
+      rawArgs += char;
+      depth += 1;
+      cursor += 1;
+      continue;
+    }
+
+    if (char === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        return splitTopLevelArgs(rawArgs);
+      }
+      rawArgs += char;
+      cursor += 1;
+      continue;
+    }
+
+    rawArgs += char;
+    cursor += 1;
+  }
+
+  return null;
+}
+
+function formatTypeScriptInvocation(method: string, args: string[]) {
+  if (args.length === 0) {
+    return `collection.${method}()`;
+  }
+
+  const inline = args.join(", ");
+  if (
+    method !== "findAndRerank" &&
+    inline.length <= 60 &&
+    args.every((arg) => !arg.includes("\n"))
+  ) {
+    return `collection.${method}(${inline})`;
+  }
+
+  return `collection.${method}(\n${args
+    .map((arg) => indent(arg, 2))
+    .join(",\n")}\n)`;
+}
+
+function extractLeadingCommentBlock(command: string) {
+  const lines = command.trim().split("\n");
+  const commentLines: string[] = [];
+  let index = 0;
+
+  while (index < lines.length && lines[index].trimStart().startsWith("//")) {
+    commentLines.push(lines[index].trimEnd());
+    index += 1;
+  }
+
+  return {
+    comment: commentLines.join("\n"),
+    command: lines.slice(index).join("\n").trim(),
+  };
+}
+
+function buildGenericVectorSearchSnippet(context: TypeScriptCommandContext) {
+  const collections = context.collections?.filter(Boolean) ?? [];
+
+  if (collections.length > 1) {
+    return [
+      `const collections = ${JSON.stringify(collections)};`,
+      "",
+      "const resultsByCollection = await Promise.all(",
+      "  collections.map(async (name) => {",
+      "    const collection = db.collection(name);",
+      "    const documents = await collection.find(",
+      "      {},",
+      "      {",
+      "        sort: { $vector: embedding },",
+      "        limit: 5,",
+      "        includeSimilarity: true,",
+      "      }",
+      "    ).toArray();",
+      "",
+      "    return { collection: name, documents };",
+      "  })",
+      ");",
+    ].join("\n");
+  }
+
+  const collectionName = collections[0] ?? context.collection ?? "…";
+  return [
+    `const collection = db.collection("${collectionName}");`,
+    "",
+    "const results = await collection.find(",
+    "  {},",
+    "  {",
+    "    sort: { $vector: embedding },",
+    "    limit: 5,",
+    "    includeSimilarity: true,",
+    "  }",
+    ").toArray();",
+  ].join("\n");
+}
+
+export function toTypeScriptCommand(
+  tsCmd: string,
+  context: TypeScriptCommandContext = {}
+): string {
+  const trimmed = tsCmd.trim();
+  if (trimmed.length === 0) {
+    return "// No search was executed for this response";
+  }
+  const { comment, command } = extractLeadingCommentBlock(trimmed);
+  const source = command || trimmed;
+
+  if (source.includes("openrag.search.query(")) {
+    const formatted = source.startsWith("const results =")
+      ? source
+      : `const results = ${source.replace(/;?$/, ";")}`;
+    return comment ? `${comment}\n${formatted}` : formatted;
+  }
+
+  const collectionName =
+    source.match(/db\.collection\("([^"]+)"\)/)?.[1] ?? context.collection ?? "…";
+
+  if (!source.includes(".findAndRerank(") && !source.includes(".find(")) {
+    const fallback = buildGenericVectorSearchSnippet(context);
+    return comment ? `${comment}\n${fallback}` : fallback;
+  }
+
+  if (source.includes(".findAndRerank(")) {
+    const args = extractMethodArgs(source, "findAndRerank");
+    if (!args) {
+      return comment ? `${comment}\n${source}` : source;
+    }
+
+    const formatted = [
+      `const collection = db.collection("${collectionName}");`,
+      "",
+      `const cursor = ${formatTypeScriptInvocation("findAndRerank", args)};`,
+      "const results = await cursor.toArray();",
+    ].join("\n");
+    return comment ? `${comment}\n${formatted}` : formatted;
+  }
+
+  if (source.includes(".find(")) {
+    const args = extractMethodArgs(source, "find");
+    if (!args) {
+      return comment ? `${comment}\n${source}` : source;
+    }
+
+    const formatted = [
+      `const collection = db.collection("${collectionName}");`,
+      "",
+      `const results = await ${formatTypeScriptInvocation("find", args)}.toArray();`,
+    ].join("\n");
+    return comment ? `${comment}\n${formatted}` : formatted;
+  }
+
+  return comment ? `${comment}\n${source}` : source;
+}
+
 export function toPythonCommand(tsCmd: string): string {
   const limit = tsCmd.match(/limit:\s*(\d+)/)?.[1] ?? "5";
   if (tsCmd.includes(".findAndRerank(")) {
@@ -112,13 +478,11 @@ export function toCurlCommand(tsCmd: string, collection?: string): string {
 export function getCodeForLang(lang: CodeLang, searchStep?: PipelineStep): string {
   const command = searchStep?.data?.command as string | undefined;
   const collection = searchStep?.data?.collection as string | undefined;
+  const collections = searchStep?.data?.collections as string[] | undefined;
   if (!command) return "# No search was executed for this response";
 
   switch (lang) {
-    case "ts": {
-      const lines = command.split("\n");
-      return `await db.collection("${collection ?? "…"}")\n${lines.slice(1).map((l) => "  " + l.trim()).join("\n")}`;
-    }
+    case "ts": return toTypeScriptCommand(command, { collection, collections });
     case "python": return toPythonCommand(command);
     case "java": return toJavaCommand(command);
     case "curl": return toCurlCommand(command, collection);

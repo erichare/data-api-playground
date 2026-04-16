@@ -2,6 +2,7 @@ import type { BackendConnectionInput } from "@/lib/backends/types";
 import { resolveDataApiBackend } from "@/lib/dataApi";
 import { getDb } from "@/lib/db";
 import { getStoredIngestedDocument } from "@/lib/ingest/repository";
+import { getIngestedDocumentScope } from "@/lib/ingest/scope";
 import { resolveKnowledgeBackend } from "@/lib/knowledge";
 import type { KnowledgeBackendInput } from "@/lib/knowledge/types";
 import type { Collection, IngestedDocumentSummary } from "@/lib/types";
@@ -60,21 +61,47 @@ type DocumentCountRow = {
   document_count: number;
 };
 
+type ListIngestedDocumentsArgs = {
+  collection?: string;
+  backendKind?: string;
+  backendScope?: string | null;
+};
+
 /**
  * Query the SQLite document library, optionally filtered by collection name.
  * Returns the 500 most recently ingested documents, sorted by ingestion date descending.
  */
-export function listIngestedDocuments(collection?: string): IngestedDocumentSummary[] {
+export function listIngestedDocuments(
+  args: string | ListIngestedDocumentsArgs = {}
+): IngestedDocumentSummary[] {
+  const resolvedArgs =
+    typeof args === "string"
+      ? { collection: args }
+      : args;
   const db = getDb();
-  const rows = (collection
-    ? db
-        .prepare(
-          "SELECT * FROM ingested_documents WHERE collection = ? ORDER BY ingested_at DESC LIMIT 500"
-        )
-        .all(collection)
-    : db
-        .prepare("SELECT * FROM ingested_documents ORDER BY ingested_at DESC LIMIT 500")
-        .all()) as DocRow[];
+  const conditions: string[] = [];
+  const values: Array<string> = [];
+
+  if (resolvedArgs.collection) {
+    conditions.push("collection = ?");
+    values.push(resolvedArgs.collection);
+  }
+  if (resolvedArgs.backendKind) {
+    conditions.push("backend_kind = ?");
+    values.push(resolvedArgs.backendKind);
+  }
+  if (resolvedArgs.backendScope) {
+    conditions.push("(backend_scope = ? OR backend_scope IS NULL OR TRIM(backend_scope) = '')");
+    values.push(resolvedArgs.backendScope);
+  }
+
+  const statement =
+    conditions.length > 0
+      ? `SELECT * FROM ingested_documents WHERE ${conditions.join(" AND ")} ORDER BY ingested_at DESC LIMIT 500`
+      : "SELECT * FROM ingested_documents ORDER BY ingested_at DESC LIMIT 500";
+  const rows = db
+    .prepare(statement)
+    .all(...values) as DocRow[];
 
   return rows.map((row) => ({
     source_doc_id: row.source_doc_id,
@@ -88,15 +115,35 @@ export function listIngestedDocuments(collection?: string): IngestedDocumentSumm
   }));
 }
 
-function getIngestedDocumentCountsByCollection(): Map<string, number> {
+function getIngestedDocumentCountsByCollection(args?: ListIngestedDocumentsArgs): Map<string, number> {
   const db = getDb();
+  const conditions: string[] = [];
+  const values: Array<string> = [];
+
+  if (args?.backendKind) {
+    conditions.push("backend_kind = ?");
+    values.push(args.backendKind);
+  }
+  if (args?.backendScope) {
+    conditions.push("(backend_scope = ? OR backend_scope IS NULL OR TRIM(backend_scope) = '')");
+    values.push(args.backendScope);
+  }
+
+  const statement =
+    conditions.length > 0
+      ? `SELECT collection, COUNT(*) AS document_count FROM ingested_documents WHERE ${conditions.join(" AND ")} GROUP BY collection`
+      : "SELECT collection, COUNT(*) AS document_count FROM ingested_documents GROUP BY collection";
   const rows = db
-    .prepare(
-      "SELECT collection, COUNT(*) AS document_count FROM ingested_documents GROUP BY collection"
-    )
-    .all() as DocumentCountRow[];
+    .prepare(statement)
+    .all(...values) as DocumentCountRow[];
 
   return new Map(rows.map((row) => [row.collection, row.document_count]));
+}
+
+function hasResolvedDataApiCredentials(config: BackendConnectionInput) {
+  return config.backend === "hcd"
+    ? Boolean(config.endpoint && config.username && config.password)
+    : Boolean(config.token && config.endpoint);
 }
 
 /**
@@ -105,9 +152,13 @@ function getIngestedDocumentCountsByCollection(): Map<string, number> {
  * Enriches each collection with its ingested document count from SQLite.
  */
 export async function fetchCollectionMetadata(args: CollectionConnectionArgs) {
-  const ingestedDocumentCounts = getIngestedDocumentCountsByCollection();
   const { config, backend, capabilities } = resolveDataApiBackend(args, {
     includeDefaultKeyspace: true,
+  });
+  const { backendKind, backendScope } = getIngestedDocumentScope(config);
+  const ingestedDocumentCounts = getIngestedDocumentCountsByCollection({
+    backendKind,
+    backendScope,
   });
   const result = await backend.connect(config);
 
@@ -130,23 +181,24 @@ export async function createCollection(
   args: CreateCollectionArgs
 ): Promise<Collection> {
   const { name, dimension, metric, provider, model } = args;
-  if ((args.backend ?? "astra") === "astra") {
-    if (!("token" in args) || !args.token || !args.endpoint || !name) {
-      throw new ValidationError("token, endpoint, and name are required");
-    }
-  } else if (
-    !args.endpoint ||
-    !("username" in args) ||
-    !args.username ||
-    !args.password ||
-    !name
-  ) {
-    throw new ValidationError("endpoint, username, password, and name are required");
+  if (!name) {
+    throw new ValidationError(
+      (args.backend ?? "astra") === "hcd"
+        ? "endpoint, username, password, and name are required"
+        : "token, endpoint, and name are required"
+    );
   }
 
   const { config, backend } = resolveDataApiBackend(args, {
     includeDefaultKeyspace: true,
   });
+  if (!hasResolvedDataApiCredentials(config)) {
+    throw new ValidationError(
+      config.backend === "hcd"
+        ? "endpoint, username, password, and name are required"
+        : "token, endpoint, and name are required"
+    );
+  }
   return backend.createCollection({
     config,
     name,
@@ -167,22 +219,13 @@ export async function deleteCollection(args: DeleteCollectionArgs) {
   if (!args.name) {
     throw new ValidationError("Missing collection name");
   }
-  if ((args.backend ?? "astra") === "hcd") {
-    if (
-      !args.endpoint ||
-      !("username" in args) ||
-      !args.username ||
-      !args.password
-    ) {
-      throw new ValidationError("Missing credentials");
-    }
-  } else if (!("token" in args) || !args.token || !args.endpoint) {
-    throw new ValidationError("Missing credentials");
-  }
 
   const { config, backend } = resolveDataApiBackend(args, {
     includeDefaultKeyspace: true,
   });
+  if (!hasResolvedDataApiCredentials(config)) {
+    throw new ValidationError("Missing credentials");
+  }
   return backend.deleteCollection(config, args.name);
 }
 

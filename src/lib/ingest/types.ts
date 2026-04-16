@@ -26,6 +26,7 @@ export type ExistingIngestedDocument = {
   ingested_at: string;
   collection: string;
   backend_kind?: string | null;
+  backend_scope?: string | null;
   backend_source?: string | null;
   backend_document_ref?: string | null;
 };

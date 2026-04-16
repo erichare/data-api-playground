@@ -27,7 +27,7 @@ describe("getDb", () => {
     vi.resetModules();
     pragmaMock.mockImplementation((statement: string) => {
       if (statement === "user_version") return 0;
-      if (statement === "user_version = 3") return undefined;
+      if (statement === "user_version = 4") return undefined;
       if (statement === "table_info(ingested_documents)") {
         return [
           { name: "source_doc_id" },
@@ -86,23 +86,29 @@ describe("getDb", () => {
       "ALTER TABLE ingested_documents ADD COLUMN backend_document_ref TEXT"
     );
     expect(execMock).toHaveBeenCalledWith(
+      "ALTER TABLE ingested_documents ADD COLUMN backend_scope TEXT"
+    );
+    expect(execMock).toHaveBeenCalledWith(
       expect.stringContaining("SET")
     );
     expect(execMock).toHaveBeenCalledWith(
       expect.stringContaining("CREATE INDEX IF NOT EXISTS idx_docs_backend_lookup")
     );
     expect(execMock).toHaveBeenCalledWith(
+      expect.stringContaining("CREATE INDEX IF NOT EXISTS idx_docs_backend_scope")
+    );
+    expect(execMock).toHaveBeenCalledWith(
       expect.stringContaining("CREATE TABLE IF NOT EXISTS ingested_document_chunks")
     );
     expect(pragmaMock).toHaveBeenCalledWith("table_info(ingested_documents)");
     expect(pragmaMock).toHaveBeenCalledWith("user_version", { simple: true });
-    expect(pragmaMock).toHaveBeenCalledWith("user_version = 3");
+    expect(pragmaMock).toHaveBeenCalledWith("user_version = 4");
   });
 
   it("skips migrations when the schema version is already current", async () => {
     process.env.DATA_API_PLAYGROUND_DB_PATH = "/tmp/data-api-playground/current/app.db";
     pragmaMock.mockImplementation((statement: string) => {
-      if (statement === "user_version") return 3;
+      if (statement === "user_version") return 4;
       return undefined;
     });
 
@@ -116,6 +122,6 @@ describe("getDb", () => {
     );
     expect(pragmaMock).toHaveBeenCalledWith("user_version", { simple: true });
     expect(pragmaMock).not.toHaveBeenCalledWith("table_info(ingested_documents)");
-    expect(pragmaMock).not.toHaveBeenCalledWith("user_version = 3");
+    expect(pragmaMock).not.toHaveBeenCalledWith("user_version = 4");
   });
 });

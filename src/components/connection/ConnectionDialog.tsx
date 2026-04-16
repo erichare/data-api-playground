@@ -49,7 +49,8 @@ import type {
 
 export type { AiStatus } from "@/lib/ai/types";
 
-type ConnectionDialogSection = "connection" | "ai";
+type ConnectionDialogSection = "backend" | "ai";
+type BackendOption = DataApiBackendKind | "openrag";
 
 interface ConnectionDialogProps {
   open: boolean;
@@ -72,6 +73,15 @@ interface ConnectionDialogProps {
 
 interface DataApiConfigResponse {
   astraCli: AstraCliStatus;
+}
+
+function shouldDefaultToAstraCli(status: AstraCliStatus | null | undefined) {
+  return Boolean(
+    status?.available &&
+      status.configured &&
+      status.selectedProfile &&
+      status.databases.length > 0
+  );
 }
 
 function getAstraConfigMode(connection: BackendConnectionState | null) {
@@ -152,12 +162,8 @@ export function canConnectToBackend({
     return false;
   }
 
-  if (
-    knowledgeBackendMode === "openrag" &&
-    !openragApiKey.trim() &&
-    !openragStatus?.hasApiKey
-  ) {
-    return false;
+  if (knowledgeBackendMode === "openrag") {
+    return Boolean(openragApiKey.trim() || openragStatus?.hasApiKey);
   }
 
   if (selectedBackend === "astra") {
@@ -374,7 +380,7 @@ export function ConnectionDialog({
   const [draftKnowledgeBackendMode, setDraftKnowledgeBackendMode] =
     useState<KnowledgeBackendMode>(knowledgeBackendMode);
   const [activeSection, setActiveSection] =
-    useState<ConnectionDialogSection>("connection");
+    useState<ConnectionDialogSection>("backend");
   const [astraConfigMode, setAstraConfigMode] = useState<AstraConfigMode>(
     getAstraConfigMode(currentConnection)
   );
@@ -404,6 +410,7 @@ export function ConnectionDialog({
     "success"
   );
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const astraConfigModeLockedRef = useRef(false);
 
   useEffect(() => {
     if (!open) {
@@ -412,7 +419,7 @@ export function ConnectionDialog({
 
     setDraftSelectedBackend(selectedBackend);
     setDraftKnowledgeBackendMode(knowledgeBackendMode);
-    setActiveSection("connection");
+    setActiveSection("backend");
     setAstraConfigMode(getAstraConfigMode(currentConnection));
 
     if (currentConnection?.backend === "astra") {
@@ -450,6 +457,7 @@ export function ConnectionDialog({
     setShowOpenragApiKey(false);
     setShowHuggingfaceApiKey(false);
     setConfigNotice("");
+    astraConfigModeLockedRef.current = false;
 
     void fetch("/api/ai-status")
       .then((response) => response.json() as Promise<AiStatus>)
@@ -527,6 +535,34 @@ export function ConnectionDialog({
     astraCliDatabase,
     astraCliProfile,
     dataApiConfigStatus,
+    draftSelectedBackend,
+    open,
+  ]);
+
+  useEffect(() => {
+    if (
+      !open ||
+      draftSelectedBackend !== "astra" ||
+      draftKnowledgeBackendMode === "openrag" ||
+      astraConfigMode !== "credentials" ||
+      astraConfigModeLockedRef.current ||
+      currentConnection?.backend === "astra" ||
+      Boolean(astraToken.trim()) ||
+      Boolean(astraEndpoint.trim()) ||
+      !shouldDefaultToAstraCli(dataApiConfigStatus?.astraCli ?? null)
+    ) {
+      return;
+    }
+
+    astraConfigModeLockedRef.current = true;
+    setAstraConfigMode("astra-cli");
+  }, [
+    astraConfigMode,
+    astraEndpoint,
+    astraToken,
+    currentConnection,
+    dataApiConfigStatus?.astraCli,
+    draftKnowledgeBackendMode,
     draftSelectedBackend,
     open,
   ]);
@@ -681,7 +717,8 @@ export function ConnectionDialog({
       setOpenragApiKey(parsed.openragApiKey);
       setOpenragBaseUrl(parsed.openragBaseUrl);
       setHuggingfaceApiKey(parsed.huggingfaceApiKey);
-      setActiveSection("connection");
+      setActiveSection("backend");
+      astraConfigModeLockedRef.current = true;
       setConfigFeedback("Config imported. Review it, then connect.", "success");
     } catch (error) {
       setConfigFeedback(
@@ -696,7 +733,7 @@ export function ConnectionDialog({
   const resetDraftState = () => {
     setDraftSelectedBackend(selectedBackend);
     setDraftKnowledgeBackendMode(knowledgeBackendMode);
-    setActiveSection("connection");
+    setActiveSection("backend");
     setAstraConfigMode(getAstraConfigMode(currentConnection));
     setAstraToken(currentConnection?.backend === "astra" ? currentConnection.token : "");
     setAstraEndpoint(
@@ -720,6 +757,7 @@ export function ConnectionDialog({
     setShowOpenragApiKey(false);
     setShowHuggingfaceApiKey(false);
     setConfigNotice("");
+    astraConfigModeLockedRef.current = false;
   };
 
   const handleDialogClose = () => {
@@ -736,35 +774,37 @@ export function ConnectionDialog({
     try {
       setConfigNotice("");
       onHuggingfaceApiKeyChange(trimmedHuggingFaceKey);
-      const connection =
-        draftSelectedBackend === "astra"
-          ? astraConfigMode === "astra-cli"
-            ? {
-                backend: "astra" as const,
-                token: "",
-                endpoint: "",
-                fromAstraCli: true,
-                astraCliProfile:
-                  astraCliProfile.trim() ||
-                  dataApiConfigStatus?.astraCli.selectedProfile ||
-                  undefined,
-                astraCliDatabase: astraCliDatabase.trim(),
-              }
+      if (draftKnowledgeBackendMode !== "openrag") {
+        const connection =
+          draftSelectedBackend === "astra"
+            ? astraConfigMode === "astra-cli"
+              ? {
+                  backend: "astra" as const,
+                  token: "",
+                  endpoint: "",
+                  fromAstraCli: true,
+                  astraCliProfile:
+                    astraCliProfile.trim() ||
+                    dataApiConfigStatus?.astraCli.selectedProfile ||
+                    undefined,
+                  astraCliDatabase: astraCliDatabase.trim(),
+                }
+              : {
+                  backend: "astra" as const,
+                  token: astraToken.trim(),
+                  endpoint: astraEndpoint.trim(),
+                  fromEnv: !astraToken.trim() && !astraEndpoint.trim(),
+                }
             : {
-                backend: "astra" as const,
-                token: astraToken.trim(),
-                endpoint: astraEndpoint.trim(),
-                fromEnv: !astraToken.trim() && !astraEndpoint.trim(),
-              }
-          : {
-              backend: "hcd" as const,
-              endpoint: hcdEndpoint.trim(),
-              username: hcdUsername.trim(),
-              password: hcdPassword.trim(),
-              fromEnv:
-                !hcdEndpoint.trim() && !hcdUsername.trim() && !hcdPassword.trim(),
-            };
-      await onConnect(connection);
+                backend: "hcd" as const,
+                endpoint: hcdEndpoint.trim(),
+                username: hcdUsername.trim(),
+                password: hcdPassword.trim(),
+                fromEnv:
+                  !hcdEndpoint.trim() && !hcdUsername.trim() && !hcdPassword.trim(),
+              };
+        await onConnect(connection);
+      }
       onSelectedBackendChange(draftSelectedBackend);
       onKnowledgeBackendModeChange(draftKnowledgeBackendMode);
       onOpenragConnectionChange(
@@ -802,8 +842,12 @@ export function ConnectionDialog({
     draftSelectedBackend === "hcd" ? "hcd-endpoint-input" : "astra-endpoint-input";
   const endpointLabel =
     draftSelectedBackend === "hcd" ? "HCD Endpoint" : "Data API Endpoint";
-  const connectionTabLabel =
+  const draftBackendOption: BackendOption =
     draftKnowledgeBackendMode === "openrag"
+      ? "openrag"
+      : draftSelectedBackend;
+  const backendTabLabel =
+    draftBackendOption === "openrag"
       ? "OpenRAG"
       : getBackendDisplayName(draftSelectedBackend);
 
@@ -833,7 +877,7 @@ export function ConnectionDialog({
           >
             <div
               data-testid="connect-dialog"
-              className="w-full max-w-md rounded-2xl flex flex-col"
+              className="w-full max-w-2xl rounded-2xl flex flex-col"
               style={{
                 backgroundColor: "var(--bg-panel)",
                 border: "1px solid var(--border-subtle)",
@@ -871,8 +915,12 @@ export function ConnectionDialog({
                     style={{ color: "var(--text-primary)" }}
                   >
                     {connected
-                      ? `${getBackendDisplayName(draftSelectedBackend)} Connected`
-                      : "Connections"}
+                      ? `${
+                          draftBackendOption === "openrag"
+                            ? "OpenRAG"
+                            : getBackendDisplayName(draftSelectedBackend)
+                        } Connected`
+                      : "Backend"}
                   </h2>
                 </div>
                 <motion.button
@@ -899,9 +947,9 @@ export function ConnectionDialog({
                 <div className="grid grid-cols-2 gap-2">
                   {([
                     {
-                      key: "connection" as const,
-                      label: "Connection",
-                      description: connectionTabLabel,
+                      key: "backend" as const,
+                      label: "Backend",
+                      description: backendTabLabel,
                     },
                     {
                       key: "ai" as const,
@@ -952,7 +1000,7 @@ export function ConnectionDialog({
               </div>
 
               <div className="flex-1 overflow-y-auto px-5 py-5">
-                {activeSection === "connection" ? (
+                {activeSection === "backend" ? (
                   <div className="flex flex-col gap-4">
                     <input
                       ref={importInputRef}
@@ -963,12 +1011,12 @@ export function ConnectionDialog({
                     />
 
                     <div>
-                      <label style={labelStyle}>Data API Backend</label>
+                      <label style={labelStyle}>Backend</label>
                       <p
                         className="text-[11px] mb-2 leading-relaxed"
                         style={{ color: "var(--text-muted)" }}
                       >
-                        Choose the connected Data API backend. Chat and document ingest can stay here or switch to OpenRAG below.
+                        Choose where chat and document ingest should run. OpenRAG hides the collections sidebar and API explorer because they are specific to Data API and HCD.
                       </p>
                     </div>
 
@@ -1024,15 +1072,30 @@ export function ConnectionDialog({
                       </div>
                     ) : null}
 
-                    <div className="grid grid-cols-2 gap-2">
-                      {(["astra", "hcd"] as const).map((backend) => {
-                        const active = draftSelectedBackend === backend;
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        "astra",
+                        "hcd",
+                        "openrag",
+                      ] as const).map((backend) => {
+                        const active = draftBackendOption === backend;
+                        const label = backend === "openrag" ? "Langflow" : "DataStax";
+                        const description =
+                          backend === "openrag"
+                            ? "OpenRAG"
+                            : getBackendConnectionLabel(backend);
                         return (
                           <button
                             key={backend}
                             type="button"
                             onClick={() => {
+                              if (backend === "openrag") {
+                                setDraftKnowledgeBackendMode("openrag");
+                                return;
+                              }
+
                               setDraftSelectedBackend(backend);
+                              setDraftKnowledgeBackendMode("connected");
                               onSelectedBackendChange(backend);
                             }}
                             className="rounded-xl px-3 py-2.5 text-left"
@@ -1055,420 +1118,31 @@ export function ConnectionDialog({
                                   : "var(--text-muted)",
                               }}
                             >
-                              {getBackendConnectionLabel(backend)}
+                              {label}
                             </div>
                             <div
                               className="text-sm font-semibold mt-1"
                               style={{ color: "var(--text-primary)" }}
                             >
-                              {getBackendDisplayName(backend)}
+                              {description}
                             </div>
                           </button>
                         );
                       })}
                     </div>
 
-                    {connected && (
-                      <div
-                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg"
-                        style={{
-                          backgroundColor: "rgba(34,197,94,0.06)",
-                          border: "1px solid rgba(34,197,94,0.15)",
-                        }}
-                      >
-                        <motion.div
-                          className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: "#22c55e" }}
-                          animate={{ opacity: [1, 0.4, 1] }}
-                          transition={{ duration: 2, repeat: Infinity }}
-                        />
-                        <div className="flex flex-col min-w-0">
-                          <span
-                            className="text-[11px]"
-                            style={{ color: "var(--text-muted)" }}
-                          >
-                            Active connection
-                          </span>
-                          <span
-                            className="text-[12px]"
-                            style={{
-                              color: "#22c55e",
-                              fontFamily: "IBM Plex Mono, monospace",
-                            }}
-                          >
-                            {getBackendSummary(currentConnection)}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {draftSelectedBackend === "astra" &&
-                    astraCliStatus?.available &&
-                    astraCliStatus.configured ? (
-                      <div>
-                        <label style={labelStyle}>Data API Config Source</label>
-                        <div className="grid grid-cols-2 gap-2">
-                          {([
-                            {
-                              key: "credentials" as const,
-                              label: "Credentials",
-                              description: "Manual or environment-backed",
-                            },
-                            {
-                              key: "astra-cli" as const,
-                              label: "Astra CLI",
-                              description: "Reuse a local CLI profile",
-                            },
-                          ]).map((option) => {
-                            const active = astraConfigMode === option.key;
-                            return (
-                              <button
-                                key={option.key}
-                                type="button"
-                                onClick={() => setAstraConfigMode(option.key)}
-                                className="rounded-xl px-3 py-2.5 text-left"
-                                style={{
-                                  backgroundColor: active
-                                    ? "var(--interactive-light)"
-                                    : "var(--bg-card)",
-                                  border: `1px solid ${
-                                    active
-                                      ? "var(--interactive-border)"
-                                      : "var(--border-subtle)"
-                                  }`,
-                                }}
-                              >
-                                <div
-                                  className="text-[10px] uppercase tracking-widest font-semibold"
-                                  style={{
-                                    color: active
-                                      ? "var(--interactive)"
-                                      : "var(--text-muted)",
-                                  }}
-                                >
-                                  {option.label}
-                                </div>
-                                <div
-                                  className="text-sm font-semibold mt-1"
-                                  style={{ color: "var(--text-primary)" }}
-                                >
-                                  {option.description}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {draftSelectedBackend === "astra" && astraConfigMode === "astra-cli" ? (
-                      <div className="flex flex-col gap-4">
+                    {draftBackendOption === "openrag" ? (
+                      <>
                         <div>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <label style={{ ...labelStyle, marginBottom: 0 }}>
-                              Astra CLI Profile
-                            </label>
-                            {astraCliStatus?.selectedProfile ? (
-                              <span
-                                className="text-[10px]"
-                                style={{ color: "var(--text-muted)" }}
-                              >
-                                Default: {astraCliStatus.selectedProfile}
-                              </span>
-                            ) : null}
-                          </div>
-                          <select
-                            value={astraCliProfile}
-                            onChange={(event) => setAstraCliProfile(event.target.value)}
-                            data-testid="astra-cli-profile-select"
-                            style={inputStyle}
-                          >
-                            <option value="">Choose a profile…</option>
-                            {astraCliStatus?.profiles.map((profile) => (
-                              <option key={profile.name} value={profile.name}>
-                                {profile.name}
-                                {profile.isDefault ? " (default)" : ""}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <label style={{ ...labelStyle, marginBottom: 0 }}>
-                              Astra CLI Database
-                            </label>
-                            {selectedAstraCliDatabase?.region ? (
-                              <span
-                                className="text-[10px]"
-                                style={{ color: "var(--text-muted)" }}
-                              >
-                                {selectedAstraCliDatabase.region}
-                              </span>
-                            ) : null}
-                          </div>
-                          <select
-                            value={astraCliDatabase}
-                            onChange={(event) => setAstraCliDatabase(event.target.value)}
-                            data-testid="astra-cli-database-select"
-                            style={inputStyle}
-                          >
-                            <option value="">Choose a database…</option>
-                            {astraCliDatabases.map((database) => (
-                              <option key={database.id} value={database.id}>
-                                {database.name}
-                              </option>
-                            ))}
-                          </select>
+                          <label style={labelStyle}>OpenRAG Settings</label>
                           <p
-                            className="text-[11px] mt-1.5"
+                            className="text-[11px] mb-2 leading-relaxed"
                             style={{ color: "var(--text-muted)" }}
                           >
-                            The app resolves the token and endpoint from your local
-                            `astra` setup only when this mode is selected.
+                            Use OpenRAG for vector search and document ingestion. Hybrid search, lexical search, CSV ingest, the collections sidebar, and the API explorer stay disabled in this mode.
                           </p>
                         </div>
 
-                        {selectedAstraCliDatabase ? (
-                          <div
-                            className="rounded-xl px-3 py-2.5"
-                            style={{
-                              backgroundColor: "var(--bg-card)",
-                              border: "1px solid var(--border-subtle)",
-                            }}
-                          >
-                            <div
-                              className="text-[10px] uppercase tracking-widest font-semibold"
-                              style={{ color: "var(--text-muted)" }}
-                            >
-                              Resolved Endpoint
-                            </div>
-                            <div
-                              className="text-[12px] mt-1"
-                              style={{
-                                color: "var(--text-primary)",
-                                fontFamily: "IBM Plex Mono, monospace",
-                                overflowWrap: "anywhere",
-                              }}
-                            >
-                              {selectedAstraCliDatabase.endpoint}
-                            </div>
-                          </div>
-                        ) : null}
-
-                        {astraCliStatus?.error ? (
-                          <div
-                            className="rounded-lg px-3 py-2 text-[12px]"
-                            style={{
-                              color: "#fecaca",
-                              backgroundColor: "rgba(239,68,68,0.08)",
-                              border: "1px solid rgba(239,68,68,0.2)",
-                            }}
-                          >
-                            {astraCliStatus.error}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <>
-                        <div>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <label style={{ ...labelStyle, marginBottom: 0 }}>
-                              {endpointLabel}
-                            </label>
-                            {currentBackendStatus?.hasEndpoint && !endpointValue && (
-                              <span
-                                className="flex items-center gap-1 text-[10px]"
-                                style={{ color: "#22c55e" }}
-                              >
-                                <CheckCircle2 size={10} /> Set via environment
-                              </span>
-                            )}
-                          </div>
-                          <input
-                            type="text"
-                            value={endpointValue}
-                            onChange={(event) => setEndpointValue(event.target.value)}
-                            data-testid={endpointTestId}
-                            placeholder={
-                              draftSelectedBackend === "hcd"
-                                ? "https://my-hcd-host:8181"
-                                : "https://xxxx-xxxx.apps.astra.datastax.com"
-                            }
-                            style={inputStyle}
-                            autoComplete="off"
-                            spellCheck={false}
-                          />
-                        </div>
-
-                        {draftSelectedBackend === "hcd" && (
-                          <div>
-                            <div className="flex items-center justify-between mb-1.5">
-                              <label style={{ ...labelStyle, marginBottom: 0 }}>
-                                HCD Username
-                              </label>
-                              {currentBackendStatus?.hasUsername && !hcdUsername && (
-                                <span
-                                  className="flex items-center gap-1 text-[10px]"
-                                  style={{ color: "#22c55e" }}
-                                >
-                                  <CheckCircle2 size={10} /> Set via environment
-                                </span>
-                              )}
-                            </div>
-                            <div className="relative">
-                              <input
-                                type="text"
-                                value={hcdUsername}
-                                onChange={(event) => setHcdUsername(event.target.value)}
-                                data-testid="hcd-username-input"
-                                placeholder="cassandra"
-                                style={{ ...inputStyle, paddingLeft: "36px" }}
-                                autoComplete="off"
-                                spellCheck={false}
-                              />
-                              <UserRound
-                                size={14}
-                                className="absolute left-3 top-1/2 -translate-y-1/2"
-                                style={{ color: "var(--text-muted)" }}
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        <div>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <label style={{ ...labelStyle, marginBottom: 0 }}>
-                              {secretLabel}
-                            </label>
-                            {draftSelectedBackend === "astra" &&
-                            currentBackendStatus?.hasToken &&
-                            !astraToken ? (
-                              <span
-                                className="flex items-center gap-1 text-[10px]"
-                                style={{ color: "#22c55e" }}
-                              >
-                                <CheckCircle2 size={10} /> Set via environment
-                              </span>
-                            ) : null}
-                            {draftSelectedBackend === "hcd" &&
-                            currentBackendStatus?.hasPassword &&
-                            !hcdPassword ? (
-                              <span
-                                className="flex items-center gap-1 text-[10px]"
-                                style={{ color: "#22c55e" }}
-                              >
-                                <CheckCircle2 size={10} /> Set via environment
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className="relative">
-                            <input
-                              type={showSecret ? "text" : "password"}
-                              value={secretValue}
-                              onChange={(event) => setSecretValue(event.target.value)}
-                              data-testid={secretTestId}
-                              placeholder={
-                                draftSelectedBackend === "hcd"
-                                  ? "••••••••"
-                                  : "AstraCS:••••••••••••"
-                              }
-                              style={{ ...inputStyle, paddingRight: "40px" }}
-                              autoComplete="off"
-                              data-1p-ignore
-                              data-lpignore="true"
-                              data-bwignore="true"
-                              spellCheck={false}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowSecret((value) => !value)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2"
-                              style={{ color: "var(--text-muted)" }}
-                            >
-                              {showSecret ? <EyeOff size={14} /> : <Eye size={14} />}
-                            </button>
-                          </div>
-                          <p
-                            className="text-[11px] mt-1.5"
-                            style={{ color: "var(--text-muted)" }}
-                          >
-                            Stored in session memory only. Leave blank to use
-                            environment-backed credentials when available.
-                          </p>
-                        </div>
-                      </>
-                    )}
-
-                    <div
-                      className="my-1 h-px"
-                      style={{ backgroundColor: "var(--border-subtle)" }}
-                    />
-
-                    <div>
-                      <label style={labelStyle}>Knowledge Mode</label>
-                      <p
-                        className="text-[11px] mb-2 leading-relaxed"
-                        style={{ color: "var(--text-muted)" }}
-                      >
-                        Chat and document ingest can either stay on the connected backend or switch to OpenRAG. When OpenRAG is active, the collections sidebar and API explorer are hidden.
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      {([
-                        {
-                          mode: "connected" as const,
-                          label: getBackendDisplayName(draftSelectedBackend),
-                          description: "Connected backend",
-                        },
-                        {
-                          mode: "openrag" as const,
-                          label: "OpenRAG",
-                          description: "Knowledge service",
-                        },
-                      ]).map((option) => {
-                        const active = draftKnowledgeBackendMode === option.mode;
-                        return (
-                          <button
-                            key={option.mode}
-                            type="button"
-                            onClick={() => setDraftKnowledgeBackendMode(option.mode)}
-                            className="rounded-xl px-3 py-2.5 text-left"
-                            style={{
-                              backgroundColor: active
-                                ? "var(--interactive-light)"
-                                : "var(--bg-card)",
-                              border: `1px solid ${
-                                active
-                                  ? "var(--interactive-border)"
-                                  : "var(--border-subtle)"
-                              }`,
-                            }}
-                          >
-                            <div
-                              className="text-[10px] uppercase tracking-widest font-semibold"
-                              style={{
-                                color: active
-                                  ? "var(--interactive)"
-                                  : "var(--text-muted)",
-                              }}
-                            >
-                              {option.label}
-                            </div>
-                            <div
-                              className="text-sm font-semibold mt-1"
-                              style={{ color: "var(--text-primary)" }}
-                            >
-                              {option.description}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {draftKnowledgeBackendMode === "openrag" && (
-                      <>
                         <div>
                           <div className="flex items-center justify-between mb-1.5">
                             <label style={{ ...labelStyle, marginBottom: 0 }}>
@@ -1546,6 +1220,358 @@ export function ConnectionDialog({
                             OpenRAG uses semantic search and document ingestion. Hybrid, lexical, and CSV row ingest stay disabled for this backend.
                           </p>
                         </div>
+                      </>
+                    ) : (
+                      <>
+                        {connected && currentConnection && (
+                          <div
+                            className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg"
+                            style={{
+                              backgroundColor: "rgba(34,197,94,0.06)",
+                              border: "1px solid rgba(34,197,94,0.15)",
+                            }}
+                          >
+                            <motion.div
+                              className="w-2 h-2 rounded-full shrink-0"
+                              style={{ backgroundColor: "#22c55e" }}
+                              animate={{ opacity: [1, 0.4, 1] }}
+                              transition={{ duration: 2, repeat: Infinity }}
+                            />
+                            <div className="flex flex-col min-w-0">
+                              <span
+                                className="text-[11px]"
+                                style={{ color: "var(--text-muted)" }}
+                              >
+                                Active connection
+                              </span>
+                              <span
+                                className="text-[12px]"
+                                style={{
+                                  color: "#22c55e",
+                                  fontFamily: "IBM Plex Mono, monospace",
+                                }}
+                              >
+                                {getBackendSummary(currentConnection)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {draftSelectedBackend === "astra" &&
+                        astraCliStatus?.available &&
+                        astraCliStatus.configured ? (
+                          <div>
+                            <label style={labelStyle}>Data API Config Source</label>
+                            <div className="grid grid-cols-2 gap-2">
+                              {([
+                                {
+                                  key: "credentials" as const,
+                                  label: "Credentials",
+                                  description: "Manual or environment-backed",
+                                },
+                                {
+                                  key: "astra-cli" as const,
+                                  label: "Astra CLI",
+                                  description: "Reuse a local CLI profile",
+                                },
+                              ]).map((option) => {
+                                const active = astraConfigMode === option.key;
+                                return (
+                                  <button
+                                    key={option.key}
+                                    type="button"
+                                    onClick={() => {
+                                      astraConfigModeLockedRef.current = true;
+                                      setAstraConfigMode(option.key);
+                                    }}
+                                    className="rounded-xl px-3 py-2.5 text-left"
+                                    style={{
+                                      backgroundColor: active
+                                        ? "var(--interactive-light)"
+                                        : "var(--bg-card)",
+                                      border: `1px solid ${
+                                        active
+                                          ? "var(--interactive-border)"
+                                          : "var(--border-subtle)"
+                                      }`,
+                                    }}
+                                  >
+                                    <div
+                                      className="text-[10px] uppercase tracking-widest font-semibold"
+                                      style={{
+                                        color: active
+                                          ? "var(--interactive)"
+                                          : "var(--text-muted)",
+                                      }}
+                                    >
+                                      {option.label}
+                                    </div>
+                                    <div
+                                      className="text-sm font-semibold mt-1"
+                                      style={{ color: "var(--text-primary)" }}
+                                    >
+                                      {option.description}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {draftSelectedBackend === "astra" &&
+                        astraConfigMode === "astra-cli" ? (
+                          <div className="flex flex-col gap-4">
+                            <div>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <label style={{ ...labelStyle, marginBottom: 0 }}>
+                                  Astra CLI Profile
+                                </label>
+                                {astraCliStatus?.selectedProfile ? (
+                                  <span
+                                    className="text-[10px]"
+                                    style={{ color: "var(--text-muted)" }}
+                                  >
+                                    Default: {astraCliStatus.selectedProfile}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <select
+                                value={astraCliProfile}
+                                onChange={(event) =>
+                                  setAstraCliProfile(event.target.value)
+                                }
+                                data-testid="astra-cli-profile-select"
+                                style={inputStyle}
+                              >
+                                <option value="">Choose a profile…</option>
+                                {astraCliStatus?.profiles.map((profile) => (
+                                  <option key={profile.name} value={profile.name}>
+                                    {profile.name}
+                                    {profile.isDefault ? " (default)" : ""}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <label style={{ ...labelStyle, marginBottom: 0 }}>
+                                  Astra CLI Database
+                                </label>
+                                {selectedAstraCliDatabase?.region ? (
+                                  <span
+                                    className="text-[10px]"
+                                    style={{ color: "var(--text-muted)" }}
+                                  >
+                                    {selectedAstraCliDatabase.region}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <select
+                                value={astraCliDatabase}
+                                onChange={(event) =>
+                                  setAstraCliDatabase(event.target.value)
+                                }
+                                data-testid="astra-cli-database-select"
+                                style={inputStyle}
+                              >
+                                <option value="">Choose a database…</option>
+                                {astraCliDatabases.map((database) => (
+                                  <option key={database.id} value={database.id}>
+                                    {database.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <p
+                                className="text-[11px] mt-1.5"
+                                style={{ color: "var(--text-muted)" }}
+                              >
+                                The app resolves the token and endpoint from your
+                                local `astra` setup only when this mode is selected.
+                              </p>
+                            </div>
+
+                            {selectedAstraCliDatabase ? (
+                              <div
+                                className="rounded-xl px-3 py-2.5"
+                                style={{
+                                  backgroundColor: "var(--bg-card)",
+                                  border: "1px solid var(--border-subtle)",
+                                }}
+                              >
+                                <div
+                                  className="text-[10px] uppercase tracking-widest font-semibold"
+                                  style={{ color: "var(--text-muted)" }}
+                                >
+                                  Resolved Endpoint
+                                </div>
+                                <div
+                                  className="text-[12px] mt-1"
+                                  style={{
+                                    color: "var(--text-primary)",
+                                    fontFamily: "IBM Plex Mono, monospace",
+                                    overflowWrap: "anywhere",
+                                  }}
+                                >
+                                  {selectedAstraCliDatabase.endpoint}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {astraCliStatus?.error ? (
+                              <div
+                                className="rounded-lg px-3 py-2 text-[12px]"
+                                style={{
+                                  color: "#fecaca",
+                                  backgroundColor: "rgba(239,68,68,0.08)",
+                                  border: "1px solid rgba(239,68,68,0.2)",
+                                }}
+                              >
+                                {astraCliStatus.error}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <>
+                            <div>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <label style={{ ...labelStyle, marginBottom: 0 }}>
+                                  {endpointLabel}
+                                </label>
+                                {currentBackendStatus?.hasEndpoint && !endpointValue ? (
+                                  <span
+                                    className="flex items-center gap-1 text-[10px]"
+                                    style={{ color: "#22c55e" }}
+                                  >
+                                    <CheckCircle2 size={10} /> Set via environment
+                                  </span>
+                                ) : null}
+                              </div>
+                              <input
+                                type="text"
+                                value={endpointValue}
+                                onChange={(event) =>
+                                  setEndpointValue(event.target.value)
+                                }
+                                data-testid={endpointTestId}
+                                placeholder={
+                                  draftSelectedBackend === "hcd"
+                                    ? "https://my-hcd-host:8181"
+                                    : "https://xxxx-xxxx.apps.astra.datastax.com"
+                                }
+                                style={inputStyle}
+                                autoComplete="off"
+                                spellCheck={false}
+                              />
+                            </div>
+
+                            {draftSelectedBackend === "hcd" && (
+                              <div>
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <label style={{ ...labelStyle, marginBottom: 0 }}>
+                                    HCD Username
+                                  </label>
+                                  {currentBackendStatus?.hasUsername && !hcdUsername ? (
+                                    <span
+                                      className="flex items-center gap-1 text-[10px]"
+                                      style={{ color: "#22c55e" }}
+                                    >
+                                      <CheckCircle2 size={10} /> Set via environment
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="relative">
+                                  <input
+                                    type="text"
+                                    value={hcdUsername}
+                                    onChange={(event) =>
+                                      setHcdUsername(event.target.value)
+                                    }
+                                    data-testid="hcd-username-input"
+                                    placeholder="cassandra"
+                                    style={{ ...inputStyle, paddingLeft: "36px" }}
+                                    autoComplete="off"
+                                    spellCheck={false}
+                                  />
+                                  <UserRound
+                                    size={14}
+                                    className="absolute left-3 top-1/2 -translate-y-1/2"
+                                    style={{ color: "var(--text-muted)" }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            <div>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <label style={{ ...labelStyle, marginBottom: 0 }}>
+                                  {secretLabel}
+                                </label>
+                                {draftSelectedBackend === "astra" &&
+                                currentBackendStatus?.hasToken &&
+                                !astraToken ? (
+                                  <span
+                                    className="flex items-center gap-1 text-[10px]"
+                                    style={{ color: "#22c55e" }}
+                                  >
+                                    <CheckCircle2 size={10} /> Set via environment
+                                  </span>
+                                ) : null}
+                                {draftSelectedBackend === "hcd" &&
+                                currentBackendStatus?.hasPassword &&
+                                !hcdPassword ? (
+                                  <span
+                                    className="flex items-center gap-1 text-[10px]"
+                                    style={{ color: "#22c55e" }}
+                                  >
+                                    <CheckCircle2 size={10} /> Set via environment
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="relative">
+                                <input
+                                  type={showSecret ? "text" : "password"}
+                                  value={secretValue}
+                                  onChange={(event) =>
+                                    setSecretValue(event.target.value)
+                                  }
+                                  data-testid={secretTestId}
+                                  placeholder={
+                                    draftSelectedBackend === "hcd"
+                                      ? "••••••••"
+                                      : "AstraCS:••••••••••••"
+                                  }
+                                  style={{ ...inputStyle, paddingRight: "40px" }}
+                                  autoComplete="off"
+                                  data-1p-ignore
+                                  data-lpignore="true"
+                                  data-bwignore="true"
+                                  spellCheck={false}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowSecret((value) => !value)}
+                                  className="absolute right-3 top-1/2 -translate-y-1/2"
+                                  style={{ color: "var(--text-muted)" }}
+                                >
+                                  {showSecret ? (
+                                    <EyeOff size={14} />
+                                  ) : (
+                                    <Eye size={14} />
+                                  )}
+                                </button>
+                              </div>
+                              <p
+                                className="text-[11px] mt-1.5"
+                                style={{ color: "var(--text-muted)" }}
+                              >
+                                Stored in session memory only. Leave blank to use
+                                environment-backed credentials when available.
+                              </p>
+                            </div>
+                          </>
+                        )}
                       </>
                     )}
                   </div>

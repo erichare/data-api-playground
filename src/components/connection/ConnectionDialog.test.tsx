@@ -197,8 +197,8 @@ function renderDialog(
   return props;
 }
 
-function openConnectionTab() {
-  fireEvent.click(screen.getByTestId("connection-tab-connection"));
+function openBackendTab() {
+  fireEvent.click(screen.getByTestId("connection-tab-backend"));
 }
 
 function openAiTab() {
@@ -440,14 +440,37 @@ describe("ConnectionDialog helpers", () => {
         astraCliDatabase: "",
         knowledgeBackendMode: "openrag",
         openragStatus: READY_KNOWLEDGE_STATUS.openrag,
-        astraToken: "token",
-        astraEndpoint: "endpoint",
+        astraToken: "",
+        astraEndpoint: "",
         hcdEndpoint: "",
         hcdUsername: "",
         hcdPassword: "",
         openragApiKey: "",
       })
     ).toBe(false);
+
+    expect(
+      canConnectToBackend({
+        selectedBackend: "hcd",
+        loading: false,
+        currentBackendStatus: makeBackendStatuses().hcd,
+        astraConfigMode: "credentials",
+        astraCliStatus: null,
+        astraCliProfile: "",
+        astraCliDatabase: "",
+        knowledgeBackendMode: "openrag",
+        openragStatus: {
+          ...READY_KNOWLEDGE_STATUS.openrag,
+          hasApiKey: true,
+        },
+        astraToken: "",
+        astraEndpoint: "",
+        hcdEndpoint: "",
+        hcdUsername: "",
+        hcdPassword: "",
+        openragApiKey: "",
+      })
+    ).toBe(true);
 
     expect(
       canConnectToBackend({
@@ -459,16 +482,13 @@ describe("ConnectionDialog helpers", () => {
         astraCliProfile: "",
         astraCliDatabase: "",
         knowledgeBackendMode: "openrag",
-        openragStatus: {
-          ...READY_KNOWLEDGE_STATUS.openrag,
-          hasApiKey: true,
-        },
-        astraToken: "token",
-        astraEndpoint: "endpoint",
+        openragStatus: READY_KNOWLEDGE_STATUS.openrag,
+        astraToken: "",
+        astraEndpoint: "",
         hcdEndpoint: "",
         hcdUsername: "",
         hcdPassword: "",
-        openragApiKey: "",
+        openragApiKey: "orag_manual",
       })
     ).toBe(true);
 
@@ -559,7 +579,7 @@ describe("ConnectionDialog", () => {
     expect(props.onClose).toHaveBeenCalled();
   });
 
-  it("connects with an Astra CLI-backed config when the local CLI is available", async () => {
+  it("defaults to an Astra CLI-backed config when the local CLI has a database available", async () => {
     mockAiStatus(READY_AI_STATUS, undefined, {
       dataApiConfig: {
         astraCli: {
@@ -586,17 +606,15 @@ describe("ConnectionDialog", () => {
       expect(global.fetch).toHaveBeenCalledWith("/api/data-api-config");
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /Astra CLI Reuse a local CLI profile/i }));
-
     await waitFor(() => {
       expect(
         (screen.getByTestId("astra-cli-profile-select") as HTMLSelectElement).value
       ).toBe("default");
     });
-
-    fireEvent.change(screen.getByTestId("astra-cli-database-select"), {
-      target: { value: "db-123" },
-    });
+    expect(
+      (screen.getByTestId("astra-cli-database-select") as HTMLSelectElement).value
+    ).toBe("db-123");
+    expect(screen.queryByTestId("astra-token-input")).toBeNull();
 
     fireEvent.click(screen.getByTestId("backend-connect-submit"));
 
@@ -610,6 +628,70 @@ describe("ConnectionDialog", () => {
         astraCliDatabase: "db-123",
       } satisfies BackendConnectionState);
     });
+  });
+
+  it("stays on credentials when Astra CLI is available but no database is configured", async () => {
+    mockAiStatus(READY_AI_STATUS, undefined, {
+      dataApiConfig: {
+        astraCli: {
+          available: true,
+          configured: true,
+          profiles: [{ name: "default", isDefault: true }],
+          selectedProfile: "default",
+          databases: [],
+        },
+      },
+    });
+
+    renderDialog();
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/data-api-config");
+    });
+
+    expect(screen.getByTestId("astra-token-input")).toBeTruthy();
+    expect(screen.queryByTestId("astra-cli-profile-select")).toBeNull();
+  });
+
+  it("keeps manual Astra credentials selected when reconnecting an existing Astra session", async () => {
+    mockAiStatus(READY_AI_STATUS, undefined, {
+      dataApiConfig: {
+        astraCli: {
+          available: true,
+          configured: true,
+          profiles: [{ name: "default", isDefault: true }],
+          selectedProfile: "default",
+          databases: [
+            {
+              id: "db-123",
+              name: "orders",
+              endpoint: "https://db-id.apps.astra.datastax.com",
+              keyspace: "default_keyspace",
+              region: "us-east-2",
+              status: "ACTIVE",
+            },
+          ],
+        },
+      },
+    });
+
+    renderDialog({
+      connected: true,
+      currentConnection: {
+        backend: "astra",
+        token: "AstraCS:manual",
+        endpoint: "https://db.apps.astra.datastax.com",
+      },
+    });
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/data-api-config");
+    });
+
+    expect(
+      (screen.getByTestId("astra-token-input") as HTMLInputElement).value
+    ).toBe("AstraCS:manual");
+    expect(screen.queryByTestId("astra-cli-profile-select")).toBeNull();
   });
 
   it("trims manual Astra and Hugging Face credentials before connecting", async () => {
@@ -717,7 +799,7 @@ describe("ConnectionDialog", () => {
 
     openAiTab();
     expect(screen.getByText("Checking local Ollama status...")).toBeTruthy();
-    openConnectionTab();
+    openBackendTab();
 
     fireEvent.click(screen.getByTestId("backend-connect-submit"));
 
@@ -750,7 +832,7 @@ describe("ConnectionDialog", () => {
       expect(screen.getByText(/Ollama is not reachable at/)).toBeTruthy();
     });
 
-    openConnectionTab();
+    openBackendTab();
     expect(screen.getByText("DataStax HCD Connected")).toBeTruthy();
     expect(screen.getByText("cassandra @ https://hcd.example.com:8181")).toBeTruthy();
 
@@ -813,9 +895,9 @@ describe("ConnectionDialog", () => {
     await waitFor(() => {
       expect(screen.getByText(/Ready locally at/)).toBeTruthy();
     });
-    openConnectionTab();
+    openBackendTab();
 
-    fireEvent.click(screen.getByRole("button", { name: /HCD DataStax HCD/i }));
+    fireEvent.click(screen.getByRole("button", { name: /DataStax HCD/i }));
     expect(props.onSelectedBackendChange).toHaveBeenCalledWith("hcd");
 
     fireEvent.click(screen.getByText("Cancel"));
@@ -837,7 +919,7 @@ describe("ConnectionDialog", () => {
     expect(screen.getByTestId("backend-connect-submit").textContent).toContain("Connect");
   });
 
-  it("supports OpenRAG knowledge mode while keeping the HCD connection flow consistent", async () => {
+  it("supports OpenRAG as a top-level backend without requiring an HCD connection", async () => {
     mockAiStatus(READY_AI_STATUS, {
       hasApiKey: true,
       hasBaseUrl: false,
@@ -859,18 +941,7 @@ describe("ConnectionDialog", () => {
       expect(global.fetch).toHaveBeenCalledWith("/api/knowledge-backend-status");
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /HCD DataStax HCD/i }));
-    fireEvent.change(screen.getByTestId("hcd-endpoint-input"), {
-      target: { value: "https://hcd.example.com:8181" },
-    });
-    fireEvent.change(screen.getByTestId("hcd-username-input"), {
-      target: { value: "  cassandra  " },
-    });
-    fireEvent.change(screen.getByTestId("hcd-password-input"), {
-      target: { value: "secret" },
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: /OpenRAG Knowledge service/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Langflow OpenRAG/i }));
 
     const openragApiKeyInput = screen.getByTestId(
       "openrag-api-key-input"
@@ -897,14 +968,10 @@ describe("ConnectionDialog", () => {
     fireEvent.click(screen.getByTestId("backend-connect-submit"));
 
     await waitFor(() => {
-      expect(props.onConnect).toHaveBeenCalledWith({
-        backend: "hcd",
-        endpoint: "https://hcd.example.com:8181",
-        username: "cassandra",
-        password: "secret",
-        fromEnv: false,
-      } satisfies BackendConnectionState);
+      expect(props.onKnowledgeBackendModeChange).toHaveBeenCalledWith("openrag");
     });
+    expect(props.onConnect).not.toHaveBeenCalled();
+    expect(props.onSelectedBackendChange).toHaveBeenCalledWith("hcd");
     expect(props.onKnowledgeBackendModeChange).toHaveBeenCalledWith("openrag");
     expect(props.onOpenragConnectionChange).toHaveBeenCalledWith({
       kind: "openrag",
@@ -932,7 +999,7 @@ describe("ConnectionDialog", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByTestId("connection-tab-connection").getAttribute("aria-pressed")
+        screen.getByTestId("connection-tab-backend").getAttribute("aria-pressed")
       ).toBe("true");
     });
 
@@ -970,25 +1037,26 @@ describe("ConnectionDialog", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByTestId("connection-tab-connection").getAttribute("aria-pressed")
+        screen.getByTestId("connection-tab-backend").getAttribute("aria-pressed")
       ).toBe("true");
     });
 
     expect(screen.getByTestId("openrag-api-key-input")).toBeTruthy();
-    expect(screen.getByTestId("astra-token-input")).toBeTruthy();
+    expect(screen.queryByTestId("astra-token-input")).toBeNull();
   });
 
-  it("merges backend and OpenRAG controls into a single connection tab", async () => {
+  it("merges backend and OpenRAG controls into a single backend tab", async () => {
     mockAiStatus(READY_AI_STATUS, { hasApiKey: true });
 
     renderDialog();
 
     await waitFor(() => {
-      expect(screen.getByTestId("connection-tab-connection")).toBeTruthy();
+      expect(screen.getByTestId("connection-tab-backend")).toBeTruthy();
     });
 
     expect(screen.queryByTestId("connection-tab-knowledge")).toBeNull();
-    expect(screen.getByText("Data API Backend")).toBeTruthy();
-    expect(screen.getByText("Knowledge Mode")).toBeTruthy();
+    expect(screen.getAllByText("Backend").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Knowledge Mode")).toBeNull();
+    expect(screen.getByRole("button", { name: /Langflow OpenRAG/i })).toBeTruthy();
   });
 });

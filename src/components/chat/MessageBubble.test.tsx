@@ -60,7 +60,11 @@ vi.mock("./PipelineTrace", () => ({
 }));
 
 const SEARCH_COMMAND = 'await db.collection("orders")\n  .find({}, { sort: { total_spend: -1 }, limit: 3 })';
-const EXPECTED_TS_CODE = 'await db.collection("orders")\n  .find({}, { sort: { total_spend: -1 }, limit: 3 })';
+const EXPECTED_TS_CODE = [
+  'const collection = db.collection("orders");',
+  "",
+  "const results = await collection.find({}, { sort: { total_spend: -1 }, limit: 3 }).toArray();",
+].join("\n");
 
 function makeMessage(overrides: Partial<Message> = {}): Message {
   return {
@@ -404,6 +408,39 @@ describe("MessageBubble", () => {
     expect(
       screen.getAllByText((_, element) =>
         element?.textContent?.includes('"findAndRerank"') ?? false
+      ).length
+    ).toBeGreaterThan(0);
+  });
+
+  it("renders a usable TypeScript snippet when the search command is only a fallback summary", () => {
+    render(
+      <MessageBubble
+        index={1}
+        message={makeMessage({
+          pipelineSteps: [
+            {
+              id: "search",
+              status: "complete",
+              latencyMs: 8,
+              data: {
+                command: "// Low-confidence fallback: searched customers",
+                collection: "customers",
+              },
+            },
+          ],
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByText("Code"));
+    expect(
+      screen.getAllByText((_, element) =>
+        element?.textContent?.includes('const collection = db.collection("customers");') ?? false
+      ).length
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText((_, element) =>
+        element?.textContent?.includes("const results = await collection.find(") ?? false
       ).length
     ).toBeGreaterThan(0);
   });

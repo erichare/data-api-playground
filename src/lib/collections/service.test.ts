@@ -11,6 +11,7 @@ const getAstraDbMock = vi.fn(() => ({
   dropCollection: dropCollectionMock,
   collection: collectionMock,
 }));
+const resolveAstraCliConnectionMock = vi.fn();
 const resolveAstraConnectionMock = vi.fn();
 const prepareMock = vi.fn();
 const getDbMock = vi.fn(() => ({
@@ -27,11 +28,16 @@ vi.mock("@/lib/db", () => ({
   getDb: getDbMock,
 }));
 
+vi.mock("@/lib/astraCli", () => ({
+  resolveAstraCliConnection: resolveAstraCliConnectionMock,
+}));
+
 describe("collection service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     prepareMock.mockReset();
     resolveAstraConnectionMock.mockReset();
+    resolveAstraCliConnectionMock.mockReset();
     createCollectionMock.mockReset();
     dropCollectionMock.mockReset();
     deleteManyMock.mockReset();
@@ -48,6 +54,14 @@ describe("collection service", () => {
       token: "token",
       endpoint: "endpoint",
       keyspace: "ks1",
+    });
+    resolveAstraCliConnectionMock.mockReturnValue({
+      token: "token",
+      endpoint: "endpoint",
+      keyspace: "ks1",
+      fromAstraCli: true,
+      astraCliProfile: "default",
+      astraCliDatabase: "db-123",
     });
     getAstraDbMock.mockImplementation(() => ({
       createCollection: createCollectionMock,
@@ -203,7 +217,7 @@ describe("collection service", () => {
     });
 
     expect(prepareMock).toHaveBeenCalledWith(
-      "SELECT collection, COUNT(*) AS document_count FROM ingested_documents GROUP BY collection"
+      expect.stringContaining("SELECT collection, COUNT(*) AS document_count FROM ingested_documents")
     );
     expect(estimatedDocumentCountMock).toHaveBeenCalledOnce();
     expect(findMock).toHaveBeenCalledOnce();
@@ -298,6 +312,62 @@ describe("collection service", () => {
         model: "",
       })
     ).rejects.toThrow("token, endpoint, and name are required");
+  });
+
+  it("accepts Astra CLI-backed collection creation inputs", async () => {
+    resolveAstraCliConnectionMock.mockReturnValue({
+      token: "resolved-token",
+      endpoint: "https://db.apps.astra.datastax.com",
+      keyspace: "ks1",
+      fromAstraCli: true,
+      astraCliProfile: "default",
+      astraCliDatabase: "db-123",
+    });
+
+    const { createCollectionInAstra } = await import("./service");
+    await expect(
+      createCollectionInAstra({
+        fromAstraCli: true,
+        astraCliProfile: "default",
+        astraCliDatabase: "db-123",
+        name: "docs",
+        dimension: 1024,
+        metric: "cosine",
+        provider: "none",
+        model: "",
+      })
+    ).resolves.toEqual({
+      name: "docs",
+      count: 0,
+      documentCount: 0,
+      vectorDim: 1024,
+      vectorizeService: null,
+    });
+  });
+
+  it("accepts env-backed Astra collection creation inputs", async () => {
+    resolveAstraConnectionMock.mockReturnValue({
+      token: "env-token",
+      endpoint: "https://env.apps.astra.datastax.com",
+      keyspace: "ks1",
+    });
+
+    const { createCollectionInAstra } = await import("./service");
+    await expect(
+      createCollectionInAstra({
+        name: "docs",
+        dimension: 1024,
+        metric: "cosine",
+        provider: "none",
+        model: "",
+      })
+    ).resolves.toEqual({
+      name: "docs",
+      count: 0,
+      documentCount: 0,
+      vectorDim: 1024,
+      vectorizeService: null,
+    });
   });
 
   it("validates required HCD collection creation inputs", async () => {

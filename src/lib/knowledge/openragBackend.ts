@@ -2,6 +2,7 @@ import { OpenRAGClient } from "openrag-sdk";
 import type { SearchFilters, SettingsResponse } from "openrag-sdk";
 import { getDb } from "@/lib/db";
 import type { SearchResult } from "@/lib/chat/types";
+import { getIngestedDocumentScope } from "@/lib/ingest/scope";
 import {
   OPENRAG_KNOWLEDGE_BACKEND_CAPABILITIES,
 } from "@/lib/knowledge/types";
@@ -102,35 +103,39 @@ function parseOpenragDocumentRef(documentRef: string) {
   };
 }
 
-function listOpenragCollections() {
+function listOpenragCollections(config: OpenragConfig) {
+  const scope = getIngestedDocumentScope(config);
   return getDb()
     .prepare(
       `
         SELECT DISTINCT collection
         FROM ingested_documents
         WHERE backend_kind = 'openrag'
+          AND (backend_scope = ? OR backend_scope IS NULL OR TRIM(backend_scope) = '')
         ORDER BY collection COLLATE NOCASE ASC
       `
     )
-    .all() as CollectionRow[];
+    .all(scope.backendScope) as CollectionRow[];
 }
 
-function listOpenragFilenames(collections: string[]) {
+function listOpenragFilenames(collections: string[], config: OpenragConfig) {
   if (collections.length === 0) {
     return [];
   }
 
   const placeholders = collections.map(() => "?").join(", ");
+  const scope = getIngestedDocumentScope(config);
   const rows = getDb()
     .prepare(
       `
         SELECT collection, source_filename
         FROM ingested_documents
         WHERE backend_kind = 'openrag'
+          AND (backend_scope = ? OR backend_scope IS NULL OR TRIM(backend_scope) = '')
           AND collection IN (${placeholders})
       `
     )
-    .all(...collections) as FilenameRow[];
+    .all(scope.backendScope, ...collections) as FilenameRow[];
 
   return rows;
 }
@@ -139,8 +144,11 @@ function buildFilenameCollectionMap(rows: FilenameRow[]) {
   return new Map(rows.map((row) => [row.source_filename, row.collection]));
 }
 
-function buildOpenragFilters(collections: string[]): SearchFilters | undefined {
-  const filenameRows = listOpenragFilenames(collections);
+function buildOpenragFilters(
+  collections: string[],
+  config: OpenragConfig
+): SearchFilters | undefined {
+  const filenameRows = listOpenragFilenames(collections, config);
   const uniqueFilenames = [...new Set(filenameRows.map((row) => row.source_filename))];
 
   if (uniqueFilenames.length === 0) {
@@ -212,7 +220,7 @@ export const openragKnowledgeBackend: KnowledgeBackend = {
     const provider = settings?.knowledge.embedding_provider ?? "openrag";
     const model = settings?.knowledge.embedding_model ?? null;
 
-    return listOpenragCollections().map((row): KnowledgeSource => ({
+    return listOpenragCollections(normalizedConfig).map((row): KnowledgeSource => ({
       name: row.collection,
       vectorDimension: null,
       vectorizeProvider: provider,
@@ -231,9 +239,9 @@ export const openragKnowledgeBackend: KnowledgeBackend = {
       request.collectionsToSearch.length > 0
         ? request.collectionsToSearch.map((collection) => collection.name)
         : [request.collection];
-    const filenameRows = listOpenragFilenames(targetCollections);
+    const filenameRows = listOpenragFilenames(targetCollections, normalizedConfig);
     const filenameCollectionMap = buildFilenameCollectionMap(filenameRows);
-    const filters = buildOpenragFilters(targetCollections);
+    const filters = buildOpenragFilters(targetCollections, normalizedConfig);
     const client = createClient(normalizedConfig);
     const response = await client.search.query(request.query, {
       filters,

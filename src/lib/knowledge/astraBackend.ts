@@ -445,6 +445,19 @@ async function executeDataApiSearch(
   return { results, command };
 }
 
+function pickBestSearchExecution(
+  executions: Array<{ results: SearchResult[]; command: string }>
+) {
+  return executions.reduce<{ results: SearchResult[]; command: string } | null>(
+    (best, execution) => {
+      const executionScore = execution.results[0]?.similarity ?? Number.NEGATIVE_INFINITY;
+      const bestScore = best?.results[0]?.similarity ?? Number.NEGATIVE_INFINITY;
+      return executionScore > bestScore ? execution : best;
+    },
+    null
+  );
+}
+
 async function searchDataApiKnowledge(
   request: KnowledgeSearchRequest,
   createDb: (config: DataApiKnowledgeConfig, keyspace?: string) => DataApiDb,
@@ -532,12 +545,20 @@ async function searchDataApiKnowledge(
       const fanBest = fanResults
         .flatMap((result) => result.status === "fulfilled" ? result.value.results : [])
         .sort((left, right) => right.similarity - left.similarity);
+      const bestFanExecution = pickBestSearchExecution(
+        fanResults.flatMap((result) => result.status === "fulfilled" ? [result.value] : [])
+      );
       if ((fanBest[0]?.similarity ?? 0) > topSimilarity) {
         searchResults = fanBest.slice(0, limit);
         const fanCollections = [
           ...new Set(searchResults.map((result) => result.collection).filter(Boolean)),
         ];
-        commandStr = `// Low-confidence fallback: searched ${fanCollections.join(", ")}`;
+        commandStr = [
+          `// Low-confidence fallback: searched ${fanCollections.join(", ")}`,
+          bestFanExecution?.command ?? "",
+        ]
+          .filter(Boolean)
+          .join("\n");
         resolvedCollection = fanCollections[0] ?? resolvedCollection;
       }
     }
@@ -562,9 +583,17 @@ async function searchDataApiKnowledge(
     const successCount = fanResults.filter(
       (result) => result.status === "fulfilled"
     ).length;
-    commandStr = `// Searched ${successCount} collection${successCount !== 1 ? "s" : ""}: ${collectionsToSearch
-      .map((collectionInfo) => collectionInfo.name)
-      .join(", ")}`;
+    const bestFanExecution = pickBestSearchExecution(
+      fanResults.flatMap((result) => result.status === "fulfilled" ? [result.value] : [])
+    );
+    commandStr = [
+      `// Searched ${successCount} collection${successCount !== 1 ? "s" : ""}: ${collectionsToSearch
+        .map((collectionInfo) => collectionInfo.name)
+        .join(", ")}`,
+      bestFanExecution?.command ?? "",
+    ]
+      .filter(Boolean)
+      .join("\n");
   }
 
   return {

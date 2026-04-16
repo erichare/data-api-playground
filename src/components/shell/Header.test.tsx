@@ -107,8 +107,8 @@ describe("Header", () => {
     render(<Header selectedBackend="astra" />);
 
     expect(screen.getByTestId("header-connect-button").textContent).toContain(
-      "Connections"
+      "Backend"
     );
-    expect(screen.getByTitle("Open connections")).toBeTruthy();
+    expect(screen.getByTitle("Open backend")).toBeTruthy();
   });
 });

@@ -125,6 +125,51 @@ describe("/api/create-collection route", () => {
     });
   });
 
+  it("forwards Astra CLI-backed collection requests to the service", async () => {
+    createCollectionInAstraMock.mockResolvedValue({
+      name: "docs",
+      count: 0,
+      vectorDim: 1024,
+      vectorizeService: {
+        provider: "nvidia",
+        modelName: "NV-Embed-QA",
+      },
+    });
+
+    const { POST } = await import("./route");
+    const request = new Request("http://localhost/api/create-collection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "docs",
+        dimension: 1024,
+        metric: "cosine",
+        provider: "nvidia",
+        model: "NV-Embed-QA",
+        fromAstraCli: true,
+        astraCliProfile: "default",
+        astraCliDatabase: "db-123",
+      }),
+    });
+
+    const response = await POST(request as never);
+
+    expect(response.status).toBe(200);
+    expect(createCollectionInAstraMock).toHaveBeenCalledWith({
+      name: "docs",
+      dimension: 1024,
+      metric: "cosine",
+      provider: "nvidia",
+      model: "NV-Embed-QA",
+      token: undefined,
+      endpoint: undefined,
+      keyspace: undefined,
+      fromAstraCli: true,
+      astraCliProfile: "default",
+      astraCliDatabase: "db-123",
+    });
+  });
+
   it('accepts BYO embeddings without a model and defaults it before calling the service', async () => {
     createCollectionInAstraMock.mockResolvedValue({
       name: "plain_docs",

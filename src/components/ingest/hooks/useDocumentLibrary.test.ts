@@ -90,7 +90,9 @@ describe("useDocumentLibrary", () => {
 
       await waitFor(() => expect(result.current.loadingDocs).toBe(false));
 
-      expect(fetch).toHaveBeenCalledWith("/api/documents?collection=col1");
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/documents?collection=col1&keyspace=ks&backend=astra&endpoint=https%3A%2F%2Fendpoint.com"
+      );
       expect(result.current.documents).toEqual(docs);
       expect(result.current.loadError).toBe("");
     });
@@ -520,7 +522,9 @@ describe("useDocumentLibrary", () => {
       rerender({ ...defaultArgs, selectedCollection: "col2" });
 
       await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
-      expect(fetch).toHaveBeenLastCalledWith("/api/documents?collection=col2");
+      expect(fetch).toHaveBeenLastCalledWith(
+        "/api/documents?collection=col2&keyspace=ks&backend=astra&endpoint=https%3A%2F%2Fendpoint.com"
+      );
     });
   });
 
