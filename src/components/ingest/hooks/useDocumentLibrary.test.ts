@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useDocumentLibrary } from "./useDocumentLibrary";
 import type { IngestedDocumentSummary } from "@/lib/types";
@@ -48,6 +48,7 @@ describe("useDocumentLibrary", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
   });
 
@@ -168,6 +169,95 @@ describe("useDocumentLibrary", () => {
       await waitFor(() => expect(result.current.loadingDocs).toBe(false));
 
       expect(result.current.loadError).toBe("Failed to load documents");
+    });
+
+    it("queries OpenRAG documents with the knowledge backend params", async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ documents: [] }),
+      } as unknown as Response);
+
+      const { result } = renderHook(() =>
+        useDocumentLibrary({
+          ...defaultArgs,
+          selectedBackend: "hcd",
+          knowledgeBackendMode: "openrag",
+          openragConnection: {
+            kind: "openrag",
+            apiKey: "orag",
+            baseUrl: "https://openrag.example.com",
+            fromEnv: false,
+          },
+          connection: {
+            backend: "hcd",
+            endpoint: "https://hcd.example.com:8181",
+            username: "cass",
+            password: "secret",
+          },
+        })
+      );
+
+      await waitFor(() => {
+        expect(fetch).toHaveBeenCalledWith(
+          "/api/documents?collection=col1&keyspace=ks&knowledgeBackend=openrag&openragBaseUrl=https%3A%2F%2Fopenrag.example.com"
+        );
+      });
+      await waitFor(() => expect(result.current.loadingDocs).toBe(false));
+    });
+
+    it("queries Astra CLI-backed documents with profile and database params", async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ documents: [] }),
+      } as unknown as Response);
+
+      const { result } = renderHook(() =>
+        useDocumentLibrary({
+          ...defaultArgs,
+          connection: {
+            backend: "astra",
+            token: "",
+            endpoint: "",
+            fromAstraCli: true,
+            astraCliProfile: "team",
+            astraCliDatabase: "db-456",
+          },
+        })
+      );
+
+      await waitFor(() => {
+        expect(fetch).toHaveBeenCalledWith(
+          "/api/documents?collection=col1&keyspace=ks&backend=astra&fromAstraCli=true&astraCliProfile=team&astraCliDatabase=db-456"
+        );
+      });
+      await waitFor(() => expect(result.current.loadingDocs).toBe(false));
+    });
+
+    it("queries HCD documents with the HCD endpoint", async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ documents: [] }),
+      } as unknown as Response);
+
+      const { result } = renderHook(() =>
+        useDocumentLibrary({
+          ...defaultArgs,
+          selectedBackend: "hcd",
+          connection: {
+            backend: "hcd",
+            endpoint: "https://hcd.example.com:8181",
+            username: "cass",
+            password: "secret",
+          },
+        })
+      );
+
+      await waitFor(() => {
+        expect(fetch).toHaveBeenCalledWith(
+          "/api/documents?collection=col1&keyspace=ks&backend=hcd&endpoint=https%3A%2F%2Fhcd.example.com%3A8181"
+        );
+      });
+      await waitFor(() => expect(result.current.loadingDocs).toBe(false));
     });
   });
 

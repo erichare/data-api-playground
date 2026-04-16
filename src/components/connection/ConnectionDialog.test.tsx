@@ -6,6 +6,7 @@ import type {
   BackendConnectionState,
   BackendStatuses,
 } from "@/lib/backends/types";
+import * as portableConfig from "@/lib/config/portableConfig";
 import type { KnowledgeBackendStatuses } from "@/lib/knowledge/types";
 import {
   canConnectToBackend,
@@ -296,6 +297,8 @@ describe("ConnectionDialog helpers", () => {
     expect(getModelFamilyLabel("Qwen/Qwen2.5-Coder-32B-Instruct")).toBe(
       "Qwen2.5-Coder"
     );
+    expect(getModelFamilyLabel("demo-a")).toBe("demo-a");
+    expect(getModelFamilyLabel("demo-.8b")).toBe("demo-.8b");
     expect(getModelFamilyLabel(null)).toBe("Checking...");
   });
 
@@ -522,6 +525,7 @@ describe("ConnectionDialog helpers", () => {
 
 describe("ConnectionDialog", () => {
   const originalFetch = global.fetch;
+  const originalFileReader = global.FileReader;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -530,6 +534,10 @@ describe("ConnectionDialog", () => {
   afterEach(() => {
     cleanup();
     global.fetch = originalFetch;
+    Object.defineProperty(global, "FileReader", {
+      configurable: true,
+      value: originalFileReader,
+    });
   });
 
   it("does not render when closed", () => {
@@ -917,6 +925,277 @@ describe("ConnectionDialog", () => {
     });
     expect(props.onClose).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("backend-connect-submit").textContent).toContain("Connect");
+  });
+
+  it("exports the current config and surfaces success feedback", async () => {
+    mockAiStatus(READY_AI_STATUS, {
+      hasApiKey: true,
+      hasBaseUrl: true,
+    });
+    const stringifySpy = vi
+      .spyOn(portableConfig, "stringifyPortablePlaygroundConfig")
+      .mockReturnValue("version: 1\n");
+    const createObjectURLSpy = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:playground-config");
+    const revokeObjectURLSpy = vi
+      .spyOn(URL, "revokeObjectURL")
+      .mockImplementation(() => undefined);
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
+
+    renderDialog({
+      currentHuggingfaceApiKey: "  hf_env_like  ",
+    });
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/ai-status");
+    });
+
+    fireEvent.change(screen.getByTestId("astra-token-input"), {
+      target: { value: "  AstraCS:export-token  " },
+    });
+    fireEvent.change(screen.getByTestId("astra-endpoint-input"), {
+      target: { value: "  https://db.apps.astra.datastax.com  " },
+    });
+    fireEvent.click(screen.getByText("Export config"));
+
+    expect(stringifySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selectedBackend: "astra",
+        astraConfigMode: "credentials",
+        astraToken: "  AstraCS:export-token  ",
+        astraEndpoint: "  https://db.apps.astra.datastax.com  ",
+        knowledgeBackendMode: "connected",
+        huggingfaceApiKey: "  hf_env_like  ",
+        hasOpenragEnvApiKey: true,
+        hasOpenragEnvBaseUrl: true,
+      })
+    );
+    expect(createObjectURLSpy).toHaveBeenCalled();
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:playground-config");
+    expect(screen.getByText("Config exported.")).toBeTruthy();
+  });
+
+  it("shows export errors when config serialization fails", async () => {
+    mockAiStatus(READY_AI_STATUS);
+    vi.spyOn(portableConfig, "stringifyPortablePlaygroundConfig").mockImplementation(
+      () => {
+        throw new Error("Export blew up");
+      }
+    );
+
+    renderDialog();
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/ai-status");
+    });
+
+    fireEvent.click(screen.getByText("Export config"));
+
+    expect(screen.getByText("Export blew up")).toBeTruthy();
+  });
+
+  it("imports a config file and applies the parsed draft state", async () => {
+    mockAiStatus(READY_AI_STATUS);
+    vi.spyOn(portableConfig, "parsePortablePlaygroundConfig").mockReturnValue({
+      selectedBackend: "hcd",
+      astraConfigMode: "credentials",
+      astraToken: "",
+      astraEndpoint: "",
+      astraCliProfile: "",
+      astraCliDatabase: "",
+      hcdEndpoint: "https://hcd.example.com:8181",
+      hcdUsername: "cass_user",
+      hcdPassword: "cass_pass",
+      knowledgeBackendMode: "connected",
+      openragApiKey: "",
+      openragBaseUrl: "",
+      huggingfaceApiKey: "hf_imported",
+    });
+
+    renderDialog();
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/ai-status");
+    });
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const clickSpy = vi.spyOn(fileInput, "click").mockImplementation(() => undefined);
+
+    fireEvent.click(screen.getByText("Import config"));
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(fileInput, {
+      target: {
+        files: [new File(["backend: hcd"], "playground.yaml", { type: "application/yaml" })],
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId("hcd-endpoint-input") as HTMLInputElement).value
+      ).toBe("https://hcd.example.com:8181");
+    });
+    expect(
+      (screen.getByTestId("hcd-username-input") as HTMLInputElement).value
+    ).toBe("cass_user");
+    expect(screen.getByText("Config imported. Review it, then connect.")).toBeTruthy();
+
+    openAiTab();
+    expect(
+      (screen.getByTestId("huggingface-api-key-input") as HTMLInputElement).value
+    ).toBe("hf_imported");
+  });
+
+  it("shows import errors when the config file cannot be read", async () => {
+    mockAiStatus(READY_AI_STATUS);
+
+    class FailingFileReader {
+      public result: string | null = null;
+      public onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null =
+        null;
+      public onerror:
+        | ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown)
+        | null = null;
+
+      readAsText() {
+        this.onerror?.call(this as unknown as FileReader, new ProgressEvent("error"));
+      }
+    }
+
+    Object.defineProperty(global, "FileReader", {
+      configurable: true,
+      value: FailingFileReader,
+    });
+
+    renderDialog();
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/ai-status");
+    });
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: {
+        files: [new File(["broken"], "broken.yaml", { type: "application/yaml" })],
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Failed to read config file.")).toBeTruthy();
+    });
+  });
+
+  it("lets you switch Astra config sources and pick a CLI profile and database", async () => {
+    mockAiStatus(READY_AI_STATUS, undefined, {
+      dataApiConfig: {
+        astraCli: {
+          available: true,
+          configured: true,
+          profiles: [
+            { name: "default", isDefault: true },
+            { name: "team", isDefault: false },
+          ],
+          selectedProfile: "default",
+          databases: [
+            {
+              id: "db-123",
+              name: "orders",
+              endpoint: "https://db-123.apps.astra.datastax.com",
+              keyspace: "default_keyspace",
+              region: "us-east-2",
+              status: "ACTIVE",
+            },
+            {
+              id: "db-456",
+              name: "analytics",
+              endpoint: "https://db-456.apps.astra.datastax.com",
+              keyspace: "default_keyspace",
+              region: "eu-west-1",
+              status: "ACTIVE",
+            },
+          ],
+        },
+      },
+    });
+    const props = renderDialog();
+
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId("astra-cli-profile-select") as HTMLSelectElement).value
+      ).toBe("default");
+    });
+
+    fireEvent.click(screen.getByText("Credentials").closest("button") as HTMLButtonElement);
+    expect(screen.getByTestId("astra-token-input")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Astra CLI").closest("button") as HTMLButtonElement);
+
+    const profileSelect = screen.getByTestId(
+      "astra-cli-profile-select"
+    ) as HTMLSelectElement;
+    const databaseSelect = screen.getByTestId(
+      "astra-cli-database-select"
+    ) as HTMLSelectElement;
+
+    fireEvent.change(profileSelect, { target: { value: "team" } });
+    fireEvent.change(databaseSelect, { target: { value: "db-456" } });
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/data-api-config?profile=team");
+    });
+    expect(profileSelect.value).toBe("team");
+    expect(databaseSelect.value).toBe("db-456");
+    expect(screen.getByText("https://db-456.apps.astra.datastax.com")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("backend-connect-submit"));
+
+    await waitFor(() => {
+      expect(props.onConnect).toHaveBeenCalledWith({
+        backend: "astra",
+        token: "",
+        endpoint: "",
+        fromAstraCli: true,
+        astraCliProfile: "team",
+        astraCliDatabase: "db-456",
+      } satisfies BackendConnectionState);
+    });
+  });
+
+  it("accepts trimmed manual HCD credentials", async () => {
+    mockAiStatus(READY_AI_STATUS);
+    const props = renderDialog({
+      selectedBackend: "hcd",
+    });
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith("/api/ai-status");
+    });
+
+    fireEvent.change(screen.getByTestId("hcd-endpoint-input"), {
+      target: { value: "  https://hcd.example.com:8181  " },
+    });
+    fireEvent.change(screen.getByTestId("hcd-username-input"), {
+      target: { value: "  cassandra  " },
+    });
+    fireEvent.change(screen.getByTestId("hcd-password-input"), {
+      target: { value: "  secret  " },
+    });
+
+    fireEvent.click(screen.getByTestId("backend-connect-submit"));
+
+    await waitFor(() => {
+      expect(props.onConnect).toHaveBeenCalledWith({
+        backend: "hcd",
+        endpoint: "https://hcd.example.com:8181",
+        username: "cassandra",
+        password: "secret",
+        fromEnv: false,
+      } satisfies BackendConnectionState);
+    });
   });
 
   it("supports OpenRAG as a top-level backend without requiring an HCD connection", async () => {
