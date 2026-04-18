@@ -31,3 +31,4 @@ tsconfig.tsbuildinfo
 *.db-shm
 *.db-wal
 *.sqlite
+.vercel

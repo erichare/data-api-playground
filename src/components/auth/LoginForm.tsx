@@ -94,10 +94,11 @@ export function LoginForm({ nextPath = "/" }: LoginFormProps) {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               autoFocus
+              placeholder="Enter password"
               data-testid="login-password"
               style={{
                 backgroundColor: "var(--bg-input)",
-                border: "1px solid var(--border-subtle)",
+                border: "1px solid var(--border-strong)",
                 color: "var(--text-primary)",
                 borderRadius: "8px",
                 padding: "10px 12px",
