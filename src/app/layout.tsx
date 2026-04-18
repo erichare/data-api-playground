@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const ibmPlexSans = IBM_Plex_Sans({
@@ -32,6 +33,7 @@ export default function RootLayout({
     <html lang="en" className={`${ibmPlexSans.variable} ${ibmPlexMono.variable} dark h-full`}>
       <body className="h-full overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)]">
         {children}
+        <Analytics />
       </body>
     </html>
   );
