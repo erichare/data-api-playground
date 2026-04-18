@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { motion } from "framer-motion";
 import { AlertCircle, Lock, Loader2 } from "lucide-react";
 
 interface LoginFormProps {
@@ -46,10 +45,7 @@ export function LoginForm({ nextPath = "/" }: LoginFormProps) {
           "radial-gradient(circle at top, rgba(15,98,254,0.16), transparent 38%), var(--bg-primary)",
       }}
     >
-      <motion.div
-        initial={{ opacity: 0, y: 16, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.25, ease: "easeOut" }}
+      <div
         className="w-full max-w-md rounded-2xl p-8"
         style={{
           backgroundColor: "var(--bg-panel)",
@@ -144,7 +140,7 @@ export function LoginForm({ nextPath = "/" }: LoginFormProps) {
             {submitting ? "Signing In..." : "Sign In"}
           </button>
         </form>
-      </motion.div>
+      </div>
     </div>
   );
 }
