@@ -5,6 +5,10 @@ vi.mock("next/font/google", () => ({
   IBM_Plex_Mono: () => ({ variable: "font-mono-test" }),
 }));
 
+vi.mock("@vercel/analytics/next", () => ({
+  Analytics: () => null,
+}));
+
 describe("app/layout", () => {
   it("exports the root metadata and html shell", async () => {
     const { default: RootLayout, metadata } = await import("./layout");
@@ -25,7 +29,8 @@ describe("app/layout", () => {
     expect(result.props.className).toContain("font-mono-test");
     expect(body.type).toBe("body");
     expect(body.props.className).toContain("bg-[var(--bg-primary)]");
-    expect(body.props.children).toMatchObject({
+    expect(Array.isArray(body.props.children)).toBe(true);
+    expect(body.props.children[0]).toMatchObject({
       type: "div",
       props: { children: "Playground" },
     });
