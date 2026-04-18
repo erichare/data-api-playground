@@ -9,8 +9,11 @@ describe("next.config", () => {
     );
   });
 
-  it("enables SRI and keeps the CSP aligned with the shipped shell", async () => {
-    expect(nextConfig.experimental?.sri).toEqual({ algorithm: "sha256" });
+  it("keeps the CSP aligned with the shipped shell", async () => {
+    // SRI is intentionally disabled: Next.js 16 + Turbopack produce mismatched
+    // integrity hashes for the turbopack runtime chunk in production, which
+    // blocks script execution and prevents React hydration.
+    expect(nextConfig.experimental?.sri).toBeUndefined();
 
     const headers = await nextConfig.headers?.();
     const csp = headers?.[0]?.headers.find(
