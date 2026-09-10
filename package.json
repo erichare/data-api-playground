@@ -63,7 +63,7 @@
     "playwright": "^1.59.1",
     "tailwindcss": "^4.2.2",
     "typescript": "^6",
-    "vitest": "^4.1.4",
+    "vitest": "^4.1.11",
     "write-excel-file": "3.0.8"
   }
 }
